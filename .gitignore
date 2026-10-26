@@ -1,0 +1,50 @@
+# Devenv-generated and machine-local state
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+.direnv/
+.pre-commit-config.yaml
+
+# Go build outputs
+/replipg
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Test and coverage artifacts
+/coverage/
+coverage.out
+*.coverprofile
+
+# Go workspace and local tooling
+go.work
+go.work.sum
+.gopath/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.aws/
+
+# Temporary files and logs
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+.cache/
+/tmp/
+
+# Editors and IDEs
+.idea/
+.vscode/
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
