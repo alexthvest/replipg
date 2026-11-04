@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/character"
 	"github.com/alexthvest/replipg/internal/config"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestProductionCharacterComposition(t *testing.T) {

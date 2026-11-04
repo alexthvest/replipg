@@ -5,15 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/alexthvest/replipg/internal/interaction"
-	"github.com/alexthvest/replipg/internal/localization"
-	"github.com/alexthvest/replipg/internal/persistence"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/persistence"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 type shareScope struct{ tx runtimecontract.DBTX }

@@ -66,7 +66,7 @@ func (s *Service) Cancel(ctx context.Context, id runtimecontract.JobID) error {
 	if id == "" {
 		return ErrInvalidID
 	}
-	transactor, ok := s.db.(persistence.Transactor)
+	transactor, ok := s.db.(runtimecontract.Transactor)
 	if !ok || isNil(transactor) {
 		return ErrTransactionRequired
 	}
@@ -127,7 +127,7 @@ type Service struct {
 }
 
 // New accepts a DBTX for scheduling/status compatibility. Cancel additionally
-// requires db to implement persistence.Transactor; otherwise it returns
+// requires db to implement runtimecontract.Transactor; otherwise it returns
 // ErrTransactionRequired before accessing storage.
 func New(db runtimecontract.DBTX, clock Clock) *Service {
 	return &Service{db: db, clock: clock, handlers: make(map[registrationKey]JobHandler)}

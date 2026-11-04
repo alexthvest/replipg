@@ -6,10 +6,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"github.com/alexthvest/replipg/internal/localization"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"strings"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 func (s *Store) CreateControl(ctx context.Context, tx runtimecontract.DBTX, v Snapshot, actor runtimecontract.UserID, selection localization.Locale, now time.Time) (string, error) {

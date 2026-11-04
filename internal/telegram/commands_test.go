@@ -3,9 +3,10 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"testing"
+
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"github.com/alexthvest/replipg/internal/testsupport"
-	"testing"
 )
 
 func TestSetGroupCommands(t *testing.T) {

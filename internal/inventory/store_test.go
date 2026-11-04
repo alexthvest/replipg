@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
-	"github.com/alexthvest/replipg/internal/inventory/contract"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"reflect"
 	"strings"
 	"testing"
+
+	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
+	"github.com/alexthvest/replipg/internal/inventory/contract"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 const storeCharacterID charactercontract.ID = "0123456789abcdef0123456789abcdef"
@@ -33,7 +34,7 @@ func TestStoreCatalogPreparation(t *testing.T) {
 	for _, kind := range []string{"changed", "removed"} {
 		t.Run(kind, func(t *testing.T) {
 			candidate := catalog
-			candidate.items = append([]ItemDefinition{{ID: "added", Name: "Added", Description: "New", Category: contract.CategoryInert}}, catalog.Items()...)
+			candidate.items = append([]ItemDefinition{{ID: "added", Category: contract.CategoryInert}}, catalog.Items()...)
 			candidate.byID = make(map[contract.ItemID]ItemDefinition)
 			for i, item := range candidate.items {
 				if item.ID == "stick" && kind == "changed" {
@@ -119,7 +120,7 @@ func TestStoreReadsEmptyAndMissing(t *testing.T) {
 func TestStoreReadsPagesEquipmentAndReopen(t *testing.T) {
 	db, catalog, _, dir := inventoryFixture(t)
 	for i := 0; i < 18; i++ {
-		item := ItemDefinition{ID: contract.ItemID(fmt.Sprintf("extra_%02d", i)), Name: "Extra", Description: "Extra", Category: contract.CategoryInert}
+		item := ItemDefinition{ID: contract.ItemID(fmt.Sprintf("extra_%02d", i)), Category: contract.CategoryInert}
 		catalog.items = append(catalog.items, item)
 		catalog.byID[item.ID] = item
 	}
@@ -187,7 +188,7 @@ func TestStoreReadsPagesEquipmentAndReopen(t *testing.T) {
 func TestStoreCatalogNewIdentityAndStorageErrors(t *testing.T) {
 	db, catalog, _, _ := inventoryFixture(t)
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error { return prepareCatalog(ctx, tx, catalog) })
-	item := ItemDefinition{ID: "new_coin", Name: "Another coin", Description: "An ordinary item.", Category: contract.CategoryInert}
+	item := ItemDefinition{ID: "new_coin", Category: contract.CategoryInert}
 	catalog.items = append(catalog.Items(), item)
 	catalog.byID[item.ID] = item
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error { return prepareCatalog(ctx, tx, catalog) })

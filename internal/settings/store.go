@@ -6,9 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"time"
 )
 
 var ErrInvalid = errors.New("invalid settings input")

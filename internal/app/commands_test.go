@@ -3,12 +3,13 @@ package app
 import (
 	"context"
 	"errors"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"github.com/alexthvest/replipg/internal/testsupport"
 	"net"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/runtimecontract"
+	"github.com/alexthvest/replipg/internal/testsupport"
 )
 
 func TestCommandsValidatedAndCopied(t *testing.T) {

@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/alexthvest/replipg/internal/config"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/config"
 )
 
 // Runs the production executable through a local TLS fake. All authorization,

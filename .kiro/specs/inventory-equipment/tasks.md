@@ -19,7 +19,7 @@ Each milestone's automated integration gate also includes reproducible commands 
 
 - [x] 1.2 Load and validate the immutable catalog and starter supplies
   - Provide version-controlled consumables, weapons, armor and an inert Coin definition; choose and document seed tuning without treating mockup quantities as mandatory balances.
-  - Validate category-specific mechanics, positive starter quantities, duplicate/undefined identities, unknown fields, and bounded plain-text names/descriptions.
+  - Validate category-specific mechanics, positive starter quantities, duplicate/undefined identities, unknown fields, and mechanics-only item definitions; validate bounded plain-text names/descriptions in localization resources.
   - Keep returned catalog values immutable and equipment initially unequipped; no inert-item effects or currency behavior are introduced.
   - Done when valid embedded content loads without I/O side effects and invalid catalog/starter fixtures fail safely and deterministically.
   - _Boundary: Catalog_

@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/alexthvest/replipg/internal/interaction"
-	"github.com/alexthvest/replipg/internal/inventory/contract"
-	"github.com/alexthvest/replipg/internal/localization"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"math"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/inventory/contract"
+	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 func TestLocalizedInventoryPresentation(t *testing.T) {
@@ -73,7 +74,7 @@ func TestLocalizedInventoryPresentation(t *testing.T) {
 	after := catalog.Items()
 	for i := range before {
 		if before[i] != after[i] {
-			t.Fatal("presentation mutated mechanics or legacy text")
+			t.Fatal("presentation mutated mechanics")
 		}
 	}
 }
@@ -90,7 +91,7 @@ func TestInventoryOldControlUsesCurrentLocale(t *testing.T) {
 		calls++
 		return locale, nil
 	}}
-	h := localizedInventoryHandler{inventoryHandler{service, clock.Now}, p}
+	h := inventoryHandler{service: service, now: clock.Now, presentation: p}
 	cmd := interaction.Command{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup}, Name: "inventory", EphemeralMessageID: 1, SentAt: clock.Now()}
 	var token string
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -147,7 +148,7 @@ func TestLocalizedInventoryDevelopmentMessages(t *testing.T) {
 	p := Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return localization.Russian, nil
 	}}
-	h := localizedDevelopmentHandler{developmentHandler{service, clock.Now}, p}
+	h := developmentHandler{service: service, now: clock.Now, presentation: p}
 	cmd := interaction.Command{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup}, Name: "dev_inventory_grant", EphemeralMessageID: 1, SentAt: clock.Now()}
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := service.Prepare(ctx, tx); err != nil {
@@ -185,7 +186,7 @@ func TestRejectedInventoryControlDoesNotResolveLocale(t *testing.T) {
 		calls++
 		return localization.English, nil
 	}}
-	h := localizedInventoryHandler{inventoryHandler{service, clock.Now}, p}
+	h := inventoryHandler{service: service, now: clock.Now, presentation: p}
 	event := interaction.Callback{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup}, QueryID: "query", Data: "inv:aaaaaaaaaaaaaaaaaaaaaa", EphemeralMessageID: 1}
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		result, err := h.Handle(ctx, inventoryScope{tx}, event)
@@ -283,7 +284,7 @@ func TestPreparedInventoryResponseKeepsAcceptedLanguageSnapshot(t *testing.T) {
 	p := Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return locale, nil
 	}}
-	h := localizedInventoryHandler{inventoryHandler{service, clock.Now}, p}
+	h := inventoryHandler{service: service, now: clock.Now, presentation: p}
 	cmd := interaction.Command{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup, ActorUsername: "Player_Name"}, Name: "inventory", EphemeralMessageID: 1, SentAt: clock.Now()}
 	var token string
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {

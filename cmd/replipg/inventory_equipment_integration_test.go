@@ -30,7 +30,7 @@ func buildEquipmentBinary(t *testing.T, ctx context.Context) string {
 	if err = json.Unmarshal(raw, &catalog); err != nil {
 		t.Fatal(err)
 	}
-	catalog.Items = append(catalog.Items, map[string]any{"id": "sword", "name": "Sword", "description": "Equipment replacement fixture.", "category": "weapon", "attack_bonus": 3})
+	catalog.Items = append(catalog.Items, map[string]any{"id": "sword", "category": "weapon", "attack_bonus": 3})
 	catalog.Starter = append(catalog.Starter, map[string]any{"item_id": "sword", "quantity": 2})
 	raw, err = json.Marshal(catalog)
 	if err != nil {

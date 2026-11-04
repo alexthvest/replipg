@@ -58,7 +58,7 @@ func TestInventorySharingPresentation(t *testing.T) {
 				return clock.Now().Add(time.Duration(nowCalls)*time.Millisecond + 123*time.Microsecond)
 			}
 			registry := interaction.NewRegistry()
-			if err := RegisterWithPresentation(registry, service, now, p); err != nil {
+			if err := Register(registry, service, now, p); err != nil {
 				t.Fatal(err)
 			}
 			registry.Seal()
@@ -162,7 +162,7 @@ func TestInventorySharingExcludesGuidanceAndDevelopment(t *testing.T) {
 	inventoryTx(t, db, service.Prepare)
 	decorator := &capturingInventoryDecorator{}
 	p := inventorySharingPresentation(t, decorator, localization.English)
-	h := localizedInventoryHandler{inventoryHandler{service, clock.Now}, p}
+	h := inventoryHandler{service: service, now: clock.Now, presentation: p}
 	identity := interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		opened, err := service.Open(ctx, tx, identity.User)
@@ -192,7 +192,7 @@ func TestInventorySharingExcludesGuidanceAndDevelopment(t *testing.T) {
 		if _, err := h.Handle(ctx, inventoryScope{tx}, interaction.Callback{Identity: identity, QueryID: "expired", EphemeralMessageID: 900, Data: stale}); err != nil {
 			return err
 		}
-		dev := localizedDevelopmentHandler{developmentHandler{service, clock.Now}, p}
+		dev := developmentHandler{service: service, now: clock.Now, presentation: p}
 		for _, command := range []interaction.Command{
 			{Identity: identity, Name: "dev_inventory_grant", Arguments: "coin 1", EphemeralMessageID: 1, SentAt: clock.Now()},
 			{Identity: identity, Name: "dev_inventory_heal", Arguments: "healing_potion", EphemeralMessageID: 1, SentAt: clock.Now()},
@@ -217,7 +217,7 @@ func TestInventorySharingFailureRollsBack(t *testing.T) {
 			failure := errors.New("decoration storage failure")
 			decorator := &capturingInventoryDecorator{err: failure}
 			p := inventorySharingPresentation(t, decorator, localization.English)
-			h := localizedInventoryHandler{inventoryHandler{service, clock.Now}, p}
+			h := inventoryHandler{service: service, now: clock.Now, presentation: p}
 			identity := interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}
 			var event interaction.Event = interaction.Command{Identity: identity, Name: "inventory", EphemeralMessageID: 1, SentAt: clock.Now()}
 			var controlsBefore int

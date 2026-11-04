@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"testing"
-	"time"
 )
 
 type projectorLedger struct {

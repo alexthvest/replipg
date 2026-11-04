@@ -2,12 +2,13 @@ package character
 
 import (
 	"context"
-	"github.com/alexthvest/replipg/internal/character/contract"
-	"github.com/alexthvest/replipg/internal/interaction"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/character/contract"
+	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 type fakeHealthService struct {
@@ -32,7 +33,7 @@ func TestDevelopmentCommands(t *testing.T) {
 	} {
 		t.Run(string(tc.name)+tc.args, func(t *testing.T) {
 			service := &fakeHealthService{}
-			h := developmentHandler{service: service, now: func() time.Time { return commandNow }}
+			h := developmentHandler{service: service, now: func() time.Time { return commandNow }, presentation: englishPresentation(t)}
 			cmd := authorizedCommand()
 			cmd.Name = tc.name
 			cmd.Arguments = tc.args
@@ -65,7 +66,7 @@ func TestDevelopmentCommands(t *testing.T) {
 }
 func TestDevelopmentDomainRejectionIsRestricted(t *testing.T) {
 	service := &fakeHealthService{mutationErr: contract.ErrIncapacitated}
-	h := developmentHandler{service: service, now: func() time.Time { return commandNow }}
+	h := developmentHandler{service: service, now: func() time.Time { return commandNow }, presentation: englishPresentation(t)}
 	cmd := authorizedCommand()
 	cmd.Name = "dev_character_damage"
 	cmd.Arguments = "5"

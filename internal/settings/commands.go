@@ -3,11 +3,12 @@ package settings
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"strings"
-	"time"
 )
 
 type handler struct {

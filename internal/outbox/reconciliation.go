@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/alexthvest/replipg/internal/observability"
-	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -149,7 +148,7 @@ func (s *Store) resolve(ctx context.Context, id runtimecontract.DeliveryID, r Re
 	if err != nil {
 		return ErrInvalidResolution
 	}
-	transactor, ok := s.db.(persistence.Transactor)
+	transactor, ok := s.db.(runtimecontract.Transactor)
 	if !ok || isNilDBTX(s.db) {
 		return ErrTransactionRequired
 	}

@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"errors"
+
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	sharingcontract "github.com/alexthvest/replipg/internal/sharing/contract"

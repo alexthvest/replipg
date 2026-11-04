@@ -49,7 +49,7 @@ func TestCharacterSharingPresentation(t *testing.T) {
 				return "invalid-new-selection", nil
 			}}
 			routes := interaction.NewRegistry()
-			if err := character.RegisterWithPresentation(routes, service, func() time.Time { return now }, p); err != nil {
+			if err := character.Register(routes, service, func() time.Time { return now }, p); err != nil {
 				t.Fatal(err)
 			}
 			routes.Seal()
@@ -107,7 +107,7 @@ func TestCharacterSharingFailureRollsBackCreation(t *testing.T) {
 		return localization.English, nil
 	}}
 	routes := interaction.NewRegistry()
-	if err := character.RegisterWithPresentation(routes, service, func() time.Time { return now }, p); err != nil {
+	if err := character.Register(routes, service, func() time.Time { return now }, p); err != nil {
 		t.Fatal(err)
 	}
 	routes.Seal()
@@ -144,10 +144,10 @@ func TestCharacterSharingExcludesUsageAndDevelopment(t *testing.T) {
 		return localization.English, nil
 	}}
 	routes := interaction.NewRegistry()
-	if err := character.RegisterWithPresentation(routes, service, func() time.Time { return now }, p); err != nil {
+	if err := character.Register(routes, service, func() time.Time { return now }, p); err != nil {
 		t.Fatal(err)
 	}
-	if err := character.RegisterDevelopmentWithPresentation(routes, service, func() time.Time { return now }, p); err != nil {
+	if err := character.RegisterDevelopment(routes, service, func() time.Time { return now }, p); err != nil {
 		t.Fatal(err)
 	}
 	routes.Seal()

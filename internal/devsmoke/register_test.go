@@ -3,16 +3,17 @@ package devsmoke
 import (
 	"context"
 	"errors"
-	"github.com/alexthvest/replipg/internal/interaction"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 func TestRegisterTransportBehaviors(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	registry := interaction.NewRegistry()
-	if err := Register(registry, func() time.Time { return now }); err != nil {
+	if err := Register(registry, func() time.Time { return now }, englishPresentation(t)); err != nil {
 		t.Fatal(err)
 	}
 	registry.Seal()
@@ -27,7 +28,7 @@ func TestRegisterTransportBehaviors(t *testing.T) {
 		if !ok {
 			t.Fatal("development route absent")
 		}
-		result, err := handler.Handle(context.Background(), nil, event)
+		result, err := handler.Handle(context.Background(), smokeScope{}, event)
 		if err != nil || len(result.ImmediateResponses) != 1 {
 			t.Fatal("development response absent")
 		}
@@ -53,7 +54,7 @@ func TestRegisterTransportBehaviors(t *testing.T) {
 
 func TestIncomingProbeRequiresEphemeralEvidence(t *testing.T) {
 	registry := interaction.NewRegistry()
-	if err := Register(registry, nil); err != nil {
+	if err := Register(registry, time.Now, englishPresentation(t)); err != nil {
 		t.Fatal(err)
 	}
 	registry.Seal()
@@ -62,7 +63,7 @@ func TestIncomingProbeRequiresEphemeralEvidence(t *testing.T) {
 	if !ok {
 		t.Fatal("probe not registered")
 	}
-	result, err := handler.Handle(context.Background(), nil, event)
+	result, err := handler.Handle(context.Background(), smokeScope{}, event)
 	if err == nil || len(result.ImmediateResponses) != 0 {
 		t.Fatal("ordinary message supplied ephemeral authorization")
 	}
@@ -70,14 +71,14 @@ func TestIncomingProbeRequiresEphemeralEvidence(t *testing.T) {
 
 func TestRegisterReportsRouteOwnershipConflict(t *testing.T) {
 	registry := interaction.NewRegistry()
-	if err := Register(registry, nil); err != nil {
+	if err := Register(registry, time.Now, englishPresentation(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Register(registry, nil); !errors.Is(err, interaction.ErrRouteConflict) {
+	if err := Register(registry, time.Now, englishPresentation(t)); !errors.Is(err, interaction.ErrRouteConflict) {
 		t.Fatal("route conflict not reported")
 	}
 	registry.Seal()
-	if err := Register(registry, nil); !errors.Is(err, interaction.ErrRegistrationClosed) {
+	if err := Register(registry, time.Now, englishPresentation(t)); !errors.Is(err, interaction.ErrRegistrationClosed) {
 		t.Fatal("sealed registration not reported")
 	}
 }

@@ -411,7 +411,7 @@ func buildInventoryBinary(t *testing.T, ctx context.Context, extra bool) string 
 		}
 		for n := 0; n < 6; n++ {
 			id := fmt.Sprintf("extra_%d", n)
-			catalog.Items = append(catalog.Items, map[string]any{"id": id, "name": fmt.Sprintf("Extra %d", n), "description": "Pagination fixture.", "category": "inert"})
+			catalog.Items = append(catalog.Items, map[string]any{"id": id, "category": "inert"})
 			catalog.Starter = append(catalog.Starter, map[string]any{"item_id": id, "quantity": 1})
 		}
 		raw, err = json.Marshal(catalog)

@@ -1,9 +1,9 @@
 {
   "items": [
-    {"id":"coin","name":"Coin","description":"An ordinary collectible coin.","category":"inert"},
-    {"id":"stick","name":"Stick","description":"A simple wooden stick.","category":"weapon","attack_bonus":1},
-    {"id":"cloth_armor","name":"Cloth armor","description":"Simple clothing that offers light protection.","category":"armor","defense_bonus":1},
-    {"id":"healing_potion","name":"Healing potion","description":"Restores health when used during battle.","category":"consumable","healing_hp":10,"effect":"heal_self_fixed_hp"}
+    {"id":"coin","category":"inert"},
+    {"id":"stick","category":"weapon","attack_bonus":1},
+    {"id":"cloth_armor","category":"armor","defense_bonus":1},
+    {"id":"healing_potion","category":"consumable","healing_hp":10,"effect":"heal_self_fixed_hp"}
   ],
   "starter": [
     {"item_id":"coin","quantity":10},

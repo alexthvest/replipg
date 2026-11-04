@@ -3,12 +3,13 @@ package character
 import (
 	"context"
 	"errors"
-	"github.com/alexthvest/replipg/internal/character/contract"
-	"github.com/alexthvest/replipg/internal/interaction"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/character/contract"
+	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 type commandScope struct{ tx runtimecontract.DBTX }
@@ -57,7 +58,7 @@ func TestCharacterCommandAuthorization(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service := &fakeInspector{created: true}
-			h := commandHandler{service: service, now: func() time.Time { return commandNow }}
+			h := commandHandler{service: service, now: func() time.Time { return commandNow }, presentation: englishPresentation(t)}
 			cmd := authorizedCommand()
 			tc.change(&cmd)
 			result, err := h.Handle(context.Background(), commandScope{}, cmd)
@@ -89,7 +90,7 @@ func TestCharacterCommandAuthorization(t *testing.T) {
 }
 func TestCharacterUsageAndFailures(t *testing.T) {
 	service := &fakeInspector{}
-	h := commandHandler{service: service, now: func() time.Time { return commandNow }}
+	h := commandHandler{service: service, now: func() time.Time { return commandNow }, presentation: englishPresentation(t)}
 	cmd := authorizedCommand()
 	cmd.Arguments = "other-private-user"
 	result, err := h.Handle(context.Background(), commandScope{}, cmd)

@@ -7,14 +7,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alexthvest/replipg/internal/localization"
+
 	"github.com/alexthvest/replipg/internal/inventory/contract"
 )
 
 const validCatalogJSON = `{"items":[
-{"id":"stick","name":"Stick","description":"A stick.","category":"weapon","attack_bonus":1},
-{"id":"cloth_armor","name":"Cloth armor","description":"Cloth.","category":"armor","defense_bonus":1},
-{"id":"healing_potion","name":"Healing potion","description":"Heals.","category":"consumable","healing_hp":10,"effect":"heal_self_fixed_hp"},
-{"id":"coin","name":"Coin","description":"An ordinary item.","category":"inert"}],
+{"id":"stick","category":"weapon","attack_bonus":1},
+{"id":"cloth_armor","category":"armor","defense_bonus":1},
+{"id":"healing_potion","category":"consumable","healing_hp":10,"effect":"heal_self_fixed_hp"},
+{"id":"coin","category":"inert"}],
 "starter":[{"item_id":"stick","quantity":1},{"item_id":"cloth_armor","quantity":1},{"item_id":"healing_potion","quantity":3}]}`
 
 func TestCatalogEmbeddedAndCopies(t *testing.T) {
@@ -27,15 +29,15 @@ func TestCatalogEmbeddedAndCopies(t *testing.T) {
 		t.Fatalf("items = %v", items)
 	}
 	coin, ok := catalog.Lookup("coin")
-	if !ok || strings.TrimSpace(coin.Name) == "" || coin.Category != contract.CategoryInert || coin.AttackBonus != 0 || coin.DefenseBonus != 0 || coin.HealingHP != 0 {
+	if !ok || coin.Category != contract.CategoryInert || coin.AttackBonus != 0 || coin.DefenseBonus != 0 || coin.HealingHP != 0 {
 		t.Fatalf("coin = %+v, %v", coin, ok)
 	}
 	if _, ok := catalog.Lookup("absent"); ok {
 		t.Fatal("unknown item found")
 	}
 	beforeItems, beforeStarter := catalog.Items(), catalog.Starter()
-	items[0].Name = "changed"
-	coin.Name = "changed"
+	items[0].ID = "changed"
+	coin.ID = "changed"
 	starter := catalog.Starter()
 	starter[0].Quantity = 99
 	if !reflect.DeepEqual(beforeItems, catalog.Items()) || !reflect.DeepEqual(beforeStarter, catalog.Starter()) {
@@ -68,18 +70,12 @@ func TestCatalogValidation(t *testing.T) {
 		{"weapon defense", `"attack_bonus":1`, `"attack_bonus":1,"defense_bonus":1`},
 		{"armor attack", `"defense_bonus":1`, `"defense_bonus":1,"attack_bonus":1`},
 		{"consumable bonus", `"healing_hp":10`, `"healing_hp":10,"defense_bonus":1`},
+		{"legacy display field", `"id":"coin"`, `"id":"coin","name":"Coin"`},
 		{"unknown field", `"id":"coin"`, `"id":"coin","secret":"sensitive"`},
 		{"wrong key case", `"id":"coin"`, `"ID":"coin"`},
 		{"duplicate key", `"id":"coin"`, `"id":"coin","id":"coin"`},
 		{"duplicate escaped key", `"id":"coin"`, `"id":"coin","\u0069d":"coin"`},
 		{"duplicate root", `"starter":`, `"items":[],"starter":`},
-		{"empty name", `"name":"Coin"`, `"name":""`},
-		{"blank name", `"name":"Coin"`, `"name":"  "`},
-		{"long name", `"name":"Coin"`, `"name":"` + strings.Repeat("я", 81) + `"`},
-		{"long description", `"description":"Cloth."`, `"description":"` + strings.Repeat("я", 401) + `"`},
-		{"empty description", `"description":"Cloth."`, `"description":""`},
-		{"control text", `"name":"Coin"`, `"name":"Coin\n"`},
-		{"format text", `"name":"Coin"`, `"name":"Coin\u202e"`},
 		{"undefined starter", `"item_id":"stick"`, `"item_id":"missing"`},
 		{"duplicate starter", `"item_id":"cloth_armor"`, `"item_id":"stick"`},
 		{"zero quantity", `"quantity":3`, `"quantity":0`},
@@ -111,9 +107,7 @@ func TestCatalogValidation(t *testing.T) {
 }
 
 func TestCatalogNumericAndUnicodeBounds(t *testing.T) {
-	input := strings.Replace(validCatalogJSON, `"name":"Coin"`, `"name":"`+strings.Repeat("я", 80)+`"`, 1)
-	input = strings.Replace(input, `"description":"Cloth."`, `"description":"`+strings.Repeat("🪙", 400)+`"`, 1)
-	input = strings.Replace(input, `"attack_bonus":1`, `"attack_bonus":9223372036854775807`, 1)
+	input := strings.Replace(validCatalogJSON, `"attack_bonus":1`, `"attack_bonus":9223372036854775807`, 1)
 	input = strings.Replace(input, `"quantity":3`, `"quantity":9223372036854775807`, 1)
 	catalog, err := ParseCatalog([]byte(input))
 	if err != nil {
@@ -130,8 +124,32 @@ func TestCatalogNumericAndUnicodeBounds(t *testing.T) {
 		}
 	}
 	// Raw invalid UTF-8 must be rejected rather than silently replaced by JSON decoding.
-	badUTF8 := strings.Replace(validCatalogJSON, "Stick", string([]byte{0xff}), 1)
+	badUTF8 := strings.Replace(validCatalogJSON, "stick", string([]byte{0xff}), 1)
 	if _, err := ParseCatalog([]byte(badUTF8)); !errors.Is(err, contract.ErrInvalidCatalog) {
 		t.Fatalf("invalid UTF-8: %v", err)
+	}
+}
+
+func TestLocalizedItemTextBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		text  localization.ItemText
+		valid bool
+	}{
+		{"valid", localization.ItemText{Name: "Coin", Description: "An ordinary item."}, true},
+		{"unicode bounds", localization.ItemText{Name: strings.Repeat("я", 80), Description: strings.Repeat("🪙", 400)}, true},
+		{"empty name", localization.ItemText{Description: "Item."}, false},
+		{"blank name", localization.ItemText{Name: "  ", Description: "Item."}, false},
+		{"long name", localization.ItemText{Name: strings.Repeat("я", 81), Description: "Item."}, false},
+		{"empty description", localization.ItemText{Name: "Coin"}, false},
+		{"long description", localization.ItemText{Name: "Coin", Description: strings.Repeat("🪙", 401)}, false},
+		{"control text", localization.ItemText{Name: "Coin\n", Description: "Item."}, false},
+		{"format text", localization.ItemText{Name: "Coin\u202e", Description: "Item."}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ValidateItemText(tc.text); (err == nil) != tc.valid {
+				t.Fatalf("validation = %v, valid = %v", err, tc.valid)
+			}
+		})
 	}
 }

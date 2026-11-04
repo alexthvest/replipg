@@ -2,12 +2,13 @@ package devsmoke
 
 import (
 	"context"
-	"github.com/alexthvest/replipg/internal/interaction"
-	"github.com/alexthvest/replipg/internal/localization"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 type smokeScope struct{}
@@ -31,7 +32,7 @@ func TestLocalizedSmokeSurfaces(t *testing.T) {
 		return localization.Russian, nil
 	}}
 	registry := interaction.NewRegistry()
-	if err := RegisterWithPresentation(registry, func() time.Time { return now }, p); err != nil {
+	if err := Register(registry, func() time.Time { return now }, p); err != nil {
 		t.Fatal(err)
 	}
 	registry.Seal()

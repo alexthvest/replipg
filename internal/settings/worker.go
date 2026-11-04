@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 type WorkerOptions struct {

@@ -16,7 +16,7 @@ import (
 func TestEquipmentConcurrentControlsAcrossGroups(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
-	handler := inventoryHandler{service, clock.Now}
+	handler := inventoryHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
 	var before contract.Snapshot
 	type pending struct {
 		identity interaction.Identity

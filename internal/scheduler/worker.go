@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/alexthvest/replipg/internal/observability"
-	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -57,7 +56,7 @@ func NewWorker(s *Service, options WorkerOptions) (*Worker, error) {
 	if s == nil || isNil(s.clock) || options.Owner == "" || options.Lease <= 0 || options.NewWorkScope == nil {
 		return nil, ErrInvalidWorker
 	}
-	if tx, ok := s.db.(persistence.Transactor); !ok || isNil(tx) {
+	if tx, ok := s.db.(runtimecontract.Transactor); !ok || isNil(tx) {
 		return nil, ErrTransactionRequired
 	}
 	if options.NewCorrelationID == nil {
@@ -83,7 +82,7 @@ func (w *Worker) ClaimDue(ctx context.Context) (*Claim, error) {
 		return nil, ErrInvalidWorker
 	}
 	var claim *Claim
-	err = w.service.db.(persistence.Transactor).WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
+	err = w.service.db.(runtimecontract.Transactor).WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		now := w.service.clock.Now().UTC()
 		var req runtimecontract.JobRequest
 		var version int
@@ -136,7 +135,7 @@ func (w *Worker) executeClaim(ctx context.Context, claim *Claim) error {
 		return ErrClaimLost
 	}
 	var outcome JobOutcome
-	err := w.service.db.(persistence.Transactor).WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
+	err := w.service.db.(runtimecontract.Transactor).WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := w.fence(ctx, tx, claim, false); err != nil {
 			return err
 		}
@@ -194,7 +193,7 @@ func executeHandler(ctx context.Context, handler JobHandler, scope runtimecontra
 }
 
 func (w *Worker) recordOutcome(ctx context.Context, claim *Claim, outcome JobOutcome) error {
-	return w.service.db.(persistence.Transactor).WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
+	return w.service.db.(runtimecontract.Transactor).WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := w.fence(ctx, tx, claim, false); err != nil {
 			return err
 		}

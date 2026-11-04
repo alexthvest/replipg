@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/localization"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alexthvest/replipg/internal/config"
+	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 func TestLocalizationProductionComposition(t *testing.T) {

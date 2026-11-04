@@ -2,10 +2,11 @@ package inventory
 
 import (
 	"context"
-	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"strings"
 	"testing"
 	"time"
+
+	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
@@ -42,7 +43,7 @@ func TestInventoryCommandAuthorization(t *testing.T) {
 				command.Arguments = "sensitive target"
 			}
 			inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
-				result, err := (inventoryHandler{service: service, now: clock.Now}).Handle(ctx, inventoryScope{tx}, command)
+				result, err := (inventoryHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}).Handle(ctx, inventoryScope{tx}, command)
 				if err != nil {
 					return err
 				}
@@ -84,7 +85,7 @@ func TestInventoryCommandAuthorization(t *testing.T) {
 func TestInventoryNavigationIsPersonalAndRefreshed(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
-	handler := inventoryHandler{service: service, now: clock.Now}
+	handler := inventoryHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
 	var data string
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := service.Prepare(ctx, tx); err != nil {
@@ -147,7 +148,7 @@ func TestInventoryNavigationIsPersonalAndRefreshed(t *testing.T) {
 func TestInventoryHandlerNavigationAndDeadlines(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
-	handler := inventoryHandler{service, clock.Now}
+	handler := inventoryHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
 	var detailToken string
 	var characterID charactercontract.ID
 	identity := interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}
@@ -218,7 +219,7 @@ func TestInventoryHandlerNavigationAndDeadlines(t *testing.T) {
 		return nil
 	})
 	registry := interaction.NewRegistry()
-	if err := Register(registry, service, clock.Now); err != nil {
+	if err := Register(registry, service, clock.Now, englishPresentation(t)); err != nil {
 		t.Fatal(err)
 	}
 	registry.Seal()
@@ -232,7 +233,7 @@ func TestInventoryHandlerNavigationAndDeadlines(t *testing.T) {
 func TestInventoryEquipmentControlsReplayAndStaleness(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
-	handler := inventoryHandler{service, clock.Now}
+	handler := inventoryHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
 	identity := interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}
 	var equip, stale, unequip string
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {

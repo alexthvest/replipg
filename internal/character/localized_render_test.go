@@ -3,13 +3,14 @@ package character
 import (
 	"context"
 	"errors"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestLocalizedCharacterSummaryAndSelection(t *testing.T) {
@@ -37,7 +38,7 @@ func TestLocalizedCharacterSummaryAndSelection(t *testing.T) {
 		return localization.English, nil
 	}}
 	registry := interaction.NewRegistry()
-	if err := RegisterWithPresentation(registry, service, func() time.Time { return commandNow }, p); err != nil {
+	if err := Register(registry, service, func() time.Time { return commandNow }, p); err != nil {
 		t.Fatal(err)
 	}
 	registry.Seal()
@@ -65,12 +66,12 @@ func TestLocalizedCharacterSummaryAndSelection(t *testing.T) {
 	p.Resolve = func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return "", failure
 	}
-	h := commandHandler{service: service, now: func() time.Time { return commandNow }, presentation: &p}
+	h := commandHandler{service: service, now: func() time.Time { return commandNow }, presentation: p}
 	before := service.calls
 	if _, err := h.Handle(context.Background(), commandScope{}, cmd); !errors.Is(err, failure) || service.calls != before {
 		t.Fatal("resolver error defaulted or mutated character")
 	}
-	if err := RegisterWithPresentation(interaction.NewRegistry(), service, time.Now, Presentation{}); err == nil {
+	if err := Register(interaction.NewRegistry(), service, time.Now, Presentation{}); err == nil {
 		t.Fatal("missing dependencies accepted")
 	}
 }
@@ -84,7 +85,7 @@ func TestLocalizedCharacterDevelopmentUsageAndRejection(t *testing.T) {
 		return localization.Russian, nil
 	}}
 	service := &fakeHealthService{mutationErr: contract.ErrIncapacitated}
-	h := developmentHandler{service: service, now: func() time.Time { return commandNow }, presentation: &p}
+	h := developmentHandler{service: service, now: func() time.Time { return commandNow }, presentation: p}
 	cmd := authorizedCommand()
 	cmd.Name = "dev_character_damage"
 	for _, tc := range []struct{ args, want string }{{"-1", "Использование:"}, {"5", "Ваш персонаж недееспособен"}} {

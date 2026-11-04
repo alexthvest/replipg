@@ -15,7 +15,7 @@ func TestDevelopmentInventorySelfGrantAndHealing(t *testing.T) {
 	characters := inventoryCharacters(t, clock.Now)
 	service := inventoryService(t, catalog, characters, clock.Now)
 	identity := interaction.Identity{Update: 100, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}
-	handler := developmentHandler{service, clock.Now}
+	handler := developmentHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
 	var id charactercontract.ID
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := service.Prepare(ctx, tx); err != nil {
@@ -115,14 +115,14 @@ func TestDevelopmentInventorySelfGrantAndHealing(t *testing.T) {
 		return err
 	})
 	registry := interaction.NewRegistry()
-	if err := RegisterDevelopment(registry, service, clock.Now); err != nil {
+	if err := RegisterDevelopment(registry, service, clock.Now, englishPresentation(t)); err != nil {
 		t.Fatal(err)
 	}
 }
 func TestDevelopmentInventoryAuthorization(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
-	handler := developmentHandler{service, clock.Now}
+	handler := developmentHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
 	for _, name := range []interaction.CommandName{"dev_inventory_grant", "dev_inventory_heal"} {
 		command := interaction.Command{Identity: interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}, Name: name, Arguments: "coin 2", SentAt: clock.Now()}
 		inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {

@@ -1,0 +1,18 @@
+version: "2"
+
+run:
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - nolintlint
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

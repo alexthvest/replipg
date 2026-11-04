@@ -4,8 +4,9 @@ package devsmoke
 import (
 	"context"
 	"errors"
-	"github.com/alexthvest/replipg/internal/localization"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/localization"
 
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
@@ -15,31 +16,14 @@ var errIncomingRequired = errors.New("devsmoke: incoming ephemeral authorization
 
 // Register installs development transport behavior before the registry is sealed.
 // Callers must explicitly opt in; production routing has no default smoke routes.
-func Register(registry *interaction.Registry, now func() time.Time) error {
-	if now == nil {
-		now = time.Now
-	}
-	handler := smokeHandler{now: now}
-	if err := registry.RegisterCommand("dev_smoke", handler); err != nil {
-		return err
-	}
-	if err := registry.RegisterCommand("dev_smoke_ephemeral", handler); err != nil {
-		return err
-	}
-	if err := registry.RegisterCallback("dev_smoke:", handler); err != nil {
-		return err
-	}
-	return registry.RegisterGroupMessages(handler)
-}
-
-func RegisterWithPresentation(registry *interaction.Registry, now func() time.Time, p Presentation) error {
+func Register(registry *interaction.Registry, now func() time.Time, p Presentation) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
 	if registry == nil || now == nil {
 		return errors.New("devsmoke: invalid registration")
 	}
-	h := smokeHandler{now: now, presentation: &p}
+	h := smokeHandler{now: now, presentation: p}
 	if err := registry.RegisterCommand("dev_smoke", h); err != nil {
 		return err
 	}
@@ -54,7 +38,7 @@ func RegisterWithPresentation(registry *interaction.Registry, now func() time.Ti
 
 type smokeHandler struct {
 	now          func() time.Time
-	presentation *Presentation
+	presentation Presentation
 }
 
 func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
@@ -72,23 +56,16 @@ func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 	default:
 		return interaction.HandlerResult{}, nil
 	}
-	locale := localization.English
-	if h.presentation != nil {
-		var err error
-		locale, err = h.presentation.Resolve(ctx, scope.DBTX(), identity.Chat)
-		if err != nil {
-			return interaction.HandlerResult{}, err
-		}
+	locale, err := h.presentation.Resolve(ctx, scope.DBTX(), identity.Chat)
+	if err != nil {
+		return interaction.HandlerResult{}, err
 	}
-	translate := func(key localization.Key, legacy string) (string, error) {
-		if h.presentation == nil {
-			return legacy, nil
-		}
+	translate := func(key localization.Key) (string, error) {
 		return h.presentation.Catalog.Text(locale, key, nil)
 	}
 
 	var authorization runtimecontract.EphemeralAuthorization
-	text, err := translate("smoke.received", "Development smoke: ordinary group message received.")
+	text, err := translate("smoke.received")
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
@@ -100,16 +77,16 @@ func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 				return interaction.HandlerResult{}, errIncomingRequired
 			}
 			authorization = runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(e.EphemeralMessageID), ValidUntil: h.now().Add(15 * time.Second)}
-			text, err = translate("smoke.ephemeral", "Development smoke: restricted ephemeral reply.")
+			text, err = translate("smoke.ephemeral")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
 		} else {
-			public, err := translate("smoke.public", "Development smoke: public response.")
+			public, err := translate("smoke.public")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
-			button, err := translate("smoke.button", "Restricted reply")
+			button, err := translate("smoke.button")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
@@ -119,7 +96,7 @@ func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 	case interaction.Callback:
 		identity = e.Identity
 		authorization = runtimecontract.CallbackAuthorization{CallbackQueryID: string(e.QueryID), OriginatedFromEphemeral: e.EphemeralMessageID > 0, ValidUntil: h.now().Add(15 * time.Second)}
-		text, err = translate("smoke.callback", "Development smoke: restricted callback response.")
+		text, err = translate("smoke.callback")
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}

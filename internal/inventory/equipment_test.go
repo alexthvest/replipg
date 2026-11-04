@@ -90,7 +90,7 @@ func TestEquipmentMutationReplayAndStaleness(t *testing.T) {
 
 func TestEquipmentReplacementAndFailureRollback(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
-	alternate := ItemDefinition{ID: "sword", Name: "Sword", Description: "A test sword.", Category: contract.CategoryWeapon, AttackBonus: 3}
+	alternate := ItemDefinition{ID: "sword", Category: contract.CategoryWeapon, AttackBonus: 3}
 	catalog.items = append(catalog.Items(), alternate)
 	catalog.byID[alternate.ID] = alternate
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)

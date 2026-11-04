@@ -31,6 +31,7 @@ go.work.sum
 .env.*
 !.env.example
 .aws/
+/data/
 
 # Temporary files and logs
 *.log

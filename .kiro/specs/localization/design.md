@@ -76,7 +76,7 @@ The arrows indicate capability use, not unrestricted imports. Catalogs are share
 
 | Layer | Choice / Version | Role | Change |
 |---|---|---|---|
-| Services | Go 1.26.10, pinned devenv | Typed locale, catalogs, settings | Standard library only |
+| Services | Go 1.26, pinned devenv | Typed locale, catalogs, settings | Standard library only |
 | Resources | `embed`, `encoding/json`, restricted `text/template` | Validated bundled translations | New embedded files |
 | Telegram | Existing `github.com/go-telegram/bot v1.27.0` | Membership and scoped command menus | New adapter methods, no version change |
 | Storage | Existing `modernc.org/sqlite v1.61.0` | Settings and pending menu state | Additive migration 0004 |
@@ -113,7 +113,7 @@ The arrows indicate capability use, not unrestricted imports. Catalogs are share
 
 ### Modified Files
 
-- `internal/runtimecontract/database.go`: add a minimal `Transactor` interface matching existing `WithinTransaction`.
+- `internal/runtimecontract/database.go`: own the single shared `Transactor` interface for `WithinTransaction`; persistence implements it without declaring a duplicate.
 - `internal/interaction/events.go`, `dispatch.go`: optional preparation contract and invocation; carry `ActorIsBot` on callbacks without changing closed event kinds.
 - `internal/telegram/mapper.go`, `mapper_test.go`: map callback bot identity consistently with commands.
 - `internal/telegram/commands.go`, `commands_test.go`: scoped menu replacement and owned locale-override cleanup.
@@ -128,7 +128,7 @@ The arrows indicate capability use, not unrestricted imports. Catalogs are share
 - `cmd/replipg/smoke_test.go`, existing character/inventory integration tests: preserve executable transport regressions and add bilingual expectations.
 - `README.md`: settings behavior, bot permissions, new managed menu scopes, restart/rollback instructions and reproduction commands.
 
-`internal/inventory/items.json` retains its current stable mechanics and legacy text fields. New production rendering reads bilingual text from localization resources. Do not reset preexisting user edits; the current `cloth_armor` display intent is leather armor despite its historical ID. Reconcile the English wording with that intent and correct Russian spelling without renaming the ID or changing defense.
+`internal/inventory/items.json` contains stable identities, categories, mechanics and starter quantities only. All rendering reads bilingual names and descriptions exclusively from localization resources. Do not reset preexisting user edits; the current `cloth_armor` display intent is leather armor despite its historical ID. Reconcile the English wording with that intent and correct Russian spelling without renaming the ID or changing defense.
 
 ## System Flows
 
@@ -280,9 +280,9 @@ func (s *Store) Change(ctx context.Context, tx runtimecontract.DBTX,
 
 `Resolve` validates a supported negative chat ID, reads/validates the stored locale, and inserts an English managed-group record only when absent. Call it only after a feature's existing human/group/restricted-authorization checks; ordinary accepted devsmoke messages may register their group after validating group context. It never creates gameplay state. Unknown or corrupt rows are errors, not default English. Every first managed record starts with pending menu synchronization. Startup validates all existing rows before accepting updates.
 
-Each feature's registration receives presentation options containing the catalog and a narrow resolver function with the above signature. Keep existing registration entry points as compatibility wrappers using English presentation if package callers require them; executable composition always uses configured bilingual options. Resolve once with the handler's `WorkScope.DBTX`, before translating usage, errors or content; pass locale explicitly through character summaries and inventory page/detail renderers. No DB access in render functions. Missing presentation dependencies fail registration, rather than silently disabling localization.
+Each feature's `Register` and applicable `RegisterDevelopment` entry points require presentation options containing the catalog and a narrow resolver function with the above signature. All callers, including tests, use this single presentation path; no legacy registration wrappers or English-only fallback renderers remain. Resolve once with the handler's `WorkScope.DBTX`, before translating usage, errors or content; pass locale explicitly through character summaries and inventory page/detail renderers. No DB access in render functions. Missing presentation dependencies fail registration, rather than silently disabling localization.
 
-Item names/descriptions in `ItemDefinition` remain compatible legacy catalog fields; production renderers exclusively use `Catalog.Item`. Inventory's startup mechanics reconciliation and constructor revalidation stay unchanged. Composition validates bilingual item text using the current catalog IDs and exported validator before preparation/admission.
+`ItemDefinition` contains gameplay mechanics only; renderers exclusively use `Catalog.Item` for names and descriptions. Custom display text in tests belongs to translation fixtures. Inventory's startup mechanics reconciliation and constructor revalidation stay unchanged. Composition validates bilingual item text using the current catalog IDs and exported validator before preparation/admission.
 
 ### PreparingHandler and MembershipPort
 
@@ -326,7 +326,7 @@ Button responses edit the original ephemeral settings message using existing cal
 **Contracts: Batch, State, API.** Inbound: app worker supervision (P0). Outbound: Transactor and GroupMenuWriter (P0).
 
 ```go
-// Transactor added to runtimecontract/database.go, matching existing DB method.
+// The shared transaction capability lives in runtimecontract/database.go.
 type Transactor interface {
     WithinTransaction(context.Context,
         func(context.Context, DBTX) error) error

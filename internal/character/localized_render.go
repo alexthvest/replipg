@@ -2,9 +2,10 @@ package character
 
 import (
 	"errors"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/localization"
-	"time"
 )
 
 func renderLocalizedSummary(c *localization.Catalog, l localization.Locale, s contract.Snapshot, created bool) (string, error) {

@@ -8,12 +8,7 @@ import (
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
-// Transactor owns the lifecycle of a short context-bound transaction.
-type Transactor interface {
-	WithinTransaction(context.Context, func(context.Context, runtimecontract.DBTX) error) error
-}
-
-var _ Transactor = (*DB)(nil)
+var _ runtimecontract.Transactor = (*DB)(nil)
 
 // WithinTransaction executes fn in a database transaction.
 func (db *DB) WithinTransaction(ctx context.Context, fn func(context.Context, runtimecontract.DBTX) error) error {

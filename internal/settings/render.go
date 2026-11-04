@@ -2,10 +2,11 @@ package settings
 
 import (
 	"context"
-	"github.com/alexthvest/replipg/internal/localization"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"strings"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 func (h handler) render(ctx context.Context, tx runtimecontract.DBTX, v Snapshot, actor runtimecontract.UserID, admin bool, guidance string, now time.Time) (runtimecontract.MessageContent, error) {

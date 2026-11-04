@@ -8,8 +8,9 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/alexthvest/replipg/internal/character/contract"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/character/contract"
 )
 
 // Config holds validated character tuning. Its value and accessors contain no

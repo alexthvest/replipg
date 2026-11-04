@@ -14,9 +14,9 @@ import (
 func seedEquipmentStore(t *testing.T, db *persistence.DB, catalog Catalog) Catalog {
 	t.Helper()
 	for _, item := range []ItemDefinition{
-		{ID: "sword", Name: "Sword", Description: "A sword.", Category: contract.CategoryWeapon, AttackBonus: 7},
-		{ID: "plate", Name: "Plate", Description: "Plate armor.", Category: contract.CategoryArmor, DefenseBonus: 9},
-		{ID: "unowned_weapon", Name: "Unowned", Description: "Not owned.", Category: contract.CategoryWeapon},
+		{ID: "sword", Category: contract.CategoryWeapon, AttackBonus: 7},
+		{ID: "plate", Category: contract.CategoryArmor, DefenseBonus: 9},
+		{ID: "unowned_weapon", Category: contract.CategoryWeapon},
 	} {
 		catalog.items = append(catalog.items, item)
 		catalog.byID[item.ID] = item

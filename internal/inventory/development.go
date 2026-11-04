@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/alexthvest/replipg/internal/localization"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/localization"
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
@@ -17,49 +18,27 @@ import (
 )
 
 // RegisterDevelopment installs explicitly enabled self-only verification probes.
-func RegisterDevelopment(registry *interaction.Registry, service *Service, now func() time.Time) error {
-	if registry == nil || service == nil || now == nil {
-		return contract.ErrInvalidInput
-	}
-	handler := developmentHandler{service, now}
-	if err := registry.RegisterCommand("dev_inventory_grant", handler); err != nil {
-		return err
-	}
-	return registry.RegisterCommand("dev_inventory_heal", handler)
-}
-
-func RegisterDevelopmentWithPresentation(registry *interaction.Registry, service *Service, now func() time.Time, p Presentation) error {
+func RegisterDevelopment(registry *interaction.Registry, service *Service, now func() time.Time, p Presentation) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
 	if registry == nil || service == nil || now == nil {
 		return contract.ErrInvalidInput
 	}
-	h := localizedDevelopmentHandler{developmentHandler{service, now}, p}
+	h := developmentHandler{service: service, now: now, presentation: p}
 	if err := registry.RegisterCommand("dev_inventory_grant", h); err != nil {
 		return err
 	}
 	return registry.RegisterCommand("dev_inventory_heal", h)
 }
 
-type localizedDevelopmentHandler struct {
-	developmentHandler
+type developmentHandler struct {
+	service      *Service
+	now          func() time.Time
 	presentation Presentation
 }
 
-func (h localizedDevelopmentHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
-	return h.handle(ctx, scope, event, &h.presentation)
-}
-
-type developmentHandler struct {
-	service *Service
-	now     func() time.Time
-}
-
 func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
-	return h.handle(ctx, scope, event, nil)
-}
-func (h developmentHandler) handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event, p *Presentation) (interaction.HandlerResult, error) {
 	command, ok := event.(interaction.Command)
 	if pointer, isPointer := event.(*interaction.Command); isPointer && pointer != nil {
 		command = *pointer
@@ -68,35 +47,24 @@ func (h developmentHandler) handle(ctx context.Context, scope runtimecontract.Wo
 	if !ok || !authorizedInventoryCommand(command, h.now()) || (command.Name != "dev_inventory_grant" && command.Name != "dev_inventory_heal") {
 		return interaction.HandlerResult{}, nil
 	}
-	locale := localization.English
-	if p != nil {
-		var err error
-		locale, err = p.Resolve(ctx, scope.DBTX(), command.Chat)
-		if err != nil {
-			return interaction.HandlerResult{}, err
-		}
+	locale, err := h.presentation.Resolve(ctx, scope.DBTX(), command.Chat)
+	if err != nil {
+		return interaction.HandlerResult{}, err
 	}
 	auth := runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(command.EphemeralMessageID), ValidUntil: command.SentAt.Add(15 * time.Second)}
-	respond := func(text string) (interaction.HandlerResult, error) {
-		if p != nil {
-			key, ok := developmentTextKeys[text]
-			if !ok {
-				return interaction.HandlerResult{}, contract.ErrInvalidInput
-			}
-			var err error
-			text, err = p.Catalog.Text(locale, key, nil)
-			if err != nil {
-				return interaction.HandlerResult{}, err
-			}
+	respond := func(key localization.Key) (interaction.HandlerResult, error) {
+		text, err := h.presentation.Catalog.Text(locale, key, nil)
+		if err != nil {
+			return interaction.HandlerResult{}, err
 		}
 		return inventoryResponse(command.Identity, auth, runtimecontract.MessageContent{Text: text})
 	}
 	fields := strings.Fields(command.Arguments)
 	grant := command.Name == "dev_inventory_grant"
-	usage := "Usage: /dev_inventory_heal <item-id>"
+	usage := localization.Key("usage.heal")
 	count := 1
 	if grant {
-		usage = "Usage: /dev_inventory_grant <item-id> <quantity>"
+		usage = "usage.grant"
 		count = 2
 	}
 	if len(fields) != count {
@@ -120,7 +88,7 @@ func (h developmentHandler) handle(ctx context.Context, scope runtimecontract.Wo
 		}
 	}
 	var id charactercontract.ID
-	err := queryInventoryRows(ctx, scope.DBTX(), `SELECT id,user_id FROM characters WHERE user_id=?`, []any{command.User}, func(rows *sql.Rows) error {
+	err = queryInventoryRows(ctx, scope.DBTX(), `SELECT id,user_id FROM characters WHERE user_id=?`, []any{command.User}, func(rows *sql.Rows) error {
 		var owner runtimecontract.UserID
 		if err := rows.Scan(&id, &owner); err != nil {
 			return err
@@ -134,7 +102,7 @@ func (h developmentHandler) handle(ctx context.Context, scope runtimecontract.Wo
 		return interaction.HandlerResult{}, err
 	}
 	if id == "" {
-		return respond("Open /inventory first to prepare your character.")
+		return respond("inventory.prepare")
 	}
 	operation := contract.OperationID(fmt.Sprintf("inventory:dev:%s:%d:%d", command.Name, command.User, command.Update))
 	if grant {
@@ -149,27 +117,25 @@ func (h developmentHandler) handle(ctx context.Context, scope runtimecontract.Wo
 		}
 		switch {
 		case errors.Is(err, contract.ErrOperationConflict):
-			return respond("Inventory operation conflict.")
+			return respond("inventory.conflict")
 		case errors.Is(err, contract.ErrFullHealth):
-			return respond("Cannot heal at full health.")
+			return respond("inventory.full")
 		case errors.Is(err, contract.ErrIncapacitated):
-			return respond("Cannot heal while incapacitated.")
+			return respond("inventory.incapacitated")
 		case errors.Is(err, contract.ErrNotOwned):
-			return respond("You do not own that item.")
+			return respond("inventory.not_owned")
 		case errors.Is(err, contract.ErrNotUsable):
-			return respond("That item cannot be used for healing.")
+			return respond("inventory.not_usable")
 		case errors.Is(err, contract.ErrNotFound), errors.Is(err, contract.ErrInvalidInput):
-			return respond("Unknown or unsupported inventory item.")
+			return respond("inventory.unknown")
 		case errors.Is(err, contract.ErrExhausted):
-			return respond("Inventory numeric range exhausted.")
+			return respond("inventory.exhausted")
 		default:
 			return interaction.HandlerResult{}, err
 		}
 	}
 	if grant {
-		return respond("Inventory reward granted.")
+		return respond("inventory.granted")
 	}
-	return respond("Character healed through inventory.")
+	return respond("inventory.healed")
 }
-
-var developmentTextKeys = map[string]localization.Key{"Usage: /dev_inventory_heal <item-id>": "usage.heal", "Usage: /dev_inventory_grant <item-id> <quantity>": "usage.grant", "Open /inventory first to prepare your character.": "inventory.prepare", "Inventory operation conflict.": "inventory.conflict", "Cannot heal at full health.": "inventory.full", "Cannot heal while incapacitated.": "inventory.incapacitated", "You do not own that item.": "inventory.not_owned", "That item cannot be used for healing.": "inventory.not_usable", "Unknown or unsupported inventory item.": "inventory.unknown", "Inventory numeric range exhausted.": "inventory.exhausted", "Inventory reward granted.": "inventory.granted", "Character healed through inventory.": "inventory.healed"}

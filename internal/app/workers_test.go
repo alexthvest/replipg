@@ -3,13 +3,14 @@ package app
 import (
 	"context"
 	"errors"
-	"github.com/alexthvest/replipg/internal/observability"
-	"github.com/alexthvest/replipg/internal/testsupport"
 	"io"
 	"net"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/observability"
+	"github.com/alexthvest/replipg/internal/testsupport"
 
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/persistence"

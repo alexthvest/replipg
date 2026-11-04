@@ -46,4 +46,4 @@ Build thin adapters around `github.com/go-telegram/bot` and a pinned no-CGO `mod
 
 ## Constraints
 
-Run one long-polling replica. Use Go 1.26.10 or newer, a `go-telegram/bot` version with Bot API 10.3 support, and a patched explicitly pinned `modernc.org/sqlite`/`modernc.org/libc` pair. Keep the database and WAL sidecars on one local persistent volume. Bound SQLite busy waits, make retries cancellation-aware, never hold SQL transactions across Telegram calls, and never log secrets or chat message bodies.
+Run one long-polling replica. Use Go 1.26 or newer, a `go-telegram/bot` version with Bot API 10.3 support, and a patched explicitly pinned `modernc.org/sqlite`/`modernc.org/libc` pair. Keep the database and WAL sidecars on one local persistent volume. Bound SQLite busy waits, make retries cancellation-aware, never hold SQL transactions across Telegram calls, and never log secrets or chat message bodies.

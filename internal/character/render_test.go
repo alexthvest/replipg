@@ -2,36 +2,50 @@ package character
 
 import (
 	"errors"
-	"github.com/alexthvest/replipg/internal/character/contract"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/character/contract"
+	"github.com/alexthvest/replipg/internal/localization"
 )
 
 func TestRenderSummary(t *testing.T) {
 	snapshot := contract.Snapshot{Health: 100, MaxHealth: 100, Attack: 10, Defense: 5, State: contract.StateActive}
-	first := renderSummary(snapshot, true)
+	catalog := englishPresentation(t).Catalog
+	first, err := renderLocalizedSummary(catalog, localization.English, snapshot, true)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, part := range []string{"Character created", "100/100", "Attack: 10", "Defense: 5", "active"} {
 		if !strings.Contains(first, part) {
 			t.Fatalf("missing %s", part)
 		}
 	}
-	if strings.Contains(renderSummary(snapshot, false), "created") {
+	again, err := renderLocalizedSummary(catalog, localization.English, snapshot, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(again, "created") {
 		t.Fatal("repeat creation notice")
 	}
 	snapshot.Health = 0
 	snapshot.State = contract.StateIncapacitated
 	snapshot.RecoverAt = time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
-	got := renderSummary(snapshot, false)
+	got, err := renderLocalizedSummary(catalog, localization.English, snapshot, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(got, "incapacitated") || !strings.Contains(got, "2026-10-27T12:00:00Z") {
 		t.Fatal(got)
 	}
 }
 func TestRenderDomainError(t *testing.T) {
-	if got := renderDomainError(contract.ErrIncapacitated); got == "" {
+	catalog := englishPresentation(t).Catalog
+	if got, err := renderLocalizedDomainError(catalog, localization.English, contract.ErrIncapacitated); err != nil || got == "" {
 		t.Fatal("missing rejection")
 	}
-	if got := renderDomainError(errors.New("private fixture")); got != "" {
+	if got, err := renderLocalizedDomainError(catalog, localization.English, errors.New("private fixture")); err != nil || got != "" {
 		t.Fatal("unexpected error rendered")
 	}
 }

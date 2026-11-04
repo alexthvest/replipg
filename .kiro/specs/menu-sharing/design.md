@@ -81,7 +81,7 @@ The `SharingContract --> Sharing` edge denotes the injected implementation, not 
 
 | Layer | Choice / Version | Role | Deviation |
 |-------|------------------|------|-----------|
-| Application | Go 1.26.10, standard library | Typed contracts, SHA-256, random tokens, JSON payloads | None |
+| Application | Go 1.26, standard library | Typed contracts, SHA-256, random tokens, JSON payloads | None |
 | Telegram | Existing `github.com/go-telegram/bot v1.27.0` adapter | Ordinary public send and callback-source mapping | No upgrade or new permission flow |
 | Storage | Existing `modernc.org/sqlite v1.61.0`, libc v1.79.0 | Additive sharing tables and transactions | Migration 0005 |
 | Delivery | Existing versioned outbox and supervised workers | Single-attempt public sends, projection, feedback, cleanup | Two additive outbox methods |

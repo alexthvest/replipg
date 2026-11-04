@@ -44,7 +44,7 @@ Operators run one long-polling container with a local persistent volume. Startup
 
 ### Allowed Dependencies
 
-- Go 1.26.10 or newer, pinned through the repository devenv configuration and lock file.
+- Go 1.26 or newer, pinned through the repository devenv configuration and lock file.
 - `github.com/go-telegram/bot` v1.27.0 for Bot API 10.3 models and methods other than the completion-controlled `getUpdates` loop.
 - `modernc.org/sqlite` v1.61.0 with its matching `modernc.org/libc` v1.79.0, used through `database/sql` without CGO.
 - Standard-library packages including `context`, `database/sql`, `embed`, `errors`, `log/slog`, `net/http`, `os/signal`, and `time`.
@@ -66,7 +66,7 @@ Operators run one long-polling container with a local persistent volume. Startup
 ### Existing Architecture Analysis
 
 - The repository contains only `cmd/replipg/main.go`, which prints `Hello World`; there are no reusable packages, dependencies, tests, migrations, CI scripts, README, or lock file.
-- `go.mod` currently declares Go 1.26.9 and the devenv input follows rolling nixpkgs without a lock. Implementation first aligns these with the roadmap's Go 1.26.10-or-newer constraint.
+- `go.mod` currently declares Go 1.26.9 and the devenv input follows rolling nixpkgs without a lock. Go 1.26.9 satisfies the roadmap's Go 1.26-or-newer constraint; implementation pins the devenv input with a lock file.
 - Repository guidance establishes the conventions used here: thin `cmd`, cohesive `internal` packages, explicit context/cancellation, short transactions, typed errors, deterministic tests, and standard-library-first choices.
 - Core steering files `product.md`, `tech.md`, and `structure.md` are absent. The roadmap and incremental-delivery workflow are the available architecture baseline.
 
@@ -130,7 +130,7 @@ graph TB
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Runtime | Go 1.26.10+ | Process, concurrency, HTTP probes, typed contracts | Pinned by devenv and `go.mod` |
+| Runtime | Go 1.26+ | Process, concurrency, HTTP probes, typed contracts | Pinned by devenv and `go.mod` |
 | Telegram adapter | `github.com/go-telegram/bot` v1.27.0 | Bot API 10.3 methods, models, typed API errors | Built-in polling is deliberately not used |
 | Polling | Stdlib `net/http` and `encoding/json` | Completion-controlled `getUpdates` request/response only | Contract-tested against Bot API fixtures |
 | Data | `database/sql`, `modernc.org/sqlite` v1.61.0, `modernc.org/libc` v1.79.0 | No-CGO durable local state and transactions | Bundled SQLite 3.54.1; local WAL only |
@@ -178,7 +178,7 @@ internal/
 │   └── delivery_test.go            # Payload visibility, validation, rate-limit, and outcome tests
 ├── persistence/
 │   ├── db.go                       # Persistence Kernel SQLite open, verified pragmas, pool, and close
-│   ├── tx.go                       # DBTX and Transactor contracts and short transaction execution
+│   ├── tx.go                       # Implements runtimecontract.Transactor with short transactions
 │   ├── migrate.go                  # Embedded ordered migration runner and version compatibility
 │   ├── errors.go                   # Typed busy, locked, migration, and compatibility errors
 │   ├── persistence_test.go         # Real-SQLite transaction, contention, WAL, and migration tests
@@ -487,9 +487,8 @@ type Diagnostic struct {
 - External: `database/sql` and `modernc.org/sqlite` — local persistence (P0).
 
 ```go
-type Transactor interface {
-    WithinTransaction(ctx context.Context, fn func(context.Context, runtimecontract.DBTX) error) error
-}
+// Persistence implements runtimecontract.Transactor; the interface is declared once
+// in internal/runtimecontract/database.go.
 
 type CursorStore interface {
     CompletedUpdate(ctx context.Context) (runtimecontract.UpdateID, error)
@@ -909,7 +908,7 @@ Diagnostics use categories `startup`, `intake`, `dispatch`, `callback_ack`, `del
 
 ### Quality Gates
 
-Implementation runs the repository-prescribed devenv commands: `gofmt -l` on modified Go files, `go test ./...`, `go vet ./...`, `golangci-lint run`, and `go test -race ./...`. Dependency changes include `go mod tidy` review and generated `devenv.lock` review. Unit/integration tests never call the real Telegram service.
+Implementation runs the repository-prescribed devenv commands: `golangci-lint fmt ./...`, `golangci-lint config verify`, `golangci-lint run ./...`, `go test ./...`, `go build ./...`, and `go test -race ./...`. Dependency changes include `go mod tidy` review and generated `devenv.lock` review. Unit/integration tests never call the real Telegram service.
 
 ## Security Considerations
 

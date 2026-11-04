@@ -2,13 +2,15 @@ package character_test
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/character"
 	"github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"github.com/alexthvest/replipg/internal/testsupport"
-	"testing"
-	"time"
 )
 
 type developmentScope struct{ tx runtimecontract.DBTX }
@@ -31,8 +33,15 @@ func TestDevelopmentCommandReplayCannotRepeatHealthEffects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	catalog, err := localization.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	presentation := character.Presentation{Catalog: catalog, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
+		return localization.English, nil
+	}}
 	routes := interaction.NewRegistry()
-	if err := character.RegisterDevelopment(routes, service, clock.Now); err != nil {
+	if err := character.RegisterDevelopment(routes, service, clock.Now, presentation); err != nil {
 		t.Fatal(err)
 	}
 	routes.Seal()

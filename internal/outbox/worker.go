@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/alexthvest/replipg/internal/observability"
-	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -42,7 +41,7 @@ type WorkerOptions struct {
 // code owns wakeups and startup recovery; attempting work is never reclaimed here.
 type Worker struct {
 	store   *Store
-	tx      persistence.Transactor
+	tx      runtimecontract.Transactor
 	options WorkerOptions
 	mu      sync.Mutex
 }
@@ -68,7 +67,7 @@ func NewWorker(store *Store, options WorkerOptions) (*Worker, error) {
 	if (value.Kind() == reflect.Pointer || value.Kind() == reflect.Func || value.Kind() == reflect.Interface) && value.IsNil() {
 		return nil, ErrInvalidWorker
 	}
-	tx, ok := store.db.(persistence.Transactor)
+	tx, ok := store.db.(runtimecontract.Transactor)
 	if !ok || isNilDBTX(store.db) {
 		return nil, ErrTransactionRequired
 	}

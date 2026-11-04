@@ -19,7 +19,7 @@ The Inventory and Equipment System gives each player's persistent character a pe
 
 #### Acceptance Criteria
 
-1. The Inventory and Equipment System shall provide item definitions for consumables, weapons, armor, and inert items with stable item identities, display names, descriptions, and categories.
+1. The Inventory and Equipment System shall provide item definitions for consumables, weapons, armor, and inert items with stable item identities, categories and mechanics, and resolve display names and descriptions from localization resources.
 2. The Inventory and Equipment System shall define a positive whole-number healing amount for each consumable, a nonnegative whole-number attack bonus for each weapon, and a nonnegative whole-number defense bonus for each armor item.
 3. The Inventory and Equipment System shall obtain item definitions and starter-kit item quantities from version-controlled content.
 4. If content contains duplicate or missing item identities, unsupported categories or effects, invalid numeric values, or starter entries referencing undefined items or nonpositive quantities, the Inventory and Equipment System shall reject that content before accepting inventory operations.

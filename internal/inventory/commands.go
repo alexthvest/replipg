@@ -3,9 +3,10 @@ package inventory
 import (
 	"context"
 	"errors"
-	"github.com/alexthvest/replipg/internal/localization"
 	"strings"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/localization"
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
@@ -14,75 +15,46 @@ import (
 	sharingcontract "github.com/alexthvest/replipg/internal/sharing/contract"
 )
 
-// Register installs the production personal inventory command and opaque controls.
-func Register(registry *interaction.Registry, service *Service, now func() time.Time) error {
-	if registry == nil || service == nil || now == nil {
-		return contract.ErrInvalidInput
-	}
-	handler := inventoryHandler{service, now}
-	if err := registry.RegisterCommand("inventory", handler); err != nil {
-		return err
-	}
-	return registry.RegisterCallback("inv:", handler)
-}
-
-// RegisterWithPresentation installs inventory with explicit group presentation.
-func RegisterWithPresentation(registry *interaction.Registry, service *Service, now func() time.Time, p Presentation) error {
+// Register installs personal inventory and opaque controls with group presentation.
+func Register(registry *interaction.Registry, service *Service, now func() time.Time, p Presentation) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
 	if registry == nil || service == nil || now == nil {
 		return contract.ErrInvalidInput
 	}
-	h := localizedInventoryHandler{inventoryHandler{service, now}, p}
+	h := inventoryHandler{service: service, now: now, presentation: p}
 	if err := registry.RegisterCommand("inventory", h); err != nil {
 		return err
 	}
 	return registry.RegisterCallback("inv:", h)
 }
 
-type localizedInventoryHandler struct {
-	inventoryHandler
+type inventoryHandler struct {
+	service      *Service
+	now          func() time.Time
 	presentation Presentation
 }
 
-func (h localizedInventoryHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
-	return h.handle(ctx, scope, event, &h.presentation)
-}
-
-type inventoryHandler struct {
-	service *Service
-	now     func() time.Time
-}
-
 func (h inventoryHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
-	return h.handle(ctx, scope, event, nil)
-}
-func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event, p *Presentation) (interaction.HandlerResult, error) {
 	now := h.now()
 	locale := localization.English
 	resolve := func(chat runtimecontract.ChatID) error {
-		if p == nil {
-			return nil
-		}
 		var err error
-		locale, err = p.Resolve(ctx, scope.DBTX(), chat)
+		locale, err = h.presentation.Resolve(ctx, scope.DBTX(), chat)
 		return err
 	}
-	text := func(key localization.Key, legacy string) (string, error) {
-		if p == nil {
-			return legacy, nil
-		}
-		return p.Catalog.Text(locale, key, nil)
+	text := func(key localization.Key) (string, error) {
+		return h.presentation.Catalog.Text(locale, key, nil)
 	}
 	switch e := event.(type) {
 	case *interaction.Command:
 		if e != nil {
-			return h.handle(ctx, scope, *e, p)
+			return h.Handle(ctx, scope, *e)
 		}
 	case *interaction.Callback:
 		if e != nil {
-			return h.handle(ctx, scope, *e, p)
+			return h.Handle(ctx, scope, *e)
 		}
 	case interaction.Command:
 		if e.Name != "inventory" || !authorizedInventoryCommand(e, now) {
@@ -93,7 +65,7 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 		}
 		auth := runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(e.EphemeralMessageID), ValidUntil: e.SentAt.Add(15 * time.Second)}
 		if strings.TrimSpace(e.Arguments) != "" {
-			value, err := text("usage.inventory", "Usage: /inventory")
+			value, err := text("usage.inventory")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
@@ -103,11 +75,11 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
-		content, err := h.service.pageContent(ctx, scope.DBTX(), now, e.Identity, result.Current.CharacterID, 0, &inventoryPresentation{locale, p})
+		content, err := h.service.pageContent(ctx, scope.DBTX(), now, e.Identity, result.Current.CharacterID, 0, inventoryPresentation{locale, h.presentation})
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
-		content, err = p.decorate(ctx, scope.DBTX(), now, e.Identity, locale, sharingcontract.InventoryPage, 0, content)
+		content, err = h.presentation.decorate(ctx, scope.DBTX(), now, e.Identity, locale, sharingcontract.InventoryPage, 0, content)
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
@@ -133,7 +105,7 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 			return interaction.HandlerResult{}, err
 		}
 		if errors.Is(err, contract.ErrExpiredControl) {
-			value, err := text("inventory.expired", "This inventory control expired. Open /inventory again.")
+			value, err := text("inventory.expired")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
@@ -145,9 +117,9 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 		var content runtimecontract.MessageContent
 		switch control.Action {
 		case "page":
-			content, err = h.service.pageContent(ctx, scope.DBTX(), now, e.Identity, control.CharacterID, control.Page, &inventoryPresentation{locale, p})
+			content, err = h.service.pageContent(ctx, scope.DBTX(), now, e.Identity, control.CharacterID, control.Page, inventoryPresentation{locale, h.presentation})
 		case "detail":
-			content, err = h.service.detailContent(ctx, scope.DBTX(), now, e.Identity, control, &inventoryPresentation{locale, p})
+			content, err = h.service.detailContent(ctx, scope.DBTX(), now, e.Identity, control, inventoryPresentation{locale, h.presentation})
 		case "equip", "unequip":
 			item := control.ItemID
 			if control.Action == "unequip" {
@@ -157,7 +129,7 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 			result, err = h.service.ChangeEquipment(ctx, scope.DBTX(), contract.EquipmentChange{OperationID: contract.OperationID("inventory:control:" + control.Token), CharacterID: control.CharacterID, Slot: control.Slot, ItemID: item, ExpectedRevision: control.ExpectedRevision})
 			if err == nil {
 				control.ExpectedRevision = result.Current.Revision
-				content, err = h.service.detailContent(ctx, scope.DBTX(), now, e.Identity, control, &inventoryPresentation{locale, p})
+				content, err = h.service.detailContent(ctx, scope.DBTX(), now, e.Identity, control, inventoryPresentation{locale, h.presentation})
 			}
 		default:
 			return interaction.HandlerResult{}, nil
@@ -168,7 +140,7 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 			return interaction.HandlerResult{}, err
 		}
 		if errors.Is(err, contract.ErrNotOwned) || errors.Is(err, contract.ErrStaleControl) {
-			value, err := text("inventory.stale", "Inventory changed. Open /inventory again.")
+			value, err := text("inventory.stale")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
@@ -181,7 +153,7 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 		if control.Action == "page" {
 			kind = sharingcontract.InventoryPage
 		}
-		content, err = p.decorate(ctx, scope.DBTX(), now, e.Identity, locale, kind, int64(e.EphemeralMessageID), content)
+		content, err = h.presentation.decorate(ctx, scope.DBTX(), now, e.Identity, locale, kind, int64(e.EphemeralMessageID), content)
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
@@ -205,7 +177,7 @@ func inventoryResponseForMessage(identity interaction.Identity, auth runtimecont
 	}
 	return interaction.HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{response}}, nil
 }
-func (s *Service) pageContent(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, id charactercontract.ID, page int, presentation ...*inventoryPresentation) (runtimecontract.MessageContent, error) {
+func (s *Service) pageContent(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, id charactercontract.ID, page int, presentation inventoryPresentation) (runtimecontract.MessageContent, error) {
 	view, err := readInventoryPage(ctx, tx, s.catalog, id, page)
 	if err != nil {
 		return runtimecontract.MessageContent{}, err
@@ -240,16 +212,9 @@ func (s *Service) pageContent(ctx context.Context, tx runtimecontract.DBTX, now 
 			return runtimecontract.MessageContent{}, err
 		}
 	}
-	if len(presentation) == 1 {
-		locale := presentation[0].locale
-		p := presentation[0].presentation
-		if p != nil {
-			return renderPageLocalized(s.catalog, view, identity.ActorUsername, controls, *p, locale)
-		}
-	}
-	return renderPage(s.catalog, view, identity.ActorUsername, controls), nil
+	return renderPageLocalized(s.catalog, view, identity.ActorUsername, controls, presentation.presentation, presentation.locale)
 }
-func (s *Service) detailContent(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, control inventoryControl, presentation ...*inventoryPresentation) (runtimecontract.MessageContent, error) {
+func (s *Service) detailContent(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, control inventoryControl, presentation inventoryPresentation) (runtimecontract.MessageContent, error) {
 	snapshot, _, err := readInventoryMetadata(ctx, tx, s.catalog, control.CharacterID)
 	if err != nil {
 		return runtimecontract.MessageContent{}, err
@@ -288,17 +253,10 @@ func (s *Service) detailContent(ctx context.Context, tx runtimecontract.DBTX, no
 			controls.Unequip = token
 		}
 	}
-	if len(presentation) == 1 {
-		locale := presentation[0].locale
-		p := presentation[0].presentation
-		if p != nil {
-			return renderDetailLocalized(s.catalog, snapshot, control.ItemID, identity.ActorUsername, controls, *p, locale)
-		}
-	}
-	return renderDetail(s.catalog, snapshot, control.ItemID, identity.ActorUsername, controls)
+	return renderDetailLocalized(s.catalog, snapshot, control.ItemID, identity.ActorUsername, controls, presentation.presentation, presentation.locale)
 }
 
 type inventoryPresentation struct {
 	locale       localization.Locale
-	presentation *Presentation
+	presentation Presentation
 }

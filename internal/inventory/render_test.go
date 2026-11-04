@@ -9,6 +9,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/alexthvest/replipg/internal/localization"
+
 	"github.com/alexthvest/replipg/internal/inventory/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
@@ -18,9 +20,13 @@ func TestRenderNumberedInventoryAndDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	p := englishPresentation(t)
 	snapshot := contract.Snapshot{Revision: 2, Items: []contract.OwnedItem{{ItemID: "coin", Quantity: 10}, {ItemID: "stick", Quantity: 1}}, Weapon: "stick", Modifiers: contract.Modifiers{Attack: 1}}
 	controls := viewControls{Items: []string{"inv:aaaaaaaaaaaaaaaaaaaaaa", "inv:bbbbbbbbbbbbbbbbbbbbbb"}, Next: "inv:cccccccccccccccccccccc", Back: "inv:dddddddddddddddddddddd", Unequip: "inv:eeeeeeeeeeeeeeeeeeeeee"}
-	content := renderPage(catalog, inventoryPage{Current: snapshot, HasNext: true}, "player", controls)
+	content, err := renderPageLocalized(catalog, inventoryPage{Current: snapshot, HasNext: true}, "player", controls, p, localization.English)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, part := range []string{"Inventory • player", "1. Coin (10)", "2. Stick (1) • Equipped", "Weapon: Stick (+1 attack)", "Armor: Empty", "+1 attack", "+0 defense"} {
 		if !strings.Contains(content.Text, part) {
 			t.Fatalf("missing %q in %q", part, content.Text)
@@ -32,7 +38,7 @@ func TestRenderNumberedInventoryAndDetails(t *testing.T) {
 	assertRenderedResponse(t, content)
 	for _, id := range []contract.ItemID{"coin", "healing_potion", "stick"} {
 		snapshot.Items = append(snapshot.Items, contract.OwnedItem{ItemID: "healing_potion", Quantity: 3})
-		detail, err := renderDetail(catalog, snapshot, id, "player", controls)
+		detail, err := renderDetailLocalized(catalog, snapshot, id, "player", controls, p, localization.English)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,8 +69,12 @@ func TestRenderOwnerAndResponseBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	p := presentationWithItemText(t, map[string]localization.ItemText{"stick": {Name: strings.Repeat("😀", 80), Description: strings.Repeat("😀", 400)}})
 	for _, label := range []string{"", "\n\x00\u202e", strings.Repeat("😀", 100), "alice\nbob"} {
-		content := renderPage(catalog, inventoryPage{}, label, viewControls{})
+		content, err := renderPageLocalized(catalog, inventoryPage{}, label, viewControls{}, p, localization.English)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !utf8.ValidString(content.Text) || strings.ContainsAny(content.Text, "\x00\u202e") {
 			t.Fatal("unsafe label")
 		}
@@ -76,12 +86,8 @@ func TestRenderOwnerAndResponseBounds(t *testing.T) {
 		}
 		assertRenderedResponse(t, content)
 	}
-	item, _ := catalog.Lookup("stick")
-	item.Name = strings.Repeat("😀", 80)
-	item.Description = strings.Repeat("😀", 400)
-	catalog.byID["stick"] = item
 	snapshot := contract.Snapshot{Items: []contract.OwnedItem{{ItemID: "stick", Quantity: 9223372036854775807}}, Weapon: "stick"}
-	detail, err := renderDetail(catalog, snapshot, "stick", strings.Repeat("😀", 100), viewControls{Back: "inv:aaaaaaaaaaaaaaaaaaaaaa"})
+	detail, err := renderDetailLocalized(catalog, snapshot, "stick", strings.Repeat("😀", 100), viewControls{Back: "inv:aaaaaaaaaaaaaaaaaaaaaa"}, p, localization.English)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +105,14 @@ func TestRenderEightRowsAndPageLocalControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	text := map[string]localization.ItemText{}
+	for i, item := range catalog.Items() {
+		text[string(item.ID)] = localization.ItemText{Name: strings.Repeat("😀", 79) + string(rune('A'+i)), Description: strings.Repeat("😀", 400)}
+	}
+	p := presentationWithItemText(t, text)
 	for page := 0; page < 2; page++ {
 		for _, id := range []contract.ItemID{"stick", "cloth_armor"} {
 			item, _ := catalog.Lookup(id)
-			item.Name = strings.Repeat("😀", 80)
 			item.AttackBonus, item.DefenseBonus = math.MaxInt64, math.MaxInt64
 			catalog.byID[id] = item
 		}
@@ -114,12 +124,14 @@ func TestRenderEightRowsAndPageLocalControls(t *testing.T) {
 			controls.Previous = "inv:pppppppppppppppppppppp"
 		}
 		for i := 0; i < 8; i++ {
-			id := contract.ItemID(fmt.Sprintf("item_%d", page*8+i))
-			catalog.byID[id] = ItemDefinition{ID: id, Name: strings.Repeat("😀", 79) + string(rune('A'+page*8+i)), Description: strings.Repeat("😀", 400), Category: contract.CategoryInert}
+			id := catalog.Items()[(page+i)%len(catalog.Items())].ID
 			snapshot.Items = append(snapshot.Items, contract.OwnedItem{ItemID: id, Quantity: math.MaxInt64})
 			controls.Items = append(controls.Items, fmt.Sprintf("inv:%022d", page*8+i))
 		}
-		content := renderPage(catalog, inventoryPage{Current: snapshot, Page: page, HasNext: page == 0}, strings.Repeat("😀", 64), controls)
+		content, err := renderPageLocalized(catalog, inventoryPage{Current: snapshot, Page: page, HasNext: page == 0}, strings.Repeat("😀", 64), controls, p, localization.English)
+		if err != nil {
+			t.Fatal(err)
+		}
 		assertRenderedResponse(t, content)
 		if len(content.Buttons) != 2 || len(content.Buttons[0]) != 8 {
 			t.Fatalf("page %d buttons %+v", page, content.Buttons)
@@ -129,13 +141,16 @@ func TestRenderEightRowsAndPageLocalControls(t *testing.T) {
 				t.Fatalf("page-local mapping %d %d", page, i)
 			}
 			item, _ := catalog.Lookup(snapshot.Items[i].ItemID)
-			if !strings.Contains(content.Text, fmt.Sprintf("%d. %s (%d)", i+1, item.Name, int64(math.MaxInt64))) {
+			if !strings.Contains(content.Text, fmt.Sprintf("%d. %s (%d)", i+1, text[string(item.ID)].Name, int64(math.MaxInt64))) {
 				t.Fatal("numbered text does not match item control")
 			}
 		}
 		snapshot.Items = append(snapshot.Items, contract.OwnedItem{ItemID: "coin", Quantity: 999})
 		controls.Items = append(controls.Items, "inv:xxxxxxxxxxxxxxxxxxxxxx")
-		bounded := renderPage(catalog, inventoryPage{Current: snapshot, Page: page}, "you", controls)
+		bounded, err := renderPageLocalized(catalog, inventoryPage{Current: snapshot, Page: page}, "you", controls, p, localization.English)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(bounded.Buttons[0]) != 8 || strings.Contains(bounded.Text, "9.") || strings.Contains(bounded.Text, "Coin (999)") {
 			t.Fatal("overflowing supplied page was not bounded")
 		}
@@ -157,6 +172,7 @@ func TestRenderEquipmentActionsAndMissingItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	p := englishPresentation(t)
 	controls := viewControls{Equip: "inv:eeeeeeeeeeeeeeeeeeeeee", Unequip: "inv:uuuuuuuuuuuuuuuuuuuuuu", Back: "inv:bbbbbbbbbbbbbbbbbbbbbb"}
 	for _, id := range []contract.ItemID{"stick", "cloth_armor"} {
 		for _, equipped := range []bool{false, true} {
@@ -168,7 +184,7 @@ func TestRenderEquipmentActionsAndMissingItems(t *testing.T) {
 					snapshot.Armor = id
 				}
 			}
-			content, err := renderDetail(catalog, snapshot, id, "", controls)
+			content, err := renderDetailLocalized(catalog, snapshot, id, "", controls, p, localization.English)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -189,10 +205,10 @@ func TestRenderEquipmentActionsAndMissingItems(t *testing.T) {
 			assertRenderedResponse(t, content)
 		}
 	}
-	if _, err := renderDetail(catalog, contract.Snapshot{}, "missing", "", controls); !errors.Is(err, contract.ErrNotFound) {
+	if _, err := renderDetailLocalized(catalog, contract.Snapshot{}, "missing", "", controls, p, localization.English); !errors.Is(err, contract.ErrNotFound) {
 		t.Fatalf("missing item %v", err)
 	}
-	if _, err := renderDetail(catalog, contract.Snapshot{}, "coin", "", controls); !errors.Is(err, contract.ErrNotOwned) {
+	if _, err := renderDetailLocalized(catalog, contract.Snapshot{}, "coin", "", controls, p, localization.English); !errors.Is(err, contract.ErrNotOwned) {
 		t.Fatalf("unowned item %v", err)
 	}
 }

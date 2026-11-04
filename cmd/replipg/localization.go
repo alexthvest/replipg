@@ -16,6 +16,8 @@ import (
 	"github.com/alexthvest/replipg/internal/sharing"
 )
 
+const envDevCharacter = "REPLIPG_DEV_CHARACTER"
+
 // productionOptions validates all presentation resources before constructing the
 // runtime. The same ordered command specifications drive global and chat menus.
 func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options, error) {
@@ -114,20 +116,20 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 				return err
 			}
 			characterPresentation := character.Presentation{Catalog: catalog, Resolve: store.Resolve, Sharing: shares}
-			if err := character.RegisterWithPresentation(r.Registry, characters, time.Now, characterPresentation); err != nil {
+			if err := character.Register(r.Registry, characters, time.Now, characterPresentation); err != nil {
 				return err
 			}
 			if development {
-				if err := character.RegisterDevelopmentWithPresentation(r.Registry, characters, time.Now, characterPresentation); err != nil {
+				if err := character.RegisterDevelopment(r.Registry, characters, time.Now, characterPresentation); err != nil {
 					return err
 				}
 			}
 			inventoryPresentation := inventory.Presentation{Catalog: catalog, Resolve: store.Resolve, Sharing: shares}
-			if err := inventory.RegisterWithPresentation(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
+			if err := inventory.Register(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
 				return err
 			}
 			if inventoryDevelopment {
-				if err := inventory.RegisterDevelopmentWithPresentation(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
+				if err := inventory.RegisterDevelopment(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
 					return err
 				}
 			}
@@ -135,7 +137,7 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 				return err
 			}
 			if cfg.DevSmoke {
-				return devsmoke.RegisterWithPresentation(r.Registry, time.Now, devsmoke.Presentation{Catalog: catalog, Resolve: store.Resolve})
+				return devsmoke.Register(r.Registry, time.Now, devsmoke.Presentation{Catalog: catalog, Resolve: store.Resolve})
 			}
 			return nil
 		},

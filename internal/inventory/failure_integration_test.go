@@ -192,7 +192,7 @@ func TestInventoryCallbackCleanupFailureRemainsRetryable(t *testing.T) {
 			})
 			fail := true
 			registry := interaction.NewRegistry()
-			handler := inventoryHandler{service, clock.Now}
+			handler := inventoryHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
 			if err := registry.RegisterCallback("inv:", inventoryFailureHandler(func(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 				if fail {
 					scope = inventoryFaultScope{scope, inventoryCleanupFault{scope.DBTX(), stage}}

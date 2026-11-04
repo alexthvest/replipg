@@ -43,7 +43,7 @@ type DispatchOutcome struct {
 // Router combines feature route ownership with transactional dispatch.
 type Router struct {
 	*Registry
-	transactions persistence.Transactor
+	transactions runtimecontract.Transactor
 	cursors      persistence.CursorStore
 	deliveries   DeliveryStore
 	jobs         JobStore
@@ -51,7 +51,7 @@ type Router struct {
 }
 
 // NewRouter composes stores that share the transaction owner's database.
-func NewRouter(registry *Registry, transactions persistence.Transactor, cursors persistence.CursorStore, deliveries DeliveryStore, jobs JobStore, options RouterOptions) *Router {
+func NewRouter(registry *Registry, transactions runtimecontract.Transactor, cursors persistence.CursorStore, deliveries DeliveryStore, jobs JobStore, options RouterOptions) *Router {
 	if options.Now == nil {
 		options.Now = time.Now
 	}

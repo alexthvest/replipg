@@ -17,8 +17,8 @@ type Presentation struct {
 	Sharing sharingcontract.Decorator
 }
 
-func (p *Presentation) decorate(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, locale localization.Locale, kind sharingcontract.ViewKind, editMessageID int64, body runtimecontract.MessageContent) (runtimecontract.MessageContent, error) {
-	if p == nil || p.Sharing == nil {
+func (p Presentation) decorate(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, locale localization.Locale, kind sharingcontract.ViewKind, editMessageID int64, body runtimecontract.MessageContent) (runtimecontract.MessageContent, error) {
+	if p.Sharing == nil {
 		return body, nil
 	}
 	// Controls persist their deadline in UTC milliseconds; inherit that exact value.

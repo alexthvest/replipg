@@ -3,7 +3,6 @@ package outbox
 import (
 	"context"
 
-	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -15,7 +14,7 @@ func (s *Store) Recover(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	transactor, ok := s.db.(persistence.Transactor)
+	transactor, ok := s.db.(runtimecontract.Transactor)
 	if !ok || isNilDBTX(s.db) {
 		return ErrTransactionRequired
 	}

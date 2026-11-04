@@ -3,13 +3,14 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"github.com/alexthvest/replipg/internal/persistence"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"github.com/alexthvest/replipg/internal/testsupport"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/persistence"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
+	"github.com/alexthvest/replipg/internal/testsupport"
 )
 
 type jobHandlerFunc func(context.Context, runtimecontract.WorkScope, Job) JobOutcome

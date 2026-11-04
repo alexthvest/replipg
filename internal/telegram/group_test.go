@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"github.com/alexthvest/replipg/internal/testsupport"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexthvest/replipg/internal/runtimecontract"
+	"github.com/alexthvest/replipg/internal/testsupport"
 )
 
 func TestVerifyGroupMember(t *testing.T) {

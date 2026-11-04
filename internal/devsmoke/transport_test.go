@@ -71,7 +71,7 @@ func TestSmokeProductionTransport(t *testing.T) {
 					t.Error("callback not acknowledged before handler")
 				}
 				return now()
-			}); err != nil {
+			}, englishPresentation(t)); err != nil {
 				t.Fatal(err)
 			}
 			registry.Seal()

@@ -2,14 +2,15 @@ package character
 
 import (
 	"context"
+	"reflect"
+	"strings"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	sharingcontract "github.com/alexthvest/replipg/internal/sharing/contract"
-	"reflect"
-	"strings"
-	"time"
 )
 
 type inspector interface {
@@ -18,26 +19,19 @@ type inspector interface {
 
 // Register installs the actor-only personal character command. The clock checks
 // transport authorization and must be wall time in production.
-func Register(registry *interaction.Registry, service inspector, now func() time.Time) error {
-	if registry == nil || service == nil || reflect.ValueOf(service).Kind() == reflect.Pointer && reflect.ValueOf(service).IsNil() || now == nil {
-		return &contract.DomainError{Kind: contract.ErrorInvalidInput}
-	}
-	return registry.RegisterCommand("character", commandHandler{service: service, now: now})
-}
-
-func RegisterWithPresentation(registry *interaction.Registry, service inspector, now func() time.Time, presentation Presentation) error {
+func Register(registry *interaction.Registry, service inspector, now func() time.Time, presentation Presentation) error {
 	if err := presentation.validate(); err != nil {
 		return err
 	}
 	if registry == nil || service == nil || reflect.ValueOf(service).Kind() == reflect.Pointer && reflect.ValueOf(service).IsNil() || now == nil {
 		return contract.ErrInvalidInput
 	}
-	handler := commandHandler{service: service, now: now, presentation: &presentation}
+	handler := commandHandler{service: service, now: now, presentation: presentation}
 	return registry.RegisterCommand("character", handler)
 }
 
 type commandHandler struct {
-	presentation *Presentation
+	presentation Presentation
 	service      inspector
 	now          func() time.Time
 }
@@ -50,38 +44,28 @@ func (h commandHandler) Handle(ctx context.Context, scope runtimecontract.WorkSc
 	if command.Name != "character" {
 		return interaction.HandlerResult{}, nil
 	}
-	locale := localization.English
-	if h.presentation != nil {
-		var err error
-		locale, err = h.presentation.Resolve(ctx, scope.DBTX(), command.Chat)
-		if err != nil {
-			return interaction.HandlerResult{}, err
-		}
+	locale, err := h.presentation.Resolve(ctx, scope.DBTX(), command.Chat)
+	if err != nil {
+		return interaction.HandlerResult{}, err
 	}
 	translate := func(key localization.Key) (string, error) { return h.presentation.Catalog.Text(locale, key, nil) }
 	if strings.TrimSpace(command.Arguments) != "" {
-		if h.presentation != nil {
-			text, err := translate("usage.character")
-			if err != nil {
-				return interaction.HandlerResult{}, err
-			}
-			return personalResponse(command, text), nil
+		text, err := translate("usage.character")
+		if err != nil {
+			return interaction.HandlerResult{}, err
 		}
-		return personalResponse(command, "Usage: /character"), nil
+		return personalResponse(command, text), nil
 	}
 	snapshot, created, err := h.service.Ensure(ctx, scope.DBTX(), command.User)
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
-	text := renderSummary(snapshot, created)
-	if h.presentation != nil {
-		text, err = renderLocalizedSummary(h.presentation.Catalog, locale, snapshot, created)
-		if err != nil {
-			return interaction.HandlerResult{}, err
-		}
+	text, err := renderLocalizedSummary(h.presentation.Catalog, locale, snapshot, created)
+	if err != nil {
+		return interaction.HandlerResult{}, err
 	}
 	result := personalResponse(command, text)
-	if h.presentation != nil && h.presentation.Sharing != nil {
+	if h.presentation.Sharing != nil {
 		response := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
 		response.Content, err = h.presentation.Sharing.Decorate(ctx, scope.DBTX(), sharingcontract.View{
 			Owner: command.User, Destination: response.Destination,

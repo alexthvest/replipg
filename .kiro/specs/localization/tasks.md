@@ -30,7 +30,7 @@ Task-plan review passed with all 61 acceptance criteria mapped and all 23 execut
 - [x] 1.3 Integrate complete English/Russian content and retained-item validation
   - Populate both catalogs for every current player-visible production/development surface and command description, including error, stale-control and fallback labels.
   - Provide paired item name/description keys for every retained item; preserve intended current item wording and historical identities, including leather-armor presentation under its existing identity.
-  - Reuse the existing item-text validation policy for both languages while preserving legacy seed fields, constructor revalidation and mechanics reconciliation.
+  - Reuse the existing item-text validation policy for both languages while keeping mechanics-only seed definitions, constructor revalidation and mechanics reconciliation.
   - Done when exhaustive content checks cover every retained item and message, translated names/descriptions meet current limits, and locale choice leaves mechanical definitions identical.
   - _Boundary: Catalog and Inventory Validation Integration_
   - _Requirements: 4.1, 4.2, 4.3, 4.7, 5.1, 5.2, 5.4, 8.1, 8.2, 8.5, 9.1_
@@ -128,7 +128,7 @@ Task-plan review passed with all 61 acceptance criteria mapped and all 23 execut
 - [x] 3.6 Translate character production and development interactions
   - Inject presentation dependencies and resolve the current group locale after existing actor/group/restricted-authorization checks, before rendering usage, summaries and domain failures.
   - Translate creation notices, health/stat labels, states and recovery guidance while preserving UTC values, health operations and permanent operation identities.
-  - Fail invalid presentation registration explicitly; retain existing caller compatibility where required without enabling an English fallback in production composition.
+  - Fail invalid presentation registration explicitly; require presentation dependencies for every caller and remove legacy English-only registration/rendering paths.
   - Done when bilingual character tests preserve identical gameplay results and existing privacy behavior, including enabled damage/defeat development flows.
   - _Boundary: Character Presentation_
   - _Depends: 1.2, 1.3, 2.2_

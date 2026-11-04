@@ -4,14 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/config"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
-	"strings"
-	"testing"
-	"time"
 )
 
 func fixture(t *testing.T) (*persistence.DB, *Store, *localization.Catalog, time.Time) {

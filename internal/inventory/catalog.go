@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"github.com/alexthvest/replipg/internal/localization"
 	"io"
 	"slices"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	"github.com/alexthvest/replipg/internal/localization"
 )
 
 // Seed tuning: Stick adds 1 attack, Cloth armor adds 1 defense and Healing
@@ -27,8 +27,6 @@ var embeddedCatalog []byte
 // character base attributes. Consumables always use fixed self-healing.
 type ItemDefinition struct {
 	ID           contract.ItemID   `json:"id"`
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
 	Category     contract.Category `json:"category"`
 	AttackBonus  int64             `json:"attack_bonus"`
 	DefenseBonus int64             `json:"defense_bonus"`
@@ -77,9 +75,6 @@ func ParseCatalog(data []byte) (Catalog, error) {
 		}
 		if _, exists := catalog.byID[definition.ID]; exists {
 			return Catalog{}, invalidCatalog("item_id")
-		}
-		if !validCatalogText(definition.Name, 80) || !validCatalogText(definition.Description, 400) {
-			return Catalog{}, invalidCatalog("text")
 		}
 		if !validMechanics(definition, item.Effect) {
 			return Catalog{}, invalidCatalog("mechanics")

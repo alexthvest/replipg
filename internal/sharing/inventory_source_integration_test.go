@@ -77,7 +77,7 @@ func newInventorySourceFixture(t *testing.T, resources *localization.Catalog) *i
 		t.Fatal(err)
 	}
 	f.reg = interaction.NewRegistry()
-	if err = inventory.RegisterWithPresentation(f.reg, f.items, clock, inventory.Presentation{Catalog: resources, Resolve: resolve, Sharing: f.service}); err != nil {
+	if err = inventory.Register(f.reg, f.items, clock, inventory.Presentation{Catalog: resources, Resolve: resolve, Sharing: f.service}); err != nil {
 		t.Fatal(err)
 	}
 	if err = Register(f.reg, f.service, f.ledger, projector.Refresh, resolve); err != nil {
@@ -495,7 +495,7 @@ func TestInventorySourceChangedItemPresentation(t *testing.T) {
 		return f.locale, nil
 	}
 	reg := interaction.NewRegistry()
-	if err := inventory.RegisterWithPresentation(reg, f.items, func() time.Time { return f.now }, inventory.Presentation{Catalog: f.service.catalog, Resolve: resolve, Sharing: f.service}); err != nil {
+	if err := inventory.Register(reg, f.items, func() time.Time { return f.now }, inventory.Presentation{Catalog: f.service.catalog, Resolve: resolve, Sharing: f.service}); err != nil {
 		t.Fatal(err)
 	}
 	reg.Seal()

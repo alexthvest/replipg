@@ -2,12 +2,13 @@ package inventory
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/alexthvest/replipg/internal/config"
 	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"github.com/alexthvest/replipg/internal/testsupport"
-	"testing"
-	"time"
 )
 
 func inventoryFixture(t *testing.T) (*persistence.DB, Catalog, *testsupport.ManualClock, string) {

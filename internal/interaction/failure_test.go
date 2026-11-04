@@ -184,7 +184,7 @@ func TestDispatchCompletedReplayDoesNotInvokeHandler(t *testing.T) {
 	assertDispatchCounts(t, f.db, 1)
 }
 
-type rollbackFailureTransactor struct{ delegate persistence.Transactor }
+type rollbackFailureTransactor struct{ delegate runtimecontract.Transactor }
 
 func (s rollbackFailureTransactor) WithinTransaction(ctx context.Context, fn func(context.Context, runtimecontract.DBTX) error) error {
 	err := s.delegate.WithinTransaction(ctx, fn)
