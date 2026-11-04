@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+exec devenv shell -- bash -euo pipefail -c '
+unformatted=$(gofmt -l cmd internal scripts)
+if [[ -n "$unformatted" ]]; then
+    printf "Go files need formatting:\n%s\n" "$unformatted" >&2
+    exit 1
+fi
+go test ./...
+go vet ./...
+golangci-lint run
+go test -race ./...
+'

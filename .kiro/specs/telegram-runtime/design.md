@@ -46,7 +46,7 @@ Operators run one long-polling container with a local persistent volume. Startup
 
 - Go 1.26.10 or newer, pinned through the repository devenv configuration and lock file.
 - `github.com/go-telegram/bot` v1.27.0 for Bot API 10.3 models and methods other than the completion-controlled `getUpdates` loop.
-- `modernc.org/sqlite` v1.61.1 with its matching `modernc.org/libc` v1.79.0, used through `database/sql` without CGO.
+- `modernc.org/sqlite` v1.61.0 with its matching `modernc.org/libc` v1.79.0, used through `database/sql` without CGO.
 - Standard-library packages including `context`, `database/sql`, `embed`, `errors`, `log/slog`, `net/http`, `os/signal`, and `time`.
 - A single local persistent filesystem containing the SQLite database and its `-wal` and `-shm` files. Network filesystems are unsupported.
 - Downstream features may depend on exported runtime contracts inside `internal/runtimecontract` and registration interfaces in `internal/interaction`, `internal/outbox`, and `internal/scheduler`; those packages never depend on gameplay packages.
@@ -133,7 +133,7 @@ graph TB
 | Runtime | Go 1.26.10+ | Process, concurrency, HTTP probes, typed contracts | Pinned by devenv and `go.mod` |
 | Telegram adapter | `github.com/go-telegram/bot` v1.27.0 | Bot API 10.3 methods, models, typed API errors | Built-in polling is deliberately not used |
 | Polling | Stdlib `net/http` and `encoding/json` | Completion-controlled `getUpdates` request/response only | Contract-tested against Bot API fixtures |
-| Data | `database/sql`, `modernc.org/sqlite` v1.61.1, `modernc.org/libc` v1.79.0 | No-CGO durable local state and transactions | Bundled SQLite 3.54.1; local WAL only |
+| Data | `database/sql`, `modernc.org/sqlite` v1.61.0, `modernc.org/libc` v1.79.0 | No-CGO durable local state and transactions | Bundled SQLite 3.54.1; local WAL only |
 | Observability | Stdlib `log/slog` and `net/http` | Structured diagnostics and probe/status endpoints | No message bodies, content, or secrets |
 | Migrations | Stdlib `embed` and ordered SQL files | Atomic, versioned startup upgrades | No new migration framework |
 

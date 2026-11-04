@@ -9,7 +9,7 @@
 - **Key Findings**:
   - Bot API 10.3 ephemeral responses are real group/supergroup messages with restricted visibility, but delivery is best-effort and non-administrator bots need a qualifying callback or incoming ephemeral-message context within 15 seconds. The runtime contract must carry this authorization context and must never fall back to a public or private-chat response.
   - `github.com/go-telegram/bot` v1.27.0 supports Bot API 10.3 outbound types, but its built-in polling loop advances its in-memory offset before handler completion. Durable completion therefore requires a narrow, explicit `getUpdates` poller instead of `Bot.Start`.
-  - SQLite WAL remains a single-writer, local-filesystem design. `modernc.org/sqlite` v1.61.1 fixes cancellation during lock waits and, with its matching `modernc.org/libc` v1.79.0, is the selected no-CGO stack.
+  - SQLite WAL remains a single-writer, local-filesystem design. The published `modernc.org/sqlite` v1.61.0 release, with its matching `modernc.org/libc` v1.79.0, is the selected no-CGO stack; cancellation and bounded lock waits remain application-level verification requirements.
   - Telegram does not provide an idempotency key or lookup for an ordinary send whose response was lost. An indeterminate outbound attempt must stop automatic delivery and enter an operator-visible reconciliation state.
 
 ## Research Log
@@ -73,7 +73,7 @@
 - **Context**: Requirements 5, 6, and 7 need crash-safe local state, bounded contention, migrations, and cancellation-aware shutdown.
 - **Sources Consulted**: `modernc.org/sqlite` package documentation and canonical changelog/go.mod; SQLite WAL, synchronous pragma, transaction, result-code, ALTER TABLE, and release documentation; Go `database/sql` transaction documentation.
 - **Findings**:
-  - `modernc.org/sqlite` v1.61.1 requires Go 1.26 and fixes context cancellation while commit and row operations wait on locks. Its matching `modernc.org/libc` is v1.79.0; bundled SQLite is 3.54.1.
+  - The published `modernc.org/sqlite` v1.61.0 release requires Go 1.26 and declares `modernc.org/libc` v1.79.0; bundled SQLite is 3.54.1. The upstream changelog mentions a later cancellation fix under v1.61.1, but that revision is not published, so bounded lock cancellation must be verified against v1.61.0 and enforced at the application boundary.
   - WAL permits readers alongside one writer but requires the database, WAL, and SHM files to share a local host filesystem. Long readers can prevent checkpoints and grow the WAL.
   - WAL with `synchronous=FULL` preserves committed transactions across power loss. `NORMAL` may lose the latest commit after power loss even though the database remains consistent.
   - Busy timeout is connection-local. Per-connection pragmas must be applied through an application-constructed DSN, and operation contexts must independently bound waits.
@@ -234,7 +234,7 @@
 - [`go-telegram/bot` polling source](https://github.com/go-telegram/bot/blob/v1.27.0/get_updates.go) — in-memory offset advancement behavior.
 - [`go-telegram/bot` options](https://github.com/go-telegram/bot/blob/v1.27.0/options.go) — initial offset and worker options.
 - [`modernc.org/sqlite` documentation](https://pkg.go.dev/modernc.org/sqlite) — no-CGO driver, DSN, error, and transaction behavior.
-- [`modernc.org/sqlite` changelog](https://gitlab.com/cznic/sqlite/-/raw/master/CHANGELOG.md) — v1.61.1 cancellation fix.
+- [`modernc.org/sqlite` v1.61.0 release](https://gitlab.com/cznic/sqlite/-/tags/v1.61.0) — selected published no-CGO SQLite release.
 - [SQLite write-ahead logging](https://sqlite.org/wal.html) — local-filesystem, single-writer, checkpoint, and sidecar constraints.
 - [SQLite synchronous pragma](https://sqlite.org/pragma.html#pragma_synchronous) — durability trade-offs.
 - [SQLite transaction semantics](https://sqlite.org/lang_transaction.html) — deferred and immediate write behavior.
