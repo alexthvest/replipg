@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	EnvDevSmoke          = "REPLIPG_DEV_SMOKE"
 	EnvBotToken          = "REPLIPG_BOT_TOKEN"
 	EnvStorageDir        = "REPLIPG_STORAGE_DIR"
 	EnvStorageFilesystem = "REPLIPG_STORAGE_FILESYSTEM"
@@ -100,7 +99,6 @@ func NewLoader(lookup LookupEnv) Loader {
 // private so reflection-free serialization cannot expose it accidentally.
 type Config struct {
 	botToken string
-	DevSmoke bool
 
 	StorageDir        string
 	StorageFilesystem FilesystemKind
@@ -123,7 +121,6 @@ func (c Config) BotToken() string {
 
 // RedactedConfig is the operator-safe view of Config.
 type RedactedConfig struct {
-	DevSmoke           bool           `json:"dev_smoke"`
 	BotTokenConfigured bool           `json:"bot_token_configured"`
 	StorageDir         string         `json:"storage_dir"`
 	StorageFilesystem  FilesystemKind `json:"storage_filesystem"`
@@ -141,7 +138,6 @@ type RedactedConfig struct {
 // Redacted returns an operator-safe view of the configuration.
 func (c Config) Redacted() RedactedConfig {
 	return RedactedConfig{
-		DevSmoke:           c.DevSmoke,
 		BotTokenConfigured: c.botToken != "",
 		StorageDir:         c.StorageDir,
 		StorageFilesystem:  c.StorageFilesystem,
@@ -253,18 +249,7 @@ func (l EnvLoader) Load() (Config, error) {
 		return Config{}, invalid(EnvDeploymentMode, "must select single-instance operation")
 	}
 
-	devSmoke := false
-	if value, present := l.lookup(EnvDevSmoke); present {
-		var err error
-
-		devSmoke, err = strconv.ParseBool(value)
-		if err != nil {
-			return Config{}, invalid(EnvDevSmoke, "must be a boolean")
-		}
-	}
-
 	return Config{
-		DevSmoke:          devSmoke,
 		botToken:          values[EnvBotToken],
 		StorageDir:        values[EnvStorageDir],
 		StorageFilesystem: FilesystemLocal,

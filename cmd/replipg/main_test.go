@@ -166,28 +166,21 @@ func TestExecutePreservesSafeStartupErrorMetadata(t *testing.T) {
 	}
 }
 
-func TestProductionSmokeRequiresExplicitEnablement(t *testing.T) {
-	for _, enabled := range []bool{false, true} {
-		options, err := productionOptions(config.Config{DevSmoke: enabled}, commandLookup(nil))
-		if err != nil {
-			t.Fatal(err)
-		}
+func TestProductionOmitsRetiredSmokeRoutes(t *testing.T) {
+	options, err := productionOptions(config.Config{}, commandLookup(map[string]string{"REPLIPG_DEV_SMOKE": "true", envDevCharacter: "true", envDevInventory: "true", envOwnerTelegramUserID: "7"}))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if options.Register == nil {
-			t.Fatal("explicit smoke enablement ignored")
-		}
-
-		registry := interaction.NewRegistry()
-		if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
-			t.Fatal(err)
-		}
-
-		registry.Seal()
-		identity := interaction.Identity{Update: 1, Chat: -100, User: 8, ChatKind: runtimecontract.ChatKindSupergroup}
-		for _, event := range []interaction.Event{interaction.Command{Identity: identity, Name: "dev_smoke"}, interaction.Command{Identity: identity, Name: "dev_smoke_ephemeral"}, interaction.Callback{Identity: identity, Data: "dev_smoke:reply"}, interaction.GroupMessage{Identity: identity}} {
-			if _, ok := registry.Resolve(event); ok != enabled {
-				t.Fatal("smoke routing does not match opt-in")
-			}
+	registry := interaction.NewRegistry()
+	if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
+		t.Fatal(err)
+	}
+	registry.Seal()
+	identity := interaction.Identity{Update: 1, Chat: -100, User: 8, ChatKind: runtimecontract.ChatKindSupergroup}
+	for _, event := range []interaction.Event{interaction.Command{Identity: identity, Name: "dev_smoke"}, interaction.Command{Identity: identity, Name: "dev_smoke_ephemeral"}, interaction.Callback{Identity: identity, Data: "dev_smoke:reply"}, interaction.GroupMessage{Identity: identity}} {
+		if _, ok := registry.Resolve(event); ok {
+			t.Fatal("retired smoke route remains registered")
 		}
 	}
 }

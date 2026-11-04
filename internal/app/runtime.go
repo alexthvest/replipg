@@ -328,7 +328,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 }
 
 func validateConfig(c config.Config) error {
-	values := map[string]string{config.EnvDevSmoke: strconv.FormatBool(c.DevSmoke), config.EnvBotToken: c.BotToken(), config.EnvStorageDir: c.StorageDir, config.EnvStorageFilesystem: string(c.StorageFilesystem), config.EnvPollTimeout: c.PollTimeout.String(), config.EnvBusyTimeout: c.BusyTimeout.String(), config.EnvHandlerTimeout: c.HandlerTimeout.String(), config.EnvRetryInitial: c.RetryInitial.String(), config.EnvRetryMaximum: c.RetryMaximum.String(), config.EnvRetryAttempts: strconv.Itoa(c.RetryAttempts), config.EnvClaimLease: c.ClaimLease.String(), config.EnvShutdownDeadline: c.ShutdownDeadline.String(), config.EnvDeploymentMode: string(c.DeploymentMode)}
+	values := map[string]string{config.EnvBotToken: c.BotToken(), config.EnvStorageDir: c.StorageDir, config.EnvStorageFilesystem: string(c.StorageFilesystem), config.EnvPollTimeout: c.PollTimeout.String(), config.EnvBusyTimeout: c.BusyTimeout.String(), config.EnvHandlerTimeout: c.HandlerTimeout.String(), config.EnvRetryInitial: c.RetryInitial.String(), config.EnvRetryMaximum: c.RetryMaximum.String(), config.EnvRetryAttempts: strconv.Itoa(c.RetryAttempts), config.EnvClaimLease: c.ClaimLease.String(), config.EnvShutdownDeadline: c.ShutdownDeadline.String(), config.EnvDeploymentMode: string(c.DeploymentMode)}
 	_, err := config.NewLoader(func(k string) (string, bool) { v, ok := values[k]; return v, ok }).Load()
 
 	return err

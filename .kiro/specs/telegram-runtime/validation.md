@@ -18,7 +18,7 @@
 
 Completed restricted ephemeral delivery, raw update mapping, completion-controlled polling, callback-first dispatch, durable delivery claims/retries/reconciliation, executable startup and recovery, worker supervision, bounded draining, deadline cleanup, configuration examples, and executable development helpers.
 
-The runtime now composes the existing persistence, router, scheduler, outbox, health, diagnostics, and Telegram boundaries through `internal/app`; `cmd/replipg` remains a thin signal-aware entry point. The optional `REPLIPG_DEV_SMOKE` setting defaults to false and enables development probes without adding gameplay semantics.
+The runtime now composes the existing persistence, router, scheduler, outbox, health, diagnostics, and Telegram boundaries through `internal/app`; `cmd/replipg` remains a thin signal-aware entry point. The transport probes used for the original validation have since been retired; character and inventory development commands remain available.
 
 Cross-component review found and repaired two integration gaps: startup now enumerates reconciliation work through the owning outbox API, and fresh successful/ignored update processing emits correlated diagnostics after commit even when no response is sent. Replay and failed commits emit no misleading processing-success diagnostic.
 
@@ -109,7 +109,7 @@ Every task below reached implementer status **READY_FOR_REVIEW**, independent ve
 
 [Development steering](../../steering/development-workflow.md) requires a user-visible demonstration in a Telegram test group. The owner explicitly accepted the runtime's remaining manual gate after reporting successful operation during character-system testing. The roadmap runtime entry is therefore complete. No detailed runtime-probe observations, client versions, or per-step results were supplied; none are inferred. Automated smoke and owner acceptance are separate evidence sources.
 
-For future reproduction with an authorized dedicated bot/group, follow the [README development probes](../../../README.md): enable `REPLIPG_DEV_SMOKE=true` in ignored local configuration, build/run, probe readiness, demonstrate `/dev_smoke`, invisible callback acknowledgement, a reply restricted to the pressing user, and ordinary-message intake with appropriate Privacy Mode. Exercise incoming-ephemeral reply where supported and verify rejected restricted delivery creates no public/private fallback. Record observations without credentials or private content, then stop and disable smoke mode. These instructions are not a claim that the owner individually reported every probe result.
+The original smoke transport probes and `REPLIPG_DEV_SMOKE` setting were retired on 2026-11-04. Historical probe observations above describe the earlier implementation. Use the current README character and inventory commands for live demonstrations.
 
 Operational constraints remain one active instance on a local persistent filesystem, no public/private response fallback, explicit resolution of uncertain sends, and cooperative context cancellation by feature handlers, reconcilers, and transports. No deployment or real-group messaging was performed.
 

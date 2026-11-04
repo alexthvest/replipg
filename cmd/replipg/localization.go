@@ -8,7 +8,6 @@ import (
 	"github.com/alexthvest/replipg/internal/app"
 	"github.com/alexthvest/replipg/internal/character"
 	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/devsmoke"
 	"github.com/alexthvest/replipg/internal/inventory"
 	"github.com/alexthvest/replipg/internal/item"
 	"github.com/alexthvest/replipg/internal/localization"
@@ -102,9 +101,6 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 		specs = append(specs, settings.CommandSpec{Name: "dev_inventory_grant", Description: localization.Key("command.dev_inventory_grant"), Ephemeral: true}, settings.CommandSpec{Name: "dev_inventory_heal", Description: localization.Key("command.dev_inventory_heal"), Ephemeral: true})
 	}
 	specs = append(specs, settings.CommandSpec{Name: "settings", Description: localization.Key("command.settings"), Ephemeral: true})
-	if cfg.DevSmoke {
-		specs = append(specs, settings.CommandSpec{Name: "dev_smoke", Description: localization.Key("command.dev_smoke"), Ephemeral: false}, settings.CommandSpec{Name: "dev_smoke_ephemeral", Description: localization.Key("command.dev_smoke_ephemeral"), Ephemeral: true})
-	}
 	builder, err := settings.NewMenuBuilder(catalog, specs)
 	if err != nil {
 		return app.Options{}, err
@@ -173,10 +169,6 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			}
 			if err := settings.Register(r.Registry, store, catalog, r.Membership, time.Now); err != nil {
 				return err
-			}
-
-			if cfg.DevSmoke {
-				return devsmoke.Register(r.Registry, time.Now, devsmoke.Presentation{Catalog: catalog, Resolve: store.Resolve})
 			}
 
 			return nil

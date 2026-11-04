@@ -220,11 +220,11 @@ func TestLoaderUsesOnlySuppliedReadOnlyLookup(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if len(seen) != len(allSettings)+1 {
-		t.Fatalf("looked up %d settings, want %d", len(seen), len(allSettings)+1)
+	if len(seen) != len(allSettings) {
+		t.Fatalf("looked up %d settings, want %d", len(seen), len(allSettings))
 	}
 
-	for _, setting := range append(append([]string(nil), allSettings...), EnvDevSmoke) {
+	for _, setting := range allSettings {
 		if seen[setting] != 1 {
 			t.Errorf("lookup count for %s = %d, want 1", setting, seen[setting])
 		}
@@ -256,38 +256,24 @@ func assertConfigError(t *testing.T, loader Loader, setting string) string {
 	return err.Error()
 }
 
-func TestOptionalDevSmokeConfiguration(t *testing.T) {
-	for _, tc := range []struct {
-		name, value               string
-		present, enabled, invalid bool
-	}{
-		{name: "absent"},
-		{name: "disabled", value: "false", present: true},
-		{name: "enabled", value: "true", present: true, enabled: true},
-		{name: "invalid", value: "PRIVATE invalid bool", present: true, invalid: true},
-		{name: "empty", present: true, invalid: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+func TestRemovedDevSmokeSettingIsIgnored(t *testing.T) {
+	for _, value := range []string{"true", "false", "", "invalid obsolete boolean"} {
+		t.Run(value, func(t *testing.T) {
 			env := validEnvironment()
-			if tc.present {
-				env[EnvDevSmoke] = tc.value
-			}
+			env["REPLIPG_DEV_SMOKE"] = value
+
 			cfg, err := NewLoader(mapLookup(env)).Load()
-
-			if tc.invalid {
-				if err == nil || !strings.Contains(err.Error(), EnvDevSmoke) || strings.Contains(err.Error(), tc.value) && tc.value != "" {
-					t.Fatal("unsafe or missing optional setting error")
-				}
-
-				return
-			}
-
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if cfg.DevSmoke != tc.enabled || cfg.Redacted().DevSmoke != tc.enabled {
-				t.Fatal("unexpected smoke enablement")
+			data, err := json.Marshal(cfg.Redacted())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if strings.Contains(string(data), "smoke") {
+				t.Fatal("removed smoke setting remains in configuration output")
 			}
 		})
 	}

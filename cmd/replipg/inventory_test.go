@@ -117,7 +117,7 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 	}
 
 	for _, flags := range []map[string]string{nil, {envDevInventory: "true", envOwnerTelegramUserID: "7", envDevCharacter: "true"}, {envDevInventory: "false", envDevCharacter: "true"}, {envDevInventory: "true", envOwnerTelegramUserID: "7", envDevCharacter: "false"}} {
-		options, err := productionOptions(config.Config{DevSmoke: true}, commandLookup(flags))
+		options, err := productionOptions(config.Config{}, commandLookup(flags))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +127,7 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		want := 5
+		want := 3
 		if flags[envDevInventory] == "true" {
 			want += 3
 		}

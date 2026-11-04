@@ -57,8 +57,7 @@ separately rather than assuming success from this focused command:
 Use a dedicated test bot, a dedicated Telegram group, and a human client that
 supports the existing ephemeral commands and callback source messages. Follow
 [README setup](../../../README.md) with the ignored `.env`. Set the storage path
-to a new absolute directory, keep credentials local, and leave
-`REPLIPG_DEV_SMOKE=false` so transport probes cannot add unrelated public posts.
+to a new absolute directory and keep credentials local.
 Use a human account without a Telegram username for the attribution check.
 Do not run a second replica with the same bot or storage.
 

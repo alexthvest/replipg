@@ -49,7 +49,6 @@ func TestProductionBinarySmoke(t *testing.T) {
 	var mu sync.Mutex
 	var methods []string
 
-	sends := 0
 	updates := smokeUpdates()
 	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -96,7 +95,7 @@ func TestProductionBinarySmoke(t *testing.T) {
 
 				<-r.Context().Done()
 			}
-		case "sendMessage", "answerCallbackQuery":
+		case "answerCallbackQuery":
 			if err := r.ParseMultipartForm(1 << 20); err != nil {
 				t.Error("invalid outbound form")
 				w.WriteHeader(http.StatusBadRequest)
@@ -109,27 +108,10 @@ func TestProductionBinarySmoke(t *testing.T) {
 
 			methods = append(methods, method)
 
-			if method == "answerCallbackQuery" {
-				want := "query"
-				if sends == 4 {
-					want = "rejected-query"
-				}
-
-				if r.FormValue("callback_query_id") != want || r.FormValue("text") != "" {
-					t.Error("callback acknowledgement identity or visibility changed")
-				}
-
-				_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
-				return
+			if r.FormValue("callback_query_id") != "query" && r.FormValue("callback_query_id") != "rejected-query" || r.FormValue("text") != "" {
+				t.Error("callback acknowledgement identity or visibility changed")
 			}
-
-			sends++
-			checkSmokeSend(t, r, sends)
-			if sends == 5 {
-				_, _ = io.WriteString(w, `{"ok":false,"error_code":403,"description":"PRIVATE rejection body"}`)
-			} else {
-				_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":9,"ephemeral_message_id":77,"chat":{"id":-100,"type":"supergroup"}}}`)
-			}
+			_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 		default:
 			t.Error("unexpected Telegram operation")
 			w.WriteHeader(http.StatusBadRequest)
@@ -152,7 +134,7 @@ func TestProductionBinarySmoke(t *testing.T) {
 	env[config.EnvStorageDir] = dir
 	env[config.EnvPollTimeout] = "1s"
 	env[config.EnvShutdownDeadline] = "2s"
-	env[config.EnvDevSmoke] = "true"
+	env["REPLIPG_DEV_SMOKE"] = "true" // Obsolete configuration cannot restore retired probes.
 	env["REPLIPG_HEALTH_ADDRESS"] = "127.0.0.1:8080"
 	cmd := exec.CommandContext(ctx, binary)
 	for key, value := range env {
@@ -183,11 +165,10 @@ func TestProductionBinarySmoke(t *testing.T) {
 
 	mu.Lock()
 	gotMethods := strings.Join(methods, ",")
-	gotSends := sends
 	mu.Unlock()
 
-	if gotSends != 5 || gotMethods != "sendMessage,answerCallbackQuery,sendMessage,sendMessage,sendMessage,answerCallbackQuery,sendMessage" {
-		t.Fatal("unexpected delivery sequence or fallback")
+	if gotMethods != "answerCallbackQuery,answerCallbackQuery" {
+		t.Fatal("retired probes produced output or lost callback acknowledgement")
 	}
 
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
@@ -202,10 +183,6 @@ func TestProductionBinarySmoke(t *testing.T) {
 
 	if strings.Count(diagnostics.String(), `"state":"ready"`) != 1 || !strings.Contains(diagnostics.String(), `"state":"stopped"`) {
 		t.Fatal("production lifecycle did not reach ready and stopped")
-	}
-
-	if strings.Count(diagnostics.String(), `"outcome":"failed"`) < 1 {
-		t.Fatal("restricted delivery rejection lacked safe failure diagnostic")
 	}
 
 	for _, private := range []string{env[config.EnvBotToken], dir, "PRIVATE", "Development smoke:"} {
@@ -228,67 +205,6 @@ func smokeUpdates() []string {
 		`{"update_id":4,"message":{"message_id":4,"from":{"id":8},"chat":{"id":-100,"type":"supergroup"},"text":"PRIVATE ordinary body"}}`,
 		`{"update_id":5,"message":{"message_id":5,"from":{"id":8},"chat":{"id":-100,"type":"supergroup"},"text":"/dev_smoke_ephemeral","entities":[{"type":"bot_command","offset":0,"length":20}]}}`,
 		`{"update_id":6,"callback_query":{"id":"rejected-query","from":{"id":8},"message":{"message_id":9,"chat":{"id":-100,"type":"supergroup"}},"data":"dev_smoke:reply"}}`,
-	}
-}
-
-func checkSmokeSend(t *testing.T, r *http.Request, index int) {
-	t.Helper()
-
-	if r.FormValue("chat_id") != "-100" || strings.Contains(r.FormValue("text"), "PRIVATE") {
-		t.Error("response left source group or echoed incoming content")
-	}
-
-	wantText := map[int]string{
-		1: "Development smoke: public response.",
-		2: "Development smoke: restricted callback response.",
-		3: "Development smoke: restricted ephemeral reply.",
-		4: "Development smoke: ordinary group message received.",
-		5: "Development smoke: restricted callback response.",
-	}[index]
-
-	if wantText == "" || r.FormValue("text") != wantText {
-		t.Error("development probe produced unexpected response")
-	}
-
-	if index == 1 && r.FormValue("reply_markup") == "" {
-		t.Error("public response omitted callback button")
-	}
-
-	restricted := index == 2 || index == 3 || index == 5
-	parameters := r.FormValue("ephemeral_message_parameters")
-
-	if !restricted {
-		if parameters != "" {
-			t.Error("public response gained restricted visibility")
-		}
-
-		return
-	}
-
-	var ephemeral struct {
-		Receiver int64  `json:"receiver_user_id"`
-		Callback string `json:"callback_query_id"`
-	}
-
-	if err := json.Unmarshal([]byte(parameters), &ephemeral); err != nil || ephemeral.Receiver != 8 {
-		t.Error("restricted delivery lost target user")
-	}
-
-	wantCallback := map[int]string{2: "query", 5: "rejected-query"}[index]
-
-	if ephemeral.Callback != wantCallback {
-		t.Error("restricted delivery lost callback authorization")
-	}
-
-	if index == 3 {
-		var reply struct {
-			EphemeralID int `json:"ephemeral_message_id"`
-			MessageID   int `json:"message_id"`
-		}
-
-		if err := json.Unmarshal([]byte(r.FormValue("reply_parameters")), &reply); err != nil || reply.EphemeralID != 77 || reply.MessageID != 0 {
-			t.Error("incoming ephemeral reply used wrong message identity")
-		}
 	}
 }
 
