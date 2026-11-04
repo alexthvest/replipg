@@ -1,3 +1,5 @@
+> Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
+
 # Implementation Plan
 
 Implement the approved compact numbered inventory UI, ordinary inert items such as Coin, one-time starter supplies, two equipment slots, and coordinated healing. The plan follows three runnable milestones. Reuse the existing devenv environment, runtime, character implementation, temporary-database fixtures, controlled clocks, and fake Telegram boundary; add no dependency or new deployment infrastructure.
@@ -56,7 +58,7 @@ Each milestone's automated integration gate also includes reproducible commands 
   - Allow future gameplay consumers to import the exact inventory contract without importing inventory service or nested implementation packages.
   - Restrict the inventory contract to approved value dependencies; preserve runtime-to-gameplay and character-to-other-gameplay prohibitions.
   - Cover nested/platform-specific sources and command composition using positive and negative fixtures rather than adding battle implementation.
-  - Done when production import checks accept valid character/inventory contract use and reject service, transport, driver and concrete-storage leakage.
+  - Done when import review confirms character/inventory contract use preserves dependency direction without service, transport, driver or concrete-storage leakage.
   - _Boundary: Inventory Composition and Architecture Integration_
   - _Depends: 1.1_
   - _Requirements: 1.6, 4.8, 5.6, 6.6, 8.5, 9.1_
@@ -291,7 +293,7 @@ Each milestone's automated integration gate also includes reproducible commands 
 
 - [ ] 7.4 Close release gates and the final runnable demonstration
   - _Verification: Canonical check, smoke, build, inventory executable and architecture gates PASS; final independent coverage/design reviews found no code defects. Live milestone observations remain MANUAL_VERIFY_REQUIRED. See validation-report.md and manual-verification.md._
-  - Run canonical formatting, full tests, vet, lint, race and production smoke through devenv, plus inventory executable checks and production import-boundary validation.
+  - Run canonical formatting, full tests, vet, lint, race and production smoke through devenv, plus inventory executable checks and review of package dependencies.
   - Confirm additive migration/catalog compatibility, nil preparation compatibility and preservation of character/runtime behavior without dependency or lock changes.
   - Supply actual commands/results, compatible whole-volume rollback guidance and final test-group demonstrations of grant, equipment, healing rejection/acceptance, restart and disabled probes.
   - Done when prescribed automated checks and all milestone evidence are recorded; retain failed/unrun/manual-required gates explicitly instead of claiming feature completion.

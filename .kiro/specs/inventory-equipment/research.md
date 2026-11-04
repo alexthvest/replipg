@@ -1,3 +1,5 @@
+> Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
+
 # Research & Design Decisions
 
 ## Summary
@@ -109,4 +111,4 @@
 - [Runtime transaction contract](../../../internal/runtimecontract/database.go)
 - [Character service](../../../internal/character/service.go)
 - [Runtime startup](../../../internal/app/runtime.go)
-- [Production import boundaries](../../../internal/architecture/boundaries_test.go)
+- Historical checker source: `internal/architecture/boundaries_test.go` (retired)

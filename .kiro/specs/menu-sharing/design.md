@@ -117,7 +117,6 @@ The `SharingContract --> Sharing` edge denotes the injected implementation, not 
 - `internal/inventory/presentation.go`, `commands.go` — decorate final page/detail bodies and supply their existing deadline and edit target.
 - `internal/localization/manifest.go`, `keys.go`, `locales/en.json`, `locales/ru.json` — required sharing keys and parameter declarations.
 - `cmd/replipg/localization.go` — production dependency injection, decoder registrations, and additional supervised worker factory.
-- `internal/architecture/boundaries_test.go` — enforce only the explicit allowed sharing-contract edges and reject feature/runtime implementation imports.
 - `internal/app/privacy_integration_test.go`, `cmd/replipg/smoke_test.go` — narrow voluntary-sharing exception and production transport regression evidence.
 - `README.md` — explicit sharing UX, existing menu usability, cooldown/retry outcomes, retention, and migration operations.
 
@@ -376,7 +375,7 @@ Monitoring reuses content-free state/count diagnostics. Do not log source eviden
 - Fake-Telegram production composition: open character, inventory page and item detail; Share; inspect ordinary public text and absent buttons while original controls remain personal. Repeat in both languages (1.1–1.5, 2.4, 6.1).
 - Fake-Telegram cooldown path: initial share, blocked double tap, deliberate repost after 30 seconds, both public messages retained (3.1–3.4).
 - Live test-group instructions verify actual ephemeral source callback shape, no-username attribution, navigation/edit exactness, current guidance versus frozen snapshot language, and resharing. Record actual observations separately; do not treat fake tests as live evidence (7.2, 7.3).
-- Run existing `./scripts/check` and `./scripts/smoke` as implementation gates, plus focused sharing, mapper, outbox, architecture and production integration tests. Preserve existing inventory and privacy regressions (7.1, 7.4).
+- Run existing `./scripts/check` and `./scripts/smoke` as implementation gates, plus focused sharing, mapper, outbox and production integration tests. Preserve existing inventory and privacy regressions (7.1, 7.4).
 
 ## Security Considerations
 

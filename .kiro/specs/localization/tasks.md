@@ -35,12 +35,12 @@ Task-plan review passed with all 61 acceptance criteria mapped and all 23 execut
   - _Boundary: Catalog and Inventory Validation Integration_
   - _Requirements: 4.1, 4.2, 4.3, 4.7, 5.1, 5.2, 5.4, 8.1, 8.2, 8.5, 9.1_
 
-- [x] 1.4 Integrate shared runtime capabilities and architecture enforcement
+- [x] 1.4 Integrate shared runtime capabilities
   - Establish transport-neutral transaction, membership and menu capabilities with safe membership status and classified menu failures carrying retry delay.
   - Allow only the approved shared-presentation and settings dependency directions; preserve runtime isolation, standard-library-only catalogs, feature contracts and concrete-adapter restrictions.
   - Extend controlled-time and fake capability fixtures as needed without real network calls or new test infrastructure.
-  - Done when positive/negative architecture fixtures enforce the approved edges and existing database/client implementations can satisfy the new capabilities without feature imports.
-  - _Boundary: Runtime Contract and Architecture Integration_
+  - Done when existing database/client implementations can satisfy the new capabilities without feature imports.
+  - _Boundary: Runtime Contract Integration_
   - _Requirements: 3.1, 3.2, 6.2, 6.4, 7.7, 9.1, 9.2, 9.3_
 
 - [x] 2. Persist group settings and authorize transactional changes

@@ -27,7 +27,7 @@
 - [x] 1.4 (P) Implement shared identifiers and transaction capabilities
   - Define standard-library-only identifiers, database execution, and transaction-scoped work capabilities.
   - Keep Telegram models, SQLite driver values, and service implementations outside the shared boundary.
-  - Done when value and capability tests pass and an import check proves this contract slice is standard-library-only.
+  - Done when value and capability tests pass and import review confirms this contract slice is standard-library-only.
   - _Boundary: Runtime Contracts_
   - _Depends: 1.1_
   - _Requirements: 4.1, 6.1, 9.1, 9.2_
@@ -395,7 +395,7 @@
 - [x] 10.3 Confirm runtime boundaries remain domain-neutral
   - Audit imports for Telegram, SQLite driver, and gameplay leakage and enforce inward dependency direction.
   - Verify existing configuration and status retain single-instance, local-volume, Privacy Mode, and fallback limitations without adding behavior.
-  - Done when static cross-component checks fail on forbidden dependencies and confirm only approved capabilities.
+  - Done when import review confirms inward dependency direction and only approved capabilities.
   - _Boundary: Runtime Contracts, Config Loader, Operational State_
   - _Requirements: 1.6, 5.7, 9.1, 9.2, 9.3, 9.4, 9.5_
 

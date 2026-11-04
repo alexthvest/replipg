@@ -36,7 +36,7 @@ Trading, gifting, economy, crafting, durability, affixes, additional equipment s
 
 - Inventory production code imports standard library, its own packages, `internal/runtimecontract`, `internal/interaction`, and the exact `internal/character/contract` package.
 - Inventory contract imports only standard library, `internal/runtimecontract`, and exact `internal/character/contract` for stable character IDs and snapshots. Neither contract imports services.
-- Future gameplay may import exact `internal/inventory/contract`, never inventory implementation. The architecture checker gains explicit contract rules and fixtures; existing runtime and character restrictions remain enforced.
+- Future gameplay may import exact `internal/inventory/contract`, never inventory implementation. Preserve existing runtime and character dependency direction.
 - `cmd/replipg` composes concrete services. Persistence owns migration execution and imports no inventory. Runtime accepts a generic startup callback without importing gameplay.
 
 ### Revalidation Triggers
@@ -49,7 +49,7 @@ Revalidate battle integration when mutation request equality, operation-ID names
 
 Handlers already execute in one short immediate transaction supplied through `WorkScope.DBTX()`. The runtime commits update completion with feature state before sending immediate personal responses. Character methods use that same capability, including reads that normalize recovery. Production import checks isolate gameplay from persistence and transport implementations.
 
-Two focused extensions are necessary: an optional generic startup preparation callback for saved-catalog validation before update admission, and explicit architecture allowances for the inventory contract. No changes to character service signatures, `DBTX`, transaction ownership, or ephemeral response models are needed.
+One focused extension is necessary: an optional generic startup preparation callback for saved-catalog validation before update admission. No changes to character service signatures, `DBTX`, transaction ownership, or ephemeral response models are needed.
 
 ### Architecture Pattern & Boundary Map
 
@@ -116,7 +116,6 @@ Tests follow responsibilities in `internal/inventory`: `catalog_test.go`, `rules
 - `internal/persistence/migrate.go`: append migration 0003 to both embed and ordered filename list; leave migrations 0001/0002 unchanged.
 - `cmd/replipg/character.go`: make the existing character instance available for inventory composition; preserve production and development character routes.
 - `cmd/replipg/character_test.go`, `cmd/replipg/character_integration_test.go`, `cmd/replipg/integration_test.go`, `cmd/replipg/smoke_test.go`: update applicable composition/menu/schema assertions without weakening existing character or runtime checks.
-- `internal/architecture/boundaries_test.go`: exact inventory-contract import rules and allow/reject fixtures.
 - `internal/interaction/events.go`: optional transient actor display label on mapped identity; no effect on ownership or authorization.
 - `internal/telegram/mapper.go`, `internal/telegram/mapper_test.go`: carry the requesting actor's optional username into that label for command and callback views, without adding persisted inventory profile fields.
 - `internal/persistence/migrate_test.go`, `internal/persistence/runtime_schema_test.go`, `internal/persistence/character_schema_test.go`: distinguish deliberately historical sets from the complete migration set where needed.
@@ -401,7 +400,7 @@ Reuse runtime diagnostics and safe startup stages. Do not add inventory contents
 - Consume healing below/full HP, pending incapacitation, exact recovery deadline, over-heal and last-copy boundaries. Retry after exhaustion, later damage, and restart; matching replay does not spend or heal twice, and changed inputs conflict (6.1–6.7, 8.1–8.5).
 - Coordinate inventory, actual character service and a test-owned battle fixture in one transaction. Inject failure before/after each receipt, at savepoint cleanup and outer commit; verify all state and receipts roll back. Handle expected domain rejection and intentionally commit the outer transaction to prove operation-local rollback (2.7, 6.3, 8.5, 8.6).
 - Concurrent equip controls from the same revision: at most one different change wins; repeating its accepted control is harmless. Mutations in one group invalidate unused older controls in another. Expired token pruning retains operation receipts (7.3, 8.2–8.4).
-- Startup Prepare nil/ordering, cancellation, timeout, catalog mismatch and storage failure; no readiness or Telegram calls before successful preparation. Architecture fixtures forbid runtime-to-inventory and gameplay-to-implementation imports, and allow exact inventory contracts (1.4, 1.5, 9.4).
+- Startup Prepare nil/ordering, cancellation, timeout, catalog mismatch and storage failure; no readiness or Telegram calls before successful preparation.
 
 ### Executable and Telegram Flows
 

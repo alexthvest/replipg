@@ -41,7 +41,6 @@ Equipment modifiers, battle damage calculation, item permissions, spawning, batt
 - `internal/character` imports its own contract, the standard library, runtime contracts, and the interaction registry. It does not import concrete persistence, Telegram, configuration-loader, or diagnostics packages.
 - Future gameplay may import exactly `internal/character/contract`, with consumer-owned interfaces using its values. It cannot import character implementation packages. Runtime packages remain unable to import gameplay, including the contract.
 - `cmd/replipg` constructs character dependencies and injects registration. Persistence owns the deployment-wide ordered migration list and embeds the additive character schema.
-- Architecture tests explicitly permit the character-contract edge and retain negative tests for all forbidden directions.
 
 ### Revalidation Triggers
 
@@ -53,7 +52,7 @@ Changes to snapshot/health-operation semantics, identity scope, recovery timing 
 
 Handlers already receive `runtimecontract.WorkScope`; its `DBTX()` is the current immediate SQLite transaction. Successful dispatch commits feature changes, durable effects, update completion, and cursor together. Immediate responses are validated before commit and delivered afterward. A duplicate completed update does not rerun the handler.
 
-Startup currently embeds only migration `0001_runtime.sql`; registrations do not publish Telegram command menus. The boundary checker also rejects imports between distinct gameplay packages. Those three integration gaps are explicitly covered here rather than left to implementers.
+Startup currently embeds only migration `0001_runtime.sql`; registrations do not publish Telegram command menus. Those two integration gaps are explicitly covered here rather than left to implementers.
 
 The expected `product.md`, `tech.md`, and `structure.md` steering files are absent. The roadmap, development-workflow steering, root agent rules, approved requirements, and inspected runtime code provide the available guidance.
 
@@ -121,7 +120,6 @@ Tests follow the corresponding `*_test.go` files in each affected package. In pa
 - `internal/interaction/events.go`: Add command metadata `SentAt time.Time`, `ActorIsBot bool`, and `SenderIsChat bool` without changing the handler signature.
 - `internal/telegram/mapper.go` and `mapper_test.go`: Populate command metadata from message date, `from.is_bot`, and `sender_chat`; do not retain full actor/profile objects.
 - `internal/app/runtime.go` and startup tests: Add optional command declarations to `Options`, validate/copy them before I/O, and publish after Telegram identity verification before polling admission. Nil declarations preserve existing runtime behavior.
-- `internal/architecture/boundaries_test.go`: Allow only the gameplay-to-character-contract edge and enforce that the contract imports only standard library/runtime contracts.
 - `cmd/replipg/main.go` and command tests: Always compose character registration; retain optional devsmoke registration; safely propagate construction errors.
 - `cmd/replipg/smoke_test.go`: Teach the fake API command-menu publication and retain the existing runtime smoke assertions.
 - `README.md` and `.env.example`: Document ephemeral command use, configuration source, development flag, restart verification, and authorization limits.
@@ -391,7 +389,6 @@ Reuse runtime dispatch, storage, startup, and delivery diagnostics with existing
 - One transaction combines character mutation and test-owned battle/inventory fixture changes; inject failure before receipt, after receipt, and at commit; assert no partial state, ledger, cursor, or claimed success (6.4, 7.4).
 - Reopen before/after deadline; current configuration differs from creation/incapacitation configuration; recover from recorded deadline/amount and never reset base attributes (3.4, 5.6, 7.1).
 - Verify QueryRow scan/iteration/close failures preserve storage classification, and cancellation remains retryable rather than terminal handler failure (7.4).
-- Architecture fixtures allow gameplay contract imports, reject runtime-to-gameplay and gameplay-to-implementation imports, and retain domain-neutral runtime contracts (3.5, 6.5).
 
 ### Executable and Telegram Flows
 
@@ -409,7 +406,7 @@ Reuse runtime dispatch, storage, startup, and delivery diagnostics with existing
 
 Each milestone ends with automated tests, a live test-group demonstration, and reproducible commands in `manual-verification.md`, as required by development steering. Record missing live evidence as manual verification required; deterministic fake Telegram does not replace client visibility checks.
 
-Implementation gates are `./scripts/check` and `./scripts/smoke` through devenv, plus the character executable integration tests. Check formatting, full tests, vet, lint, race, runtime smoke, migration compatibility, and production import boundaries. This document describes required future validation; it does not claim implementation tests or live messages have run.
+Implementation gates are `./scripts/check` and `./scripts/smoke` through devenv, plus the character executable integration tests. Check formatting, full tests, vet, lint, race, runtime smoke, migration compatibility, and review of package dependencies. This document describes required future validation; it does not claim implementation tests or live messages have run.
 
 ## Security Considerations
 

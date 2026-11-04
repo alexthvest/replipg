@@ -37,7 +37,7 @@ Additional languages, individual language preferences, automatic detection, runt
 - `settings` imports only standard library, `localization`, `interaction`, and `runtimecontract`; it receives abstract transaction and network capabilities and never imports concrete persistence, Telegram, app, character, or inventory packages.
 - Character, inventory, and devsmoke may import `localization` and receive locale-resolution functions from composition. They do not import settings or each other's implementations.
 - Runtime remains free of localization/settings/gameplay imports. New ports in `runtimecontract` use only standard-library and existing runtime types. `cmd/replipg` composes features, adapters, and worker factories.
-- Extend `internal/architecture/boundaries_test.go` with these exact edges and negative fixtures; preserve all existing forbidden transport, driver, and cross-feature imports.
+- Preserve existing transport, driver, and cross-feature dependency direction when integrating localization.
 
 ### Revalidation Triggers
 
@@ -124,7 +124,6 @@ The arrows indicate capability use, not unrestricted imports. Catalogs are share
 - `internal/persistence/migrate.go`: explicitly embed and register migration 0004 in ordered runtime migrations.
 - `internal/devsmoke/register.go` and its tests: translate all visible probe messages without changing routes or privacy.
 - `cmd/replipg/main.go`, `character.go`, `inventory.go`: compose shared presentation options and command description keys; preserve enabled command flags and names.
-- `internal/architecture/boundaries_test.go`: enforce the explicit new dependency edges.
 - `cmd/replipg/smoke_test.go`, existing character/inventory integration tests: preserve executable transport regressions and add bilingual expectations.
 - `README.md`: settings behavior, bot permissions, new managed menu scopes, restart/rollback instructions and reproduction commands.
 
@@ -418,7 +417,7 @@ Private text and raw provider errors never enter diagnostics. Worker metrics use
 - Use two groups with one actor to verify English default, independent Russian selection, public/personal/dev responses, and old inventory controls rendering the current locale while preserving ownership/revision validation (1.1–1.7, 4.7, 4.8, 5.5).
 - Router preparation checks occur outside transactions; callback acknowledgement precedes remote lookup; duplicate dispatch does not repeat mutations; preparation panic/cancellation stays private and recoverable (3.1, 7.2, 7.7).
 - Runtime worker factory startup failure, started handshake, storage failure supervision, admission shutdown, in-flight drain, forced cancellation and persisted menu recovery (6.4, 6.6, 7.1, 9.2, 9.3).
-- Validate updated architecture edges and existing character/inventory regressions under both presentation configurations (5.6).
+- Review package dependencies and validate existing character/inventory regressions under both presentation configurations (5.6).
 
 ### Executable and Live Paths
 

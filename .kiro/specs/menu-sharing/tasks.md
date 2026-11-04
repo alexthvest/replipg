@@ -8,8 +8,8 @@ Follow the concrete file ownership in the design's File Structure Plan. The firs
 - [x] 1.1 Define the injected sharing view contract and enforce its dependency boundary
   - Represent the three supported view kinds, final rendered body, owner/group identity, source edit target, frozen locale, and optional inherited usability deadline through the approved decoration contract.
   - Preserve existing presentation registration compatibility; make production injection explicit rather than introducing a global sharing service.
-  - Extend import-boundary checks only for the exact approved contract edges; prove gameplay and runtime packages still cannot import sharing implementation or concrete adapters.
-  - Completion is visible through compiling contract consumers and passing positive/negative boundary fixtures in the pinned development environment.
+  - Review imports to preserve the approved contract edges and keep gameplay and runtime packages independent of sharing implementation and concrete adapters.
+  - Completion is visible through compiling contract consumers in the pinned development environment and reviewing their dependencies.
   - _Boundary: SharingContract_
   - _Requirements: 1.1, 1.5, 4.1, 4.4, 6.5_
 

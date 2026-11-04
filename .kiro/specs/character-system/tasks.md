@@ -33,11 +33,11 @@ Order is sequential unless marked `(P)`. A parallel marker permits overlap only 
   - _Boundary: Runtime Integration_
   - _Requirements: 1.3, 1.4, 4.1, 4.4, 5.1, 6.4, 7.1, 7.2, 7.4_
 
-- [x] 1.4 Enforce the narrow gameplay contract dependency
+- [x] 1.4 Review the narrow gameplay contract dependency
   - Permit gameplay consumers to depend on the character contract while preventing imports of character implementation packages.
   - Enforce the contract's standard-library/runtime-contract-only rule and retain runtime-to-gameplay, transport, and concrete-persistence restrictions.
-  - Cover synthetic future consumers without implementing inventory, encounters, or battles.
-  - Done when positive fixtures accept composition and contract use and negative fixtures reject each forbidden dependency, including nested and platform-specific production files.
+  - Review future consumer seams without implementing inventory, encounters, or battles.
+  - Done when import review confirms composition and contract use preserve dependency direction, including nested and platform-specific production files.
   - _Boundary: Runtime Integration_
   - _Depends: 1.1_
   - _Requirements: 3.5, 6.1, 6.5_

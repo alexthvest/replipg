@@ -1,3 +1,5 @@
+> Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
+
 # Menu-sharing implementation validation
 
 Date: 2026-10-28. Runtime implementation reviewed at `2b5d30e`.
