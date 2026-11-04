@@ -22,3 +22,8 @@ type DBTX interface {
 type StorageFailure interface {
 	StorageFailure()
 }
+
+// Transactor owns a short atomic database operation.
+type Transactor interface {
+	WithinTransaction(context.Context, func(context.Context, DBTX) error) error
+}

@@ -177,8 +177,18 @@ func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 	}
 
 	// Identity request observation synchronizes startup writes before this probe.
-	if !registered {
-		t.Fatal("identity verification preceded recovery and registration")
+	if registered {
+		t.Fatal("registration preceded live identity verification")
+	}
+	var delivery, job string
+	if err := runtimeDB.QueryRowContext(ctx, `SELECT state FROM outbound_deliveries WHERE id='interrupted'`).Scan(&delivery); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtimeDB.QueryRowContext(ctx, `SELECT state FROM scheduled_jobs WHERE id='expired'`).Scan(&job); err != nil {
+		t.Fatal(err)
+	}
+	if delivery != "reconciliation_required" || job != "pending" {
+		t.Fatal("identity verification preceded recovery")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+listener.Addr().String()+"/readyz", nil)

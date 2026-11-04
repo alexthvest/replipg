@@ -26,8 +26,9 @@ import (
 
 type characterReply struct{ text, receiver, chat, authorization string }
 type characterMenuEntry struct {
-	Command   string `json:"command"`
-	Ephemeral bool   `json:"is_ephemeral"`
+	Description string `json:"description"`
+	Command     string `json:"command"`
+	Ephemeral   bool   `json:"is_ephemeral"`
 }
 type characterRuntimeFixture struct {
 	updates        chan string
@@ -57,16 +58,18 @@ func startCharacterRuntime(t *testing.T, dir string, options app.Options, reject
 			if err := r.ParseMultipartForm(1 << 20); err != nil {
 				t.Error(err)
 			}
-			if !strings.Contains(r.FormValue("commands"), `"is_ephemeral":true`) || r.FormValue("scope") != `{"type":"all_group_chats"}` {
+			if !strings.Contains(r.FormValue("commands"), `"is_ephemeral":true`) {
 				t.Error("incorrect group menu")
 			}
 			var menu []characterMenuEntry
 			if err := json.Unmarshal([]byte(r.FormValue("commands")), &menu); err != nil {
 				t.Error("invalid command menu payload")
 			}
-			h.menus <- menu
+			if r.FormValue("scope") == `{"type":"all_group_chats"}` {
+				h.menus <- menu
+			}
 			_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
-		case "deleteWebhook":
+		case "deleteWebhook", "deleteMyCommands":
 			_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 		case "getUpdates":
 			var request struct {
@@ -429,7 +432,7 @@ func TestCharacterRuntimeHealthRecoveryAndProductionTransition(t *testing.T) {
 	}
 	h.stop(t)
 	h = startCharacterRuntime(t, dir, productionCharacterOptions(t), false)
-	h.assertMenu(t, "character", "inventory")
+	h.assertMenu(t, "character", "inventory", "settings")
 	// Telegram clients may retain a removed menu entry. The stale command must
 	// have no registered owner, no response, and no health or receipt effect.
 	h.submit(t, fmt.Sprintf(`{"update_id":8,"message":{"ephemeral_message_id":8,"date":%d,"from":{"id":7},"chat":{"id":-100,"type":"supergroup"},"text":"/dev_character_damage 10","entities":[{"type":"bot_command","offset":0,"length":21}]}}`, time.Now().Unix()))

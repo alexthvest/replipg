@@ -73,7 +73,7 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			registry := interaction.NewRegistry()
-			if err := options.Register(app.Registrations{Registry: registry}); err != nil {
+			if err := options.Register(app.Registrations{Registry: registry, Membership: unavailableMembership{}}); err != nil {
 				t.Fatal(err)
 			}
 			registry.Seal()
@@ -83,9 +83,9 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 					t.Fatal("development route mismatch")
 				}
 			}
-			want := 2
+			want := 3
 			if enabled {
-				want = 4
+				want = 5
 			}
 			if len(options.Commands) != want {
 				t.Fatal("menu mismatch")
@@ -103,10 +103,10 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 			t.Fatal(err)
 		}
 		registry := interaction.NewRegistry()
-		if err := options.Register(app.Registrations{Registry: registry}); err != nil {
+		if err := options.Register(app.Registrations{Registry: registry, Membership: unavailableMembership{}}); err != nil {
 			t.Fatal(err)
 		}
-		want := 2
+		want := 5
 		if flags[envDevInventory] == "true" {
 			want += 2
 		}

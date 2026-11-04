@@ -11,6 +11,7 @@ import (
 
 	"github.com/alexthvest/replipg/internal/app"
 	"github.com/alexthvest/replipg/internal/config"
+	"github.com/alexthvest/replipg/internal/localization"
 )
 
 type runtimeRunner interface {
@@ -41,6 +42,11 @@ func execute(ctx context.Context, lookup config.LookupEnv, factory runtimeFactor
 }
 
 func writeRuntimeError(stderr io.Writer, fallback string, err error) {
+	var catalogErr *localization.CatalogError
+	if errors.As(err, &catalogErr) && catalogErr != nil {
+		_, _ = fmt.Fprintln(stderr, catalogErr)
+		return
+	}
 	var startupErr *app.StartupError
 	if errors.As(err, &startupErr) && startupErr != nil {
 		_, _ = fmt.Fprintln(stderr, startupErr)

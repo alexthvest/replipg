@@ -61,7 +61,7 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 		{name: "storage", stage: "storage"},
 		{name: "future_schema", stage: "migrations", fixture: []string{
 			`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`,
-			`INSERT INTO schema_migrations VALUES(4,1)`,
+			`INSERT INTO schema_migrations VALUES(5,1)`,
 		}},
 		{name: "failing_migration", stage: "migrations", fixture: []string{`CREATE TABLE processed_updates(poison TEXT)`}},
 		{name: "listener", stage: "health_listener"},
@@ -73,8 +73,8 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 			`INSERT INTO scheduled_jobs(id,job_type,payload_version,payload,due_at,state,max_attempts,initial_delay_ms,max_delay_ms,attempt_count,claim_owner,claim_correlation_id,lease_until,created_at,updated_at) VALUES('expired','feature',1,X'01',1,'claimed',3,1,10,1,'previous','previous',1,1,1)`,
 			`CREATE TRIGGER fail_recovery BEFORE UPDATE ON scheduled_jobs BEGIN SELECT RAISE(ABORT,'private-startup-fixture'); END`,
 		}},
-		{name: "registration", stage: "registrations"},
-		{name: "reconciliation", stage: "outbox_reconciliation", migrate: true, fixture: []string{
+		{name: "registration", stage: "registrations", requests: 1},
+		{name: "reconciliation", stage: "outbox_reconciliation", requests: 1, migrate: true, fixture: []string{
 			`INSERT INTO outbound_deliveries(id,kind,content_version,content,destination_chat_id,replace_callback_message,state,max_attempts,initial_delay_ms,max_delay_ms,attempt_count,created_at,updated_at) VALUES('interrupted','feature',1,X'01',-123,0,'attempting',3,1,10,1,1,1)`,
 			`CREATE TRIGGER fail_resolution BEFORE UPDATE ON outbound_deliveries WHEN NEW.state='completed' BEGIN SELECT RAISE(ABORT,'private-startup-fixture'); END`,
 		}},

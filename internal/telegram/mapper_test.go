@@ -173,3 +173,14 @@ func TestCommandSourceAuthorization(t *testing.T) {
 		})
 	}
 }
+
+func TestCallbackPreservesBotActorIdentity(t *testing.T) {
+	update, err := DecodeUpdate(json.RawMessage(`{"update_id":42,"callback_query":{"id":"query","from":{"id":7,"is_bot":true},"message":{"message_id":8,"chat":{"id":-100,"type":"supergroup"}},"data":"set:opaque"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callback, ok := update.Event.(interaction.Callback)
+	if !ok || !callback.ActorIsBot {
+		t.Fatalf("bot actor identity lost: %+v", update)
+	}
+}

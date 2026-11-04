@@ -71,6 +71,7 @@ func (Command) eventKind() EventKind { return EventKindCommand }
 
 // Callback preserves opaque feature data and the original callback identity.
 type Callback struct {
+	ActorIsBot bool
 	Identity
 	QueryID            CallbackQueryID
 	MessageID          MessageID
@@ -98,4 +99,9 @@ type Handler interface {
 // HandlerResult carries feature-requested immediate responses for later validation.
 type HandlerResult struct {
 	ImmediateResponses []runtimecontract.ResponseRequest
+}
+
+// PreparingHandler obtains immutable external evidence before transaction acquisition.
+type PreparingHandler interface {
+	Prepare(context.Context, Event) (Handler, error)
 }

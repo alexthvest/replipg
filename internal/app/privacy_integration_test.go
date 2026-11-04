@@ -479,6 +479,7 @@ func TestRuntimeStartupFaultDiagnosticPrivacy(t *testing.T) {
 	cfg := testConfig(t)
 	logs := newPrivacyLog()
 	runtime, err := New(cfg, Options{Diagnostics: observability.NewJSONSink(logs),
+		TelegramBaseURL: "http://telegram.invalid", HTTPClient: &http.Client{Transport: startupTransport(func(req *http.Request) (*http.Response, error) { return startupResponse(req), nil })},
 		Listen:   func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
 		Register: func(Registrations) error { return errors.New(privacyError + cfg.StorageDir + cfg.BotToken()) },
 	})

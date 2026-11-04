@@ -24,14 +24,17 @@ import (
 
 // Registrations supplies feature registration capabilities before admission.
 type Registrations struct {
-	Registry  *interaction.Registry
-	Outbox    *outbox.Store
-	Scheduler *scheduler.Service
+	Registry   *interaction.Registry
+	Outbox     *outbox.Store
+	Scheduler  *scheduler.Service
+	Membership runtimecontract.GroupMembershipReader
+	Menus      runtimecontract.GroupMenuWriter
 }
 
 // Options supplies explicit composition boundaries. TelegramBaseURL and HTTPClient
 // support local Bot API integration tests; production leaves both unset.
 type Options struct {
+	Workers []WorkerFactory
 	// Prepare performs bounded transactional domain preparation before admission.
 	Prepare         func(context.Context, runtimecontract.DBTX) error
 	Commands        []runtimecontract.CommandDeclaration
@@ -69,6 +72,10 @@ type Runtime struct {
 
 // New validates the complete configuration without filesystem or network I/O.
 func New(cfg config.Config, options Options) (*Runtime, error) {
+	if err := validateWorkers(options.Workers); err != nil {
+		return nil, err
+	}
+	options.Workers = append([]WorkerFactory(nil), options.Workers...)
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -178,7 +185,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 
 	var owned, healthOwned sync.WaitGroup
 	var poller *telegram.Poller
-	results := make(chan error, 4)
+	results := make(chan error, 4+len(r.options.Workers))
 	start := func(stage string, fn func() error) {
 		r.startRequired(workCtx, &owned, results, stage, fn)
 	}
@@ -207,10 +214,15 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 	}
 
 	r.emit(ctx, observability.CategoryStartup, observability.OperationRecover, observability.OutcomeCompleted, "")
+	client, err := telegram.NewClient(startupCtx, telegram.ClientConfig{Token: r.cfg.BotToken(), BaseURL: r.options.TelegramBaseURL, HTTPClient: r.options.HTTPClient, RequestTimeout: r.cfg.PollTimeout + 5*time.Second})
+	if err != nil {
+		return r.failure(ctx, "telegram_identity")
+	}
+
 	routes := interaction.NewRegistry()
 
 	if r.options.Register != nil {
-		if err = r.options.Register(Registrations{routes, deliveries, jobs}); err != nil {
+		if err = r.options.Register(Registrations{Registry: routes, Outbox: deliveries, Scheduler: jobs, Membership: client, Menus: client}); err != nil {
 			return r.failure(ctx, "registrations")
 		}
 	}
@@ -222,11 +234,6 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 
 	if err = deliveries.ReconcilePending(startupCtx, r.cfg.HandlerTimeout); err != nil {
 		return r.failure(ctx, "outbox_reconciliation")
-	}
-
-	client, err := telegram.NewClient(startupCtx, telegram.ClientConfig{Token: r.cfg.BotToken(), BaseURL: r.options.TelegramBaseURL, HTTPClient: r.options.HTTPClient, RequestTimeout: r.cfg.PollTimeout + 5*time.Second})
-	if err != nil {
-		return r.failure(ctx, "telegram_identity")
 	}
 
 	if r.options.Commands != nil {
@@ -266,6 +273,14 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		return r.failure(ctx, "scheduler_worker")
 	}
 
+	featureWorkers := make([]Worker, len(r.options.Workers))
+	for i, factory := range r.options.Workers {
+		worker, err := createWorker(factory, db, client)
+		if err != nil {
+			return r.failure(ctx, "feature_worker_factory")
+		}
+		featureWorkers[i] = worker
+	}
 	outboxStarted, schedulerStarted := make(chan struct{}), make(chan struct{})
 	if ctx.Err() != nil {
 		return nil
@@ -274,7 +289,13 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 	start("scheduler_worker", func() error { close(schedulerStarted); return r.runScheduler(workCtx, scheduled, admissionCtx) })
 	start("intake", func() error { return poller.Run(workCtx) })
 
-	for _, started := range []<-chan struct{}{outboxStarted, schedulerStarted, poller.Running()} {
+	startedLoops := []<-chan struct{}{outboxStarted, schedulerStarted, poller.Running()}
+	for i, worker := range featureWorkers {
+		started := make(chan struct{})
+		startedLoops = append(startedLoops, started)
+		start(r.options.Workers[i].Name, func() error { close(started); return r.runFeatureWorker(workCtx, worker, admissionCtx) })
+	}
+	for _, started := range startedLoops {
 		select {
 		case <-started:
 		case err := <-results:

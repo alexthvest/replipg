@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"github.com/alexthvest/replipg/internal/localization"
 	"io"
 	"slices"
 	"strings"
@@ -208,4 +209,12 @@ func validJSONKey(key string) bool {
 		}
 	}
 	return true
+}
+
+// ValidateItemText applies the existing seed catalog text policy to translated text.
+func ValidateItemText(text localization.ItemText) error {
+	if !validCatalogText(text.Name, 80) || !validCatalogText(text.Description, 400) {
+		return invalidCatalog("text")
+	}
+	return nil
 }

@@ -46,23 +46,27 @@ func (r inventoryBinaryReply) button(t *testing.T, label string) string {
 }
 
 type inventoryBinaryFixture struct {
-	ctx         context.Context
-	updates     chan string
-	polls       chan int64
-	replies     chan inventoryBinaryReply
-	cmd         *exec.Cmd
-	diagnostics bytes.Buffer
-	stopped     bool
-	id          int64
-	callback    bool
-	rejectEdit  atomic.Bool
+	ctx          context.Context
+	updates      chan string
+	polls        chan int64
+	replies      chan inventoryBinaryReply
+	cmd          *exec.Cmd
+	diagnostics  bytes.Buffer
+	stopped      bool
+	id           int64
+	callback     bool
+	rejectEdit   atomic.Bool
+	rejectMenus  atomic.Bool
+	denyAdmin    atomic.Bool
+	menus        chan []characterMenuEntry
+	menuFailures chan struct{}
 }
 
 // startInventoryBinary runs the real entry point. The child trusts only the
 // fixture's certificate and its HTTPS proxy cannot reach an external host.
 func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string, catalogSize int, fresh bool, overrides ...map[string]string) *inventoryBinaryFixture {
 	t.Helper()
-	h := &inventoryBinaryFixture{ctx: ctx, updates: make(chan string, 1), polls: make(chan int64, 32), replies: make(chan inventoryBinaryReply, 16)}
+	h := &inventoryBinaryFixture{ctx: ctx, updates: make(chan string, 1), polls: make(chan int64, 32), replies: make(chan inventoryBinaryReply, 16), menus: make(chan []characterMenuEntry, 64), menuFailures: make(chan struct{}, 8)}
 	identity := make(chan struct{}, 1)
 	release := make(chan struct{})
 	menus := make(chan []characterMenuEntry, 1)
@@ -87,12 +91,38 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 			}
 			defer func() { _ = r.MultipartForm.RemoveAll() }()
 			var menu []characterMenuEntry
-			if json.Unmarshal([]byte(r.FormValue("commands")), &menu) != nil || r.FormValue("scope") != `{"type":"all_group_chats"}` {
+			if json.Unmarshal([]byte(r.FormValue("commands")), &menu) != nil {
 				t.Error("invalid complete group menu")
 			}
-			menus <- menu
+			if r.FormValue("scope") == `{"type":"all_group_chats"}` {
+				menus <- menu
+			} else {
+				if h.rejectMenus.Load() {
+					select {
+					case h.menuFailures <- struct{}{}:
+					default:
+					}
+					_, _ = io.WriteString(w, `{"ok":false,"error_code":429,"description":"fixture","parameters":{"retry_after":1}}`)
+					return
+				}
+				select {
+				case h.menus <- menu:
+				default:
+				}
+			}
 			_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
-		case "deleteWebhook", "answerCallbackQuery":
+		case "getChatMember":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Error(err)
+				return
+			}
+			id, _ := strconv.ParseInt(r.FormValue("user_id"), 10, 64)
+			status := "member"
+			if id == 123 || id == 7 && !h.denyAdmin.Load() {
+				status = "administrator"
+			}
+			_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"status":%q,"user":{"id":%d,"is_bot":%t}}}`, status, id, id == 123)
+		case "deleteWebhook", "answerCallbackQuery", "deleteMyCommands":
 			_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 		case "getUpdates":
 			var request struct {
@@ -146,9 +176,10 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 				t.Error("invalid inventory keyboard")
 			}
 			reply.receiver, reply.buttons = auth.Receiver, markup.Buttons
+			rejectEdit := h.rejectEdit.Load()
 			h.replies <- reply
 			if editing {
-				if h.rejectEdit.Load() {
+				if rejectEdit {
 					_, _ = io.WriteString(w, `{"ok":false,"error_code":400,"description":"edit rejected"}`)
 					return
 				}
@@ -222,6 +253,7 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 		if env[envDevInventory] == "true" {
 			expected = append(expected, "dev_inventory_grant", "dev_inventory_heal")
 		}
+		expected = append(expected, "settings")
 		if len(menu) != len(expected) {
 			t.Fatalf("incomplete production menu: %+v", menu)
 		}
@@ -390,7 +422,8 @@ func buildInventoryBinary(t *testing.T, ctx context.Context, extra bool) string 
 		if err = os.WriteFile(replacement, raw, 0600); err != nil {
 			t.Fatal(err)
 		}
-		overlay, err := json.Marshal(map[string]any{"Replace": map[string]string{source: replacement}})
+		replacements := localizedPaginationOverlay(t, source, replacement)
+		overlay, err := json.Marshal(map[string]any{"Replace": replacements})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -417,7 +450,7 @@ func TestInventoryProductionBinaryInspectionRestart(t *testing.T) {
 	h.reply(t, 7, -100)
 	h.submit(t, 7, -100, "owner_one", "/inventory", false)
 	first := h.reply(t, 7, -100)
-	for _, text := range []string{"Inventory • owner_one", "1. Cloth armor (1)", "2. Coin (10)", "3. Healing potion (3)", "4. Stick (1)", "Weapon: Empty", "Armor: Empty", "Bonuses: +0 attack, +0 defense"} {
+	for _, text := range []string{"Inventory • owner_one", "1. Leather armor (1)", "2. Coin (10)", "3. Healing potion (3)", "4. Stick (1)", "Weapon: Empty", "Armor: Empty", "Bonuses: +0 attack, +0 defense"} {
 		if !strings.Contains(first.text, text) {
 			t.Fatalf("missing starter UI %q in %q", text, first.text)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"reflect"
 	"strings"
@@ -23,9 +24,21 @@ func Register(registry *interaction.Registry, service inspector, now func() time
 	return registry.RegisterCommand("character", commandHandler{service: service, now: now})
 }
 
+func RegisterWithPresentation(registry *interaction.Registry, service inspector, now func() time.Time, presentation Presentation) error {
+	if err := presentation.validate(); err != nil {
+		return err
+	}
+	if registry == nil || service == nil || reflect.ValueOf(service).Kind() == reflect.Pointer && reflect.ValueOf(service).IsNil() || now == nil {
+		return contract.ErrInvalidInput
+	}
+	handler := commandHandler{service: service, now: now, presentation: &presentation}
+	return registry.RegisterCommand("character", handler)
+}
+
 type commandHandler struct {
-	service inspector
-	now     func() time.Time
+	presentation *Presentation
+	service      inspector
+	now          func() time.Time
 }
 
 func (h commandHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
@@ -36,14 +49,37 @@ func (h commandHandler) Handle(ctx context.Context, scope runtimecontract.WorkSc
 	if command.Name != "character" {
 		return interaction.HandlerResult{}, nil
 	}
+	locale := localization.English
+	if h.presentation != nil {
+		var err error
+		locale, err = h.presentation.Resolve(ctx, scope.DBTX(), command.Chat)
+		if err != nil {
+			return interaction.HandlerResult{}, err
+		}
+	}
+	translate := func(key localization.Key) (string, error) { return h.presentation.Catalog.Text(locale, key, nil) }
 	if strings.TrimSpace(command.Arguments) != "" {
+		if h.presentation != nil {
+			text, err := translate("usage.character")
+			if err != nil {
+				return interaction.HandlerResult{}, err
+			}
+			return personalResponse(command, text), nil
+		}
 		return personalResponse(command, "Usage: /character"), nil
 	}
 	snapshot, created, err := h.service.Ensure(ctx, scope.DBTX(), command.User)
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
-	result := personalResponse(command, renderSummary(snapshot, created))
+	text := renderSummary(snapshot, created)
+	if h.presentation != nil {
+		text, err = renderLocalizedSummary(h.presentation.Catalog, locale, snapshot, created)
+		if err != nil {
+			return interaction.HandlerResult{}, err
+		}
+	}
+	result := personalResponse(command, text)
 	if err := runtimecontract.ValidateResponse(result.ImmediateResponses[0]); err != nil {
 		return interaction.HandlerResult{}, err
 	}

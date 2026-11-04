@@ -83,7 +83,7 @@ func DecodeUpdate(raw json.RawMessage) (DecodedUpdate, error) {
 		}
 		identity := message.identity(result.UpdateID, callback.From.ID)
 		identity.ActorUsername = callback.From.Username
-		result.Event = interaction.Callback{Identity: identity, QueryID: result.CallbackQueryID, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Data: *callback.Data}
+		result.Event = interaction.Callback{Identity: identity, ActorIsBot: callback.From.IsBot, QueryID: result.CallbackQueryID, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Data: *callback.Data}
 	} else if messagePresent {
 		var message *inboundMessage
 		if json.Unmarshal(messageRaw, &message) != nil || message == nil {

@@ -22,6 +22,13 @@ type viewControls struct {
 }
 
 func ownerLabel(label string) string {
+	clean, fallback := cleanOwnerLabel(label)
+	if fallback {
+		return "you"
+	}
+	return clean
+}
+func cleanOwnerLabel(label string) (string, bool) {
 	var clean []rune
 	for _, r := range label {
 		if !unicode.IsControl(r) && !unicode.Is(unicode.Cf, r) && r != unicode.ReplacementChar {
@@ -32,11 +39,12 @@ func ownerLabel(label string) string {
 		}
 	}
 	if strings.TrimSpace(string(clean)) == "" {
-		return "you"
+		return "", true
 	}
-	return string(clean)
+	return string(clean), false
 }
 func renderPage(catalog Catalog, page inventoryPage, label string, controls viewControls) runtimecontract.MessageContent {
+	catalog = legacyEnglishCatalog(catalog)
 	var text strings.Builder
 	fmt.Fprintf(&text, "Inventory • %s\n\n", ownerLabel(label))
 	items := page.Current.Items
@@ -94,6 +102,7 @@ func renderSlot(text *strings.Builder, catalog Catalog, label string, id contrac
 	}
 }
 func renderDetail(catalog Catalog, snapshot contract.Snapshot, id contract.ItemID, label string, controls viewControls) (runtimecontract.MessageContent, error) {
+	catalog = legacyEnglishCatalog(catalog)
 	item, ok := catalog.Lookup(id)
 	if !ok {
 		return runtimecontract.MessageContent{}, contract.ErrNotFound

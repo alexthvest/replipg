@@ -52,6 +52,7 @@ type ClientConfig struct {
 
 // Client owns one pinned library instance shared by intake and delivery.
 type Client struct {
+	botID          int64
 	bot            *bot.Bot
 	transport      *safeHTTP
 	baseURL, token string
@@ -93,6 +94,7 @@ func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 		if me == nil || me.ID <= 0 || !me.IsBot {
 			return &APIError{Kind: ErrorPermanent}
 		}
+		c.botID = me.ID
 		return nil
 	})
 	if err != nil {

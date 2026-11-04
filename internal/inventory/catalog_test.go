@@ -27,7 +27,7 @@ func TestCatalogEmbeddedAndCopies(t *testing.T) {
 		t.Fatalf("items = %v", items)
 	}
 	coin, ok := catalog.Lookup("coin")
-	if !ok || coin.Name != "Coin" || coin.Category != contract.CategoryInert || coin.AttackBonus != 0 || coin.DefenseBonus != 0 || coin.HealingHP != 0 {
+	if !ok || strings.TrimSpace(coin.Name) == "" || coin.Category != contract.CategoryInert || coin.AttackBonus != 0 || coin.DefenseBonus != 0 || coin.HealingHP != 0 {
 		t.Fatalf("coin = %+v, %v", coin, ok)
 	}
 	if _, ok := catalog.Lookup("absent"); ok {

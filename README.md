@@ -153,9 +153,9 @@ inspection or gameplay operation at/after that deadline; there is no passive
 regeneration or background recovery notification.
 
 The executable replaces the complete default-language `all_group_chats` command
-menu at startup. Do not install per-chat or localized command menus that override
-this managed scope. Other scopes are not deleted automatically. Startup remains
-not-ready if publication fails and preserves queued updates.
+menu at startup. Managed groups also receive translated chat-scoped menus as
+described under Group language. Other scopes are not deleted automatically.
+Startup remains not-ready if global publication fails and preserves queued updates.
 
 Character schema migration 0002 is additive. Stop the runtime before backing up
 the entire local SQLite storage directory. A version-1 binary refuses a version-2
@@ -233,3 +233,45 @@ normal ownership, full-health and incapacitation checks. Enable the separate
 character damage/defeat probes to prepare health tests. Set the inventory flag
 back to false and restart to remove its routes and replace the complete managed
 menu; stale development commands then have no registered handler.
+
+## Group language
+
+Select ephemeral `/settings` in a group to inspect its persistent language.
+English is the default; a currently verified group administrator or owner can
+select English or Russian for the entire group. Ordinary members see a read-only
+view. Give the bot administrator status for reliable membership verification;
+without sufficient privileges, settings explains that verification is unavailable
+and rejects changes. Ordinary translated gameplay remains available. Settings
+inspection and changes do not create characters or grant starter supplies.
+Typed ordinary `/settings` lacks restricted authorization and produces no reply.
+Language controls are personal, group bound, and expire after five minutes.
+
+The saved language applies to subsequent character, inventory, item and enabled
+development interactions. Already sent messages retain their text until an
+accepted interaction would normally edit them. Player names, item identities,
+health, quantities, equipment and starter entitlements keep their existing rules.
+The historical `cloth_armor` identity is displayed as leather armor in both
+languages. Translations are embedded flat English/Russian catalogs; incomplete
+resources or invalid saved selections block admission instead of falling back.
+
+Language changes commit independently of command-menu publication and personal
+confirmation delivery. Settings distinguishes saved selection from pending menu
+synchronization. A supervised worker retries pending publication across restarts,
+refreshes menus periodically, and reconciles enabled development commands.
+
+The executable owns default-language `all_group_chats` commands and the default,
+`en` and `ru` chat-scoped menus of managed groups. Other language variants,
+administrator scopes and per-member scopes remain operator owned. Remove
+competing unmanaged overrides deliberately if clients display other descriptions.
+Command names remain stable in both languages.
+
+Localization migration 0004 adds group settings and controls without changing
+existing gameplay tables. Stop the one active replica and back up the entire
+local SQLite directory before upgrading. Schema-3 binaries refuse schema 4;
+rollback requires a matching stopped whole-directory backup and older binary,
+plus deliberate restoration of external Telegram menus.
+
+Run `./scripts/check`, `./scripts/smoke`, and
+`devenv shell -- go test -count=1 ./internal/localization ./internal/settings`.
+See `.kiro/specs/localization/manual-verification.md` for Telegram test-group
+steps and the separate live evidence status.

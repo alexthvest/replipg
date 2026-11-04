@@ -41,7 +41,8 @@ func buildEquipmentBinary(t *testing.T, ctx context.Context) string {
 	if err = os.WriteFile(replacement, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	overlay, err := json.Marshal(map[string]any{"Replace": map[string]string{source: replacement}})
+	replacements := localizedItemOverlay(t, source, replacement, map[string][2]string{"sword": {"Sword", "Equipment replacement fixture."}})
+	overlay, err := json.Marshal(map[string]any{"Replace": replacements})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 	assertText(call(-100, equipStick, true), "Stick • equipment_owner", "Unequipped")
 	assertText(call(-200, stale, true), "Inventory changed")
 	page = call(-200, "/inventory", false)
-	assertText(page, "Weapon: Empty", "Armor: Cloth armor (+1 defense)", "Bonuses: +0 attack, +1 defense", "Stick (1)", "Sword (2)")
+	assertText(page, "Weapon: Empty", "Armor: Leather armor (+1 defense)", "Bonuses: +0 attack, +1 defense", "Stick (1)", "Sword (2)")
 	h.stop(t)
 	if characterState() != before {
 		t.Fatal("equipment altered persisted character base state")

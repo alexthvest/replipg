@@ -21,11 +21,11 @@ func TestProductionCharacterComposition(t *testing.T) {
 	if options.Register == nil {
 		t.Fatal("missing normal behavior")
 	}
-	if err := options.Register(app.Registrations{Registry: registry}); err != nil {
+	if err := options.Register(app.Registrations{Registry: registry, Membership: unavailableMembership{}}); err != nil {
 		t.Fatal(err)
 	}
 	registry.Seal()
-	if len(options.Commands) != 2 || options.Commands[0].Name != "character" || options.Commands[1].Name != "inventory" || !options.Commands[0].Ephemeral || !options.Commands[1].Ephemeral || options.Prepare == nil {
+	if len(options.Commands) != 3 || options.Commands[0].Name != "character" || options.Commands[1].Name != "inventory" || !options.Commands[0].Ephemeral || !options.Commands[1].Ephemeral || options.Prepare == nil {
 		t.Fatal("missing ephemeral menu")
 	}
 	identity := interaction.Identity{Update: 1, Chat: -100, User: 7, ChatKind: runtimecontract.ChatKindSupergroup}
@@ -66,7 +66,7 @@ func TestStrictCharacterDevelopmentMode(t *testing.T) {
 				t.Fatal(err)
 			}
 			registry := interaction.NewRegistry()
-			if err := options.Register(app.Registrations{Registry: registry}); err != nil {
+			if err := options.Register(app.Registrations{Registry: registry, Membership: unavailableMembership{}}); err != nil {
 				t.Fatal(err)
 			}
 			registry.Seal()
@@ -76,9 +76,9 @@ func TestStrictCharacterDevelopmentMode(t *testing.T) {
 					t.Fatal("development route mismatch")
 				}
 			}
-			want := 2
+			want := 3
 			if tc.enabled {
-				want = 4
+				want = 5
 			}
 			if len(options.Commands) != want {
 				t.Fatal("menu mismatch")

@@ -31,6 +31,16 @@ func TestBoundaryCheckerRejectsForbiddenImports(t *testing.T) {
 	cases := []struct {
 		name, source, target string
 	}{
+		{"runtime imports localization", "internal/app/runtime.go", modulePath + "/internal/localization"},
+		{"runtime imports settings", "internal/interaction/dispatch.go", modulePath + "/internal/settings"},
+		{"catalog imports settings", "internal/localization/catalog.go", modulePath + "/internal/settings"},
+		{"catalog imports external", "internal/localization/catalog.go", "example.com/catalog"},
+		{"settings imports persistence", "internal/settings/store.go", modulePath + "/internal/persistence"},
+		{"settings imports gameplay", "internal/settings/store.go", modulePath + "/internal/character"},
+		{"settings imports transport", "internal/settings/commands.go", modulePath + "/internal/telegram"},
+		{"settings imports localization subpackage", "internal/settings/commands.go", modulePath + "/internal/localization/extra"},
+		{"character imports settings", "internal/character/commands.go", modulePath + "/internal/settings"},
+		{"inventory imports settings", "internal/inventory/commands.go", modulePath + "/internal/settings"},
 		{"Telegram model leakage", "internal/interaction/events.go", "github.com/go-telegram/bot/models"},
 		{"SQLite driver leakage", "internal/scheduler/store.go", "modernc.org/sqlite"},
 		{"SQLite support leakage", "internal/outbox/store.go", "modernc.org/libc"},
@@ -113,6 +123,11 @@ func TestBoundaryCheckerRejectsForbiddenImports(t *testing.T) {
 func TestBoundaryCheckerAllowsContractsAndComposition(t *testing.T) {
 	fixture := fstest.MapFS{}
 	for source, imports := range map[string][]string{
+		"internal/settings/commands.go":                     {"context", modulePath + "/internal/localization", modulePath + "/internal/interaction", modulePath + "/internal/runtimecontract"},
+		"internal/localization/catalog.go":                  {"embed", "encoding/json", "text/template"},
+		"internal/character/render.go":                      {modulePath + "/internal/localization"},
+		"internal/inventory/render.go":                      {modulePath + "/internal/localization"},
+		"internal/devsmoke/render.go":                       {modulePath + "/internal/localization"},
 		"internal/runtimecontract/database.go":              {"context", "database/sql", "time"},
 		"internal/telegram/delivery.go":                     {"github.com/go-telegram/bot", "github.com/go-telegram/bot/models", modulePath + "/internal/runtimecontract"},
 		"internal/persistence/db.go":                        {"modernc.org/sqlite", "modernc.org/libc", modulePath + "/internal/config"},
@@ -208,15 +223,21 @@ func allowedDependency(source, dependency string) bool {
 		return dependency == modulePath+"/internal/runtimecontract" ||
 			dependency == modulePath+"/internal/character/contract"
 	}
+	if owner == "localization" {
+		return false
+	}
+	if owner == "settings" {
+		return dependency == modulePath+"/internal/localization" || dependency == modulePath+"/internal/interaction" || dependency == modulePath+"/internal/runtimecontract" || dependency == modulePath+"/internal/settings" || strings.HasPrefix(dependency, modulePath+"/internal/settings/")
+	}
 	if owner == "inventory" {
-		return dependency == modulePath+"/internal/runtimecontract" ||
+		return dependency == modulePath+"/internal/localization" || dependency == modulePath+"/internal/runtimecontract" ||
 			dependency == modulePath+"/internal/interaction" ||
 			dependency == modulePath+"/internal/character/contract" ||
 			dependency == modulePath+"/internal/inventory" ||
 			strings.HasPrefix(dependency, modulePath+"/internal/inventory/") && !strings.HasPrefix(dependency, modulePath+"/internal/inventory/contract/")
 	}
 	if owner == "character" {
-		return dependency == modulePath+"/internal/runtimecontract" ||
+		return dependency == modulePath+"/internal/localization" || dependency == modulePath+"/internal/runtimecontract" ||
 			dependency == modulePath+"/internal/interaction" ||
 			dependency == modulePath+"/internal/character" ||
 			strings.HasPrefix(dependency, modulePath+"/internal/character/") && !strings.HasPrefix(dependency, modulePath+"/internal/character/contract/")
@@ -254,5 +275,5 @@ func allowedDependency(source, dependency string) bool {
 		return true
 	}
 	// Other features retain their existing contracts, registries, and own subpackages.
-	return target == owner || target == "runtimecontract" || target == "interaction" || target == "outbox" || target == "scheduler"
+	return target == owner || dependency == modulePath+"/internal/localization" || target == "runtimecontract" || target == "interaction" || target == "outbox" || target == "scheduler"
 }

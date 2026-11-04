@@ -77,6 +77,13 @@ func (r *Router) Dispatch(ctx context.Context, event Event) (DispatchOutcome, er
 	if !ok {
 		return r.RecordIgnored(ctx, event.UpdateID())
 	}
+	if preparing, ok := handler.(PreparingHandler); ok {
+		var err error
+		handler, err = prepareHandler(ctx, preparing, event)
+		if err != nil {
+			return DispatchOutcome{}, err
+		}
+	}
 	outcome, err := r.newOutcome(ctx, event.UpdateID(), persistence.UpdateCompleted, "")
 	if err != nil {
 		return DispatchOutcome{}, err
@@ -368,4 +375,27 @@ func cloneEphemeralResponse(response runtimecontract.EphemeralResponse) runtimec
 		response.Authorization = &runtimecontract.AdministratorAuthorization{}
 	}
 	return response
+}
+
+func prepareHandler(ctx context.Context, preparing PreparingHandler, event Event) (handler Handler, err error) {
+	defer func() {
+		if recover() != nil {
+			handler = nil
+			err = errors.New("interaction: preparation failed")
+		}
+	}()
+	handler, err = preparing.Prepare(ctx, event)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, errors.New("interaction: preparation failed")
+	}
+	if nilHandler(handler) {
+		return nil, errors.New("interaction: invalid prepared handler")
+	}
+	return handler, nil
 }
