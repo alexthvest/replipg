@@ -184,3 +184,52 @@ devenv shell -- go test -count=1 -run 'TestCharacter' ./cmd/replipg
 
 See `.kiro/specs/character-system/manual-verification.md` for live milestone steps
 and the separate evidence record.
+
+## Inventory and equipment
+
+Select the ephemeral `/inventory` command from the Telegram group menu to open
+personal numbered inventory navigation. First access creates a missing character
+and grants its starter supplies once across all groups and restarts. Ordinary
+typed commands lack incoming ephemeral authorization and do not initialize an
+inventory. Only the requesting actor can navigate their own group-bound controls;
+controls expire after five minutes. Reopen `/inventory` to refresh an old view.
+Item selection, pagination, Back, Equip and Unequip edit the original personal
+inventory message and its buttons. Expired or stale controls replace that view
+with guidance to reopen `/inventory` and remove its buttons.
+Personal delivery has no public-message or private-chat fallback.
+
+Version-controlled tuning in `internal/inventory/items.json` grants ten ordinary
+Coins, one Stick (+1 attack), one Cloth armor (+1 defense), and three Healing
+potions (10 HP each). Equipment starts unequipped. Equipped copies remain part
+of owned quantities; each slot contributes its additive bonus without changing
+character base attributes. Coin is an inert item with no currency or spending
+behavior. Healing-item details are read-only and state that use requires battle
+authorization; production inventory has no standalone Use button.
+
+Startup reconciles catalog mechanics before Telegram setup and update admission.
+Saved identities retain their category and numeric mechanics: keep old definitions
+and introduce a new identity for new mechanics. Display text may change; starter
+changes affect only characters who have not yet received their kit. Preparation
+never grants starter supplies.
+
+Inventory migration 0003 is additive. Stop the single active replica before
+backing up the whole SQLite storage directory. An older version-2 binary rejects
+the version-3 schema. Roll forward with compatible catalog content, or restore
+a compatible stopped whole-directory backup and its matching binary. An
+incompatible catalog blocks startup even if schema migration has already applied.
+Restore external Telegram command menus deliberately when reverting binaries.
+
+Reproduce automated checks with `./scripts/check`, `./scripts/smoke`, and
+`devenv shell -- go test -count=1 ./internal/inventory/...`. Milestone test-group
+steps and actual live evidence status are kept in
+`.kiro/specs/inventory-equipment/manual-verification.md`.
+
+For a dedicated test deployment, set `REPLIPG_DEV_INVENTORY=true` in the ignored
+local `.env` and restart. The flag accepts exactly `true` or `false`, defaults to
+false when absent, and is independent of character probes and devsmoke. Open
+`/inventory` first, then select ephemeral `/dev_inventory_grant <item-id> <quantity>`
+or `/dev_inventory_heal <item-id>` for the requesting character. Healing keeps
+normal ownership, full-health and incapacitation checks. Enable the separate
+character damage/defeat probes to prepare health tests. Set the inventory flag
+back to false and restart to remove its routes and replace the complete managed
+menu; stale development commands then have no registered handler.

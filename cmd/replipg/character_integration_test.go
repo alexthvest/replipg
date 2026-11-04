@@ -429,7 +429,7 @@ func TestCharacterRuntimeHealthRecoveryAndProductionTransition(t *testing.T) {
 	}
 	h.stop(t)
 	h = startCharacterRuntime(t, dir, productionCharacterOptions(t), false)
-	h.assertMenu(t, "character")
+	h.assertMenu(t, "character", "inventory")
 	// Telegram clients may retain a removed menu entry. The stale command must
 	// have no registered owner, no response, and no health or receipt effect.
 	h.submit(t, fmt.Sprintf(`{"update_id":8,"message":{"ephemeral_message_id":8,"date":%d,"from":{"id":7},"chat":{"id":-100,"type":"supergroup"},"text":"/dev_character_damage 10","entities":[{"type":"bot_command","offset":0,"length":21}]}}`, time.Now().Unix()))

@@ -25,7 +25,7 @@ func TestProductionCharacterComposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry.Seal()
-	if len(options.Commands) != 1 || options.Commands[0].Name != "character" || !options.Commands[0].Ephemeral {
+	if len(options.Commands) != 2 || options.Commands[0].Name != "character" || options.Commands[1].Name != "inventory" || !options.Commands[0].Ephemeral || !options.Commands[1].Ephemeral || options.Prepare == nil {
 		t.Fatal("missing ephemeral menu")
 	}
 	identity := interaction.Identity{Update: 1, Chat: -100, User: 7, ChatKind: runtimecontract.ChatKindSupergroup}
@@ -76,9 +76,9 @@ func TestStrictCharacterDevelopmentMode(t *testing.T) {
 					t.Fatal("development route mismatch")
 				}
 			}
-			want := 1
+			want := 2
 			if tc.enabled {
-				want = 3
+				want = 4
 			}
 			if len(options.Commands) != want {
 				t.Fatal("menu mismatch")

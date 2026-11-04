@@ -29,6 +29,9 @@ type Identity struct {
 	Chat     runtimecontract.ChatID
 	User     runtimecontract.UserID
 	ChatKind runtimecontract.ChatKind
+	// ActorUsername is optional transient presentation metadata. It must never
+	// determine ownership or authorization, or enter persistent feature state.
+	ActorUsername string
 }
 
 func (i Identity) UpdateID() runtimecontract.UpdateID { return i.Update }

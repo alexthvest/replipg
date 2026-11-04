@@ -21,6 +21,7 @@ func TestDecodeUpdateFixtures(t *testing.T) {
 	}{
 		{"command", `{"update_id":42,"message":{"message_id":8,"chat":{"id":-100,"type":"supergroup"},"from":{"id":7},"text":"/help@sample_bot arg one","entities":[{"type":"bot_command","offset":0,"length":16}]}}`, DecodeMapped, interaction.Command{Identity: identity, MessageID: 8, Name: "help", Arguments: "arg one"}, ""},
 		{"ordinary", `{"update_id":42,"message":{"message_id":8,"chat":{"id":-100,"type":"supergroup"},"from":{"id":7},"text":"hello 🌍"}}`, DecodeMapped, interaction.GroupMessage{Identity: identity, MessageID: 8, Text: "hello 🌍"}, ""},
+		{"ordinary with username", `{"update_id":42,"message":{"message_id":8,"chat":{"id":-100,"type":"supergroup"},"from":{"id":7,"username":"unrelated_profile"},"text":"hello 🌍"}}`, DecodeMapped, interaction.GroupMessage{Identity: identity, MessageID: 8, Text: "hello 🌍"}, ""},
 		{"media", `{"update_id":42,"message":{"message_id":8,"chat":{"id":-100,"type":"supergroup"},"from":{"id":7},"photo":[]}}`, DecodeMapped, interaction.GroupMessage{Identity: identity, MessageID: 8}, ""},
 		{"callback", `{"update_id":42,"callback_query":{"id":"query","from":{"id":7},"message":{"message_id":8,"chat":{"id":-100,"type":"supergroup"}},"data":"opaque:data"}}`, DecodeMapped, interaction.Callback{Identity: identity, MessageID: 8, QueryID: "query", Data: "opaque:data"}, "query"},
 		{"ephemeral", `{"update_id":42,"message":{"message_id":0,"ephemeral_message_id":9,"chat":{"id":-100,"type":"supergroup"},"from":{"id":7},"text":"hello"}}`, DecodeMapped, interaction.GroupMessage{Identity: identity, EphemeralMessageID: 9, Text: "hello"}, ""},
@@ -93,6 +94,48 @@ func TestDecodeUpdateUnsafeIdentity(t *testing.T) {
 		if !errors.Is(err, ErrUpdateID) || got.UpdateID != 0 || got.Event != nil {
 			t.Fatalf("unsafe identity: %#v %v", got, err)
 		}
+	}
+}
+
+func TestDecodeUpdateActorUsername(t *testing.T) {
+	for _, tc := range []struct {
+		name, from, want string
+	}{
+		{"available", `{"id":7,"username":"requesting_player"}`, "requesting_player"},
+		{"absent", `{"id":7}`, ""},
+		{"empty", `{"id":7,"username":""}`, ""},
+		{"null", `{"id":7,"username":null}`, ""},
+		{"presentation input", `{"id":7,"username":"player\nname"}`, "player\nname"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, kind := range []string{"command", "callback"} {
+				t.Run(kind, func(t *testing.T) {
+					var raw string
+					if kind == "command" {
+						raw = fmt.Sprintf(`{"update_id":42,"message":{"ephemeral_message_id":8,"from":%s,"chat":{"id":-100,"type":"supergroup"},"text":"/inventory","entities":[{"type":"bot_command","offset":0,"length":10}]}}`, tc.from)
+					} else {
+						raw = fmt.Sprintf(`{"update_id":42,"callback_query":{"id":"query","from":%s,"message":{"ephemeral_message_id":8,"from":{"id":99,"username":"message_author"},"chat":{"id":-100,"type":"supergroup"}},"data":"inv:opaque"}}`, tc.from)
+					}
+					got, err := DecodeUpdate(json.RawMessage(raw))
+					if err != nil || got.Status != DecodeMapped {
+						t.Fatalf("decode status %q, error %v", got.Status, err)
+					}
+					var identity interaction.Identity
+					switch event := got.Event.(type) {
+					case interaction.Command:
+						identity = event.Identity
+					case interaction.Callback:
+						identity = event.Identity
+					default:
+						t.Fatalf("unexpected event type %T", got.Event)
+					}
+					want := interaction.Identity{Update: 42, Chat: -100, User: 7, ChatKind: runtimecontract.ChatKindSupergroup, ActorUsername: tc.want}
+					if identity != want {
+						t.Fatal("actor username or numeric identity changed")
+					}
+				})
+			}
+		})
 	}
 }
 

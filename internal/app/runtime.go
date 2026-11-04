@@ -32,6 +32,8 @@ type Registrations struct {
 // Options supplies explicit composition boundaries. TelegramBaseURL and HTTPClient
 // support local Bot API integration tests; production leaves both unset.
 type Options struct {
+	// Prepare performs bounded transactional domain preparation before admission.
+	Prepare         func(context.Context, runtimecontract.DBTX) error
 	Commands        []runtimecontract.CommandDeclaration
 	Diagnostics     observability.DiagnosticSink
 	Register        func(Registrations) error
@@ -155,6 +157,14 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 
 	if err = db.Migrate(startupCtx, migrations); err != nil {
 		return r.failure(ctx, "migrations")
+	}
+	if r.options.Prepare != nil {
+		prepareCtx, cancelPrepare := context.WithTimeout(startupCtx, r.cfg.HandlerTimeout)
+		err = db.WithinTransaction(prepareCtx, r.options.Prepare)
+		cancelPrepare()
+		if err != nil {
+			return r.failure(ctx, "feature_preparation")
+		}
 	}
 
 	r.emit(ctx, observability.CategoryStorage, observability.OperationMigrate, observability.OutcomeCompleted, "")

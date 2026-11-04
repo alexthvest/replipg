@@ -72,6 +72,16 @@ func TestEphemeralInvalidBeforeIO(t *testing.T) {
 		change func(*runtimecontract.EphemeralResponse)
 		field  string
 	}{
+		{"negative edit ID", func(r *runtimecontract.EphemeralResponse) { r.EditMessageID = -1 }, "edit_message_id"},
+		{"edit ordinary callback", func(r *runtimecontract.EphemeralResponse) { r.EditMessageID = 19 }, "edit_message_id"},
+		{"edit incoming", func(r *runtimecontract.EphemeralResponse) {
+			r.EditMessageID = 19
+			r.Authorization = runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: 23, ValidUntil: ephemeralNow.Add(time.Second)}
+		}, "edit_message_id"},
+		{"edit administrator", func(r *runtimecontract.EphemeralResponse) {
+			r.EditMessageID = 19
+			r.Authorization = runtimecontract.AdministratorAuthorization{}
+		}, "edit_message_id"},
 		{"missing chat", func(r *runtimecontract.EphemeralResponse) { r.Destination.ChatID = 0 }, "destination.chat_id"},
 		{"private chat", func(r *runtimecontract.EphemeralResponse) { r.Destination.ChatID = 7 }, "destination.chat_id"},
 		{"unsupported chat", func(r *runtimecontract.EphemeralResponse) { r.Destination.Kind = "channel" }, "destination.kind"},
@@ -137,6 +147,53 @@ func TestEphemeralInvalidBeforeIO(t *testing.T) {
 			}
 			if outcome := Outcome(receipt, err); outcome.Kind != runtimecontract.DeliveryPermanentFailure || outcome.ReasonCode != "validation" {
 				t.Fatalf("outcome=%+v", outcome)
+			}
+		})
+	}
+}
+
+func TestEphemeralEditPayloadAndFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, result string
+		buttons      bool
+		failure      ErrorKind
+	}{
+		{name: "refresh keyboard", result: `{"ok":true,"result":true}`, buttons: true},
+		{name: "remove keyboard", result: `{"ok":true,"result":true}`},
+		{name: "rejected", result: `{"ok":false,"error_code":400,"description":"private sentinel"}`, failure: ErrorValidation},
+		{name: "not accepted", result: `{"ok":true,"result":false}`, failure: ErrorIndeterminate},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := testsupport.NewFakeTelegram(response(identity), response(tc.result))
+			defer fake.Close()
+			d := NewDelivery(newTestClient(t, fake), func() time.Time { return ephemeralNow })
+			req := ephemeralRequest()
+			req.EditMessageID = 19
+			auth := req.Authorization.(runtimecontract.CallbackAuthorization)
+			auth.OriginatedFromEphemeral = true
+			req.Authorization = &auth
+			req.Content.Entities = []runtimecontract.TextEntity{{Kind: runtimecontract.TextEntityBold, Length: 5}}
+			keyboard := `{"inline_keyboard":[]}`
+			if tc.buttons {
+				req.Content.Buttons = [][]runtimecontract.InlineButton{{{Text: "Back", CallbackData: "inv:back"}}}
+				keyboard = `{"inline_keyboard":[[{"text":"Back","callback_data":"inv:back"}]]}`
+			}
+			receipt, err := d.SendEphemeral(context.Background(), req)
+			if tc.failure != "" {
+				_ = assertKind(t, err, tc.failure)
+				if receipt != (runtimecontract.DeliveryReceipt{}) || strings.Contains(err.Error(), "private sentinel") {
+					t.Fatal("failed edit returned a receipt or leaked API content")
+				}
+			} else if err != nil || receipt != (runtimecontract.DeliveryReceipt{ChatID: -100, EphemeralMessageID: 19}) {
+				t.Fatalf("edit receipt=%+v err=%v", receipt, err)
+			}
+			requests := fake.Requests()
+			if len(requests) != 2 || requests[1].Path != "/bot42:secret/editEphemeralMessageText" {
+				t.Fatalf("unexpected edit or fallback: %+v", requests)
+			}
+			want := map[string]string{"chat_id": "-100", "receiver_user_id": "7", "ephemeral_message_id": "19", "text": "Hello 😀", "entities": `[{"type":"bold","offset":0,"length":5}]`, "reply_markup": keyboard}
+			if got := requestFields(t, requests[1]); !reflect.DeepEqual(got, want) {
+				t.Fatalf("edit fields=%v want=%v", got, want)
 			}
 		})
 	}

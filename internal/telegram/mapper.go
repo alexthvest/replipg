@@ -81,7 +81,9 @@ func DecodeUpdate(raw json.RawMessage) (DecodedUpdate, error) {
 			result.Status = DecodeFailed
 			return result, nil
 		}
-		result.Event = interaction.Callback{Identity: message.identity(result.UpdateID, callback.From.ID), QueryID: result.CallbackQueryID, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Data: *callback.Data}
+		identity := message.identity(result.UpdateID, callback.From.ID)
+		identity.ActorUsername = callback.From.Username
+		result.Event = interaction.Callback{Identity: identity, QueryID: result.CallbackQueryID, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Data: *callback.Data}
 	} else if messagePresent {
 		var message *inboundMessage
 		if json.Unmarshal(messageRaw, &message) != nil || message == nil {
@@ -106,6 +108,7 @@ func DecodeUpdate(raw json.RawMessage) (DecodedUpdate, error) {
 			return result, nil
 		}
 		if command {
+			identity.ActorUsername = message.From.Username
 			result.Event = interaction.Command{Identity: identity, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Name: interaction.CommandName(name), Arguments: args, SentAt: message.sentAt(), ActorIsBot: message.From.IsBot, SenderIsChat: len(message.SenderChat) > 0 && string(message.SenderChat) != "null"}
 		} else {
 			var fields map[string]json.RawMessage
@@ -130,8 +133,9 @@ func DecodeUpdate(raw json.RawMessage) (DecodedUpdate, error) {
 }
 
 type inboundUser struct {
-	ID    int64 `json:"id"`
-	IsBot bool  `json:"is_bot"`
+	ID       int64  `json:"id"`
+	IsBot    bool   `json:"is_bot"`
+	Username string `json:"username"`
 }
 type inboundMessage struct {
 	MessageID          int64           `json:"message_id"`

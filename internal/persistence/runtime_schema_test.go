@@ -18,12 +18,12 @@ func TestRuntimeMigrationsApplyProductionSchemaIdempotentlyAndSurviveReopen(t *t
 		t.Fatalf("Migrate() error = %v", err)
 	}
 	assertRuntimeSchemaObjects(t, db)
-	assertLedgerVersions(t, db, []int{1, 2})
+	assertLedgerVersions(t, db, []int{1, 2, 3})
 
 	if err := db.Migrate(context.Background(), set); err != nil {
 		t.Fatalf("second Migrate() error = %v", err)
 	}
-	assertLedgerVersions(t, db, []int{1, 2})
+	assertLedgerVersions(t, db, []int{1, 2, 3})
 
 	if err := db.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -33,7 +33,7 @@ func TestRuntimeMigrationsApplyProductionSchemaIdempotentlyAndSurviveReopen(t *t
 		t.Fatalf("Migrate() after reopen error = %v", err)
 	}
 	assertRuntimeSchemaObjects(t, db)
-	assertLedgerVersions(t, db, []int{1, 2})
+	assertLedgerVersions(t, db, []int{1, 2, 3})
 }
 
 func TestRuntimeSchemaColumnsAndRelationships(t *testing.T) {
@@ -338,7 +338,7 @@ func migratedRuntimeDB(t *testing.T) *DB {
 
 func assertRuntimeSchemaObjects(t *testing.T, db *DB) {
 	t.Helper()
-	want := []string{"character_operations", "characters", "outbound_attempts", "outbound_deliveries", "processed_updates", "runtime_cursors", "scheduled_jobs", "schema_migrations"}
+	want := []string{"character_operations", "characters", "inventories", "inventory_catalog", "inventory_controls", "inventory_equipment", "inventory_items", "inventory_operations", "outbound_attempts", "outbound_deliveries", "processed_updates", "runtime_cursors", "scheduled_jobs", "schema_migrations"}
 	rows, err := db.sql.QueryContext(context.Background(), `SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
 		t.Fatalf("inspect runtime tables: %v", err)

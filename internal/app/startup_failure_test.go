@@ -61,7 +61,7 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 		{name: "storage", stage: "storage"},
 		{name: "future_schema", stage: "migrations", fixture: []string{
 			`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`,
-			`INSERT INTO schema_migrations VALUES(3,1)`,
+			`INSERT INTO schema_migrations VALUES(4,1)`,
 		}},
 		{name: "failing_migration", stage: "migrations", fixture: []string{`CREATE TABLE processed_updates(poison TEXT)`}},
 		{name: "listener", stage: "health_listener"},

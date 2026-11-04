@@ -118,7 +118,7 @@ func TestCharacterMigrationUpgradePreservesRuntimeAndReopens(t *testing.T) {
 	if err := db.Migrate(ctx, runtimeMigrationsForTest(t)); err != nil {
 		t.Fatal(err)
 	}
-	assertLedgerVersions(t, db, []int{1, 2})
+	assertLedgerVersions(t, db, []int{1, 2, 3})
 	assertRowCount(t, db, "characters", "1=1", 0)
 	if _, err := db.ExecContext(ctx, characterInsertSQL, schemaCharacterID, 42, 100, 0, 10, 0, 1000, 20, 2); err != nil {
 		t.Fatal(err)
@@ -150,7 +150,7 @@ func TestCharacterMigrationUpgradePreservesRuntimeAndReopens(t *testing.T) {
 	if err := db.Migrate(ctx, original); !errors.As(err, &compatibility) || compatibility.Reason != SchemaCompatibilityFuture {
 		t.Fatalf("old binary migration = %v", err)
 	}
-	assertLedgerVersions(t, db, []int{1, 2})
+	assertLedgerVersions(t, db, []int{1, 2, 3})
 }
 
 func schemaRowsJSON(t *testing.T, db *DB, table string) string {

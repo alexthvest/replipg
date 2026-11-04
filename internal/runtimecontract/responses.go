@@ -268,7 +268,9 @@ type EphemeralResponse struct {
 	TargetIsBot            bool
 	Authorization          EphemeralAuthorization
 	ReplaceCallbackMessage bool
-	Content                MessageContent
+	// EditMessageID selects an existing ephemeral message; zero sends a new one.
+	EditMessageID int
+	Content       MessageContent
 }
 
 func (EphemeralResponse) responseRequest() {}
@@ -295,6 +297,23 @@ func (r EphemeralResponse) validate(now *time.Time) error {
 	}
 	if now != nil && !validUntil.IsZero() && !now.Before(validUntil) {
 		return validationError("authorization.valid_until", ReasonOutOfRange)
+	}
+	if r.EditMessageID < 0 {
+		return validationError("edit_message_id", ReasonOutOfRange)
+	}
+	if r.EditMessageID > 0 {
+		var callback CallbackAuthorization
+		switch auth := r.Authorization.(type) {
+		case CallbackAuthorization:
+			callback = auth
+		case *CallbackAuthorization:
+			callback = *auth
+		default:
+			return validationError("edit_message_id", ReasonInconsistent)
+		}
+		if !callback.OriginatedFromEphemeral || r.ReplaceCallbackMessage {
+			return validationError("edit_message_id", ReasonInconsistent)
+		}
 	}
 	return r.Content.validate()
 }
