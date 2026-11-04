@@ -7,6 +7,16 @@ This file separates Go implementation rules from Kiro specification and workflow
 - README files must contain only information intended for human readers. Keep agent rules and instructions in `AGENTS.md`.
 - Do not update README files when adding, changing, or removing agent rules; update `AGENTS.md` for those changes.
 
+## Commit Messages
+
+- Use Conventional Commits: `<type>[optional scope][!]: <description>`.
+- Use `feat` for new behavior, `fix` for bug fixes, `refactor` for behavior-preserving restructuring, `style` for formatting-only changes, `docs` for documentation, `test` for test-only changes, `build` for dependencies and build tooling, `ci` for CI configuration, `perf` for performance improvements, `chore` for other maintenance, and `revert` for reversions.
+- Add a short scope when it clarifies the affected component, such as `inventory` or `architecture`; omit it for repository-wide changes.
+- Write a concise, imperative description in English, starting with a lowercase verb and without a trailing period. Aim for a subject of 72 characters or fewer.
+- Use a body when needed to explain the reason, behavior changes, or validation limits. Mark breaking changes with `!` and explain them in a `BREAKING CHANGE:` footer.
+- Keep commits focused and stage only the requested changes. Preserve unrelated work in the working tree and index. Rewrite existing commit messages only when requested; leave published history unchanged unless explicitly authorized.
+- Examples: `fix(inventory): reject expired controls`, `refactor(architecture): remove custom boundary checker`, `style: apply Go spacing rules`, `docs: document commit message conventions`.
+
 ## Go Development Rules
 
 ### Development Environment
