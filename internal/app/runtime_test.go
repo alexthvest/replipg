@@ -1,17 +1,16 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
-	"net"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/testsupport"
@@ -20,7 +19,7 @@ import (
 func testConfig(t *testing.T) config.Config {
 	t.Helper()
 
-	values := map[string]string{config.EnvBotToken: "123:secret", config.EnvStorageDir: t.TempDir(), config.EnvStorageFilesystem: "local", config.EnvHealthAddress: "127.0.0.1:8080", config.EnvPollTimeout: "1s", config.EnvBusyTimeout: "100ms", config.EnvHandlerTimeout: "1s", config.EnvRetryInitial: "1ms", config.EnvRetryMaximum: "1s", config.EnvRetryAttempts: "3", config.EnvClaimLease: "5s", config.EnvShutdownDeadline: "2s", config.EnvDeploymentMode: "single"}
+	values := map[string]string{config.EnvBotToken: "123:secret", config.EnvStorageDir: t.TempDir(), config.EnvStorageFilesystem: "local", config.EnvPollTimeout: "1s", config.EnvBusyTimeout: "100ms", config.EnvHandlerTimeout: "1s", config.EnvRetryInitial: "1ms", config.EnvRetryMaximum: "1s", config.EnvRetryAttempts: "3", config.EnvClaimLease: "5s", config.EnvShutdownDeadline: "2s", config.EnvDeploymentMode: "single"}
 	cfg, err := config.NewLoader(func(k string) (string, bool) { v, ok := values[k]; return v, ok }).Load()
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +30,7 @@ func testConfig(t *testing.T) config.Config {
 
 func TestNewRejectsInvalidConfigurationBeforeSideEffects(t *testing.T) {
 	called := false
-	_, err := New(config.Config{}, Options{Listen: func(string, string) (net.Listener, error) { called = true; return nil, nil }})
+	_, err := New(config.Config{}, Options{Open: func(context.Context, persistence.Options) (*persistence.DB, error) { called = true; return nil, nil }})
 	if err == nil || called {
 		t.Fatalf("invalid configuration accepted or side effects occurred: %v %v", err, called)
 	}
@@ -50,13 +49,15 @@ func TestStartupRegistersRecoversAndPreservesBacklogBeforeReady(t *testing.T) {
 		}
 
 		return nil
-	}, Listen: func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }})
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if app.State().Snapshot().Ready {
+	select {
+	case <-app.Ready():
 		t.Fatal("ready before startup")
+	default:
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -75,7 +76,7 @@ func TestStartupRegistersRecoversAndPreservesBacklogBeforeReady(t *testing.T) {
 		t.Fatal("startup did not reach ready")
 	}
 
-	if !registered || !app.State().Snapshot().Ready {
+	if !registered {
 		t.Fatal("not ready after startup handshake")
 	}
 
@@ -100,12 +101,9 @@ func TestStartupRegistersRecoversAndPreservesBacklogBeforeReady(t *testing.T) {
 		t.Fatal("owned loops did not stop")
 	}
 
-	if s := app.State().Snapshot(); s.Ready || s.Lifecycle != health.Stopped {
-		t.Fatalf("shutdown state: %+v", s)
-	}
 }
 
-func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
+func TestStartupRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 	cfg := testConfig(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -139,19 +137,12 @@ func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 	fake := testsupport.NewFakeTelegram(testsupport.TelegramResponse{WaitForCancellation: true})
 	defer fake.Close()
 
-	var listener net.Listener
 	var runtimeDB *persistence.DB
 
 	registered := false
 	app, err := New(cfg, Options{Diagnostics: observability.NewJSONSink(io.Discard), TelegramBaseURL: fake.URL(), HTTPClient: fake.Client(), Open: func(ctx context.Context, opts persistence.Options) (*persistence.DB, error) {
 		runtimeDB, err = persistence.Open(ctx, opts)
 		return runtimeDB, err
-	}, Listen: func(string, string) (net.Listener, error) {
-		var listenErr error
-
-		listener, listenErr = net.Listen("tcp", "127.0.0.1:0")
-
-		return listener, listenErr
 	}, Register: func(Registrations) error {
 		var delivery, job string
 
@@ -201,22 +192,6 @@ func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 		t.Fatal("identity verification preceded recovery")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+listener.Addr().String()+"/readyz", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_ = response.Body.Close()
-
-	if response.StatusCode != http.StatusServiceUnavailable || app.State().Snapshot().Ready {
-		t.Fatal("ready during blocked identity verification")
-	}
-
 	select {
 	case <-app.Ready():
 		t.Fatal("readiness handshake closed before intake initialized")
@@ -232,5 +207,32 @@ func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("startup did not unwind")
+	}
+}
+
+func TestLifecycleDiagnosticsUseStartupAndShutdownCategories(t *testing.T) {
+	var output bytes.Buffer
+	runtime, err := New(testConfig(t), Options{Diagnostics: observability.NewJSONSink(&output)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []string{observability.StateStarting, observability.StateRecovering, observability.StateReady, observability.StateDraining, observability.StateStopped} {
+		runtime.lifecycle(context.Background(), state)
+		var event struct {
+			Category      string `json:"category"`
+			State         string `json:"state"`
+			CorrelationID string `json:"correlation_id"`
+		}
+		if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+			t.Fatal(err)
+		}
+		want := "startup"
+		if state == observability.StateDraining || state == observability.StateStopped {
+			want = "shutdown"
+		}
+		if event.Category != want || event.State != state || event.CorrelationID == "" {
+			t.Fatalf("unexpected lifecycle diagnostic: %s", output.String())
+		}
+		output.Reset()
 	}
 }

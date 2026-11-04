@@ -24,7 +24,6 @@ const (
 	CategoryReconciliation EventCategory = "reconciliation"
 	CategoryScheduler      EventCategory = "scheduler"
 	CategoryStorage        EventCategory = "storage"
-	CategoryHealth         EventCategory = "health"
 	CategoryShutdown       EventCategory = "shutdown"
 )
 
@@ -48,7 +47,6 @@ const (
 	OperationSchedule      = "schedule"
 	OperationExecute       = "execute"
 	OperationTransaction   = "transaction"
-	OperationProbe         = "probe"
 	OperationStateChange   = "state_change"
 	OperationDrain         = "drain"
 	OperationClose         = "close"
@@ -274,7 +272,7 @@ func validCategory(category EventCategory) bool {
 	switch category {
 	case CategoryStartup, CategoryIntake, CategoryDispatch, CategoryCallbackAck,
 		CategoryDelivery, CategoryReconciliation, CategoryScheduler,
-		CategoryStorage, CategoryHealth, CategoryShutdown:
+		CategoryStorage, CategoryShutdown:
 		return true
 	default:
 		return false
@@ -302,7 +300,7 @@ func validOperation(operation string) bool {
 		OperationPoll, OperationReceive, OperationDispatch, OperationAcknowledge,
 		OperationSend, OperationSendPublic, OperationSendEphemeral, OperationAttempt,
 		OperationReconcile, OperationSchedule, OperationExecute, OperationTransaction,
-		OperationProbe, OperationStateChange, OperationDrain, OperationClose:
+		OperationStateChange, OperationDrain, OperationClose:
 		return true
 	default:
 		return false

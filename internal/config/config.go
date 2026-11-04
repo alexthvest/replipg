@@ -3,13 +3,11 @@ package config
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 )
 
 const (
@@ -17,7 +15,6 @@ const (
 	EnvBotToken          = "REPLIPG_BOT_TOKEN"
 	EnvStorageDir        = "REPLIPG_STORAGE_DIR"
 	EnvStorageFilesystem = "REPLIPG_STORAGE_FILESYSTEM"
-	EnvHealthAddress     = "REPLIPG_HEALTH_ADDRESS"
 	EnvPollTimeout       = "REPLIPG_POLL_TIMEOUT"
 	EnvBusyTimeout       = "REPLIPG_BUSY_TIMEOUT"
 	EnvHandlerTimeout    = "REPLIPG_HANDLER_TIMEOUT"
@@ -57,7 +54,6 @@ var allSettings = []string{
 	EnvBotToken,
 	EnvStorageDir,
 	EnvStorageFilesystem,
-	EnvHealthAddress,
 	EnvPollTimeout,
 	EnvBusyTimeout,
 	EnvHandlerTimeout,
@@ -108,7 +104,6 @@ type Config struct {
 
 	StorageDir        string
 	StorageFilesystem FilesystemKind
-	HealthAddress     string
 	PollTimeout       time.Duration
 	BusyTimeout       time.Duration
 	HandlerTimeout    time.Duration
@@ -132,7 +127,6 @@ type RedactedConfig struct {
 	BotTokenConfigured bool           `json:"bot_token_configured"`
 	StorageDir         string         `json:"storage_dir"`
 	StorageFilesystem  FilesystemKind `json:"storage_filesystem"`
-	HealthAddress      string         `json:"health_address"`
 	PollTimeout        time.Duration  `json:"poll_timeout"`
 	BusyTimeout        time.Duration  `json:"busy_timeout"`
 	HandlerTimeout     time.Duration  `json:"handler_timeout"`
@@ -151,7 +145,6 @@ func (c Config) Redacted() RedactedConfig {
 		BotTokenConfigured: c.botToken != "",
 		StorageDir:         c.StorageDir,
 		StorageFilesystem:  c.StorageFilesystem,
-		HealthAddress:      c.HealthAddress,
 		PollTimeout:        c.PollTimeout,
 		BusyTimeout:        c.BusyTimeout,
 		HandlerTimeout:     c.HandlerTimeout,
@@ -216,10 +209,6 @@ func (l EnvLoader) Load() (Config, error) {
 		return Config{}, invalid(EnvStorageFilesystem, "must assert local filesystem storage")
 	}
 
-	if !validHealthAddress(values[EnvHealthAddress]) {
-		return Config{}, invalid(EnvHealthAddress, "must be a host and non-zero TCP port")
-	}
-
 	pollTimeout, ok := boundedDuration(values[EnvPollTimeout], minPollTimeout, maxPollTimeout)
 	if !ok {
 		return Config{}, invalid(EnvPollTimeout, "must be a duration within supported bounds")
@@ -279,7 +268,6 @@ func (l EnvLoader) Load() (Config, error) {
 		botToken:          values[EnvBotToken],
 		StorageDir:        values[EnvStorageDir],
 		StorageFilesystem: FilesystemLocal,
-		HealthAddress:     values[EnvHealthAddress],
 		PollTimeout:       pollTimeout,
 		BusyTimeout:       busyTimeout,
 		HandlerTimeout:    handlerTimeout,
@@ -311,17 +299,6 @@ func validStorageDir(value string) bool {
 	}
 
 	return value != string(filepath.Separator)
-}
-
-func validHealthAddress(value string) bool {
-	host, portText, err := net.SplitHostPort(value)
-	if err != nil || strings.IndexFunc(host, unicode.IsSpace) >= 0 {
-		return false
-	}
-
-	port, err := strconv.Atoi(portText)
-
-	return err == nil && port >= 1 && port <= 65535
 }
 
 func validBotToken(value string) bool {

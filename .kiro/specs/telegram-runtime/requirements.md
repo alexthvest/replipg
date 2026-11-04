@@ -6,7 +6,7 @@ The Telegram Runtime provides the operational foundation for Replipg's group-bas
 
 ## Boundary Context
 
-- **In scope**: Operator-supplied configuration, startup validation, single-instance update intake, command and callback routing, ordinary group-message intake, public and user-specific ephemeral responses, callback acknowledgement, durable state operations and upgrades, scheduled work, outbound delivery recovery, retry behavior, health signals, privacy-safe diagnostics, and graceful shutdown.
+- **In scope**: Operator-supplied configuration, startup validation, single-instance update intake, command and callback routing, ordinary group-message intake, public and user-specific ephemeral responses, callback acknowledgement, durable state operations and upgrades, scheduled work, outbound delivery recovery, retry behavior, privacy-safe diagnostics, and graceful shutdown.
 - **Out of scope**: Gameplay rules and player-facing command semantics, character or inventory behavior, activity scoring, encounter probability, combat, content administration, private-chat experiences, inbound webhook operation, multi-instance coordination, and horizontally scaled operation.
 - **Adjacent expectations**: Gameplay features register behavior against runtime capabilities and are responsible for their own domain validation and idempotent state transitions. Operators provide valid Telegram credentials, a supported bot configuration, and a local persistent storage location, and run exactly one active runtime instance.
 
@@ -21,7 +21,7 @@ The Telegram Runtime provides the operational foundation for Replipg's group-bas
 3. When configuration is valid, the Telegram Runtime shall prepare durable state, apply all pending compatible state upgrades, disable any conflicting inbound update delivery, and start update intake before reporting readiness.
 4. If durable state preparation, a state upgrade, conflicting delivery cleanup, or update intake initialization fails, the Telegram Runtime shall remain not ready and terminate startup with an actionable diagnostic.
 5. The Telegram Runtime shall obtain Telegram updates without requiring an inbound public network endpoint.
-6. The Telegram Runtime shall support exactly one active runtime instance for a deployment and shall report that multi-instance coordination is unsupported.
+6. The Telegram Runtime shall support exactly one active runtime instance for a deployment and shall reject unsupported deployment modes.
 
 ### Requirement 2: Update Intake and Routing
 **Objective:** As a gameplay feature developer, I want relevant Telegram group interactions routed consistently, so that domain behavior can respond without owning bot update intake.
@@ -88,23 +88,23 @@ The Telegram Runtime provides the operational foundation for Replipg's group-bas
 **Objective:** As an operator, I want controlled shutdown and recovery, so that deployments do not lose accepted work or leave the runtime in an ambiguous operating state.
 
 #### Acceptance Criteria
-1. When a shutdown signal is received, the Telegram Runtime shall stop accepting new update work and report itself as not ready.
+1. When a shutdown signal is received, the Telegram Runtime shall stop accepting new update work and emit a draining lifecycle diagnostic.
 2. While shutdown is in progress, the Telegram Runtime shall allow already-running work to finish only within the configured shutdown deadline.
 3. When the shutdown deadline expires, the Telegram Runtime shall cancel remaining in-process work and preserve its durable work state for recovery.
 4. When shutdown completes, the Telegram Runtime shall release update intake, storage, timers, and other acquired resources.
 5. When the Telegram Runtime restarts after interruption, the Telegram Runtime shall recover incomplete scheduled work and outbound delivery work from durable state before reporting readiness.
 6. If an interruption leaves an outbound attempt without a definitive result, the Telegram Runtime shall recover it as reconciliation-required rather than completed or never attempted.
 
-### Requirement 8: Health and Operational Visibility
-**Objective:** As an operator, I want accurate health signals and diagnostics, so that I can distinguish a running process from one ready to serve and investigate failures safely.
+### Requirement 8: Operational Diagnostics
+**Objective:** As an operator, I want accurate lifecycle diagnostics, so that I can distinguish a running process from one ready to serve and investigate failures safely.
 
 #### Acceptance Criteria
-1. While the process can continue operating, the Telegram Runtime shall report a live health state.
-2. While startup is incomplete, shutdown is in progress, or a required runtime dependency prevents safe update processing, the Telegram Runtime shall report a not-ready state.
-3. When startup completes and the Telegram Runtime can accept and process updates, the Telegram Runtime shall report a ready state.
+1. When the runtime changes lifecycle phase, the Telegram Runtime shall emit a structured diagnostic with the phase (`starting`, `recovering`, `ready`, `draining`, or `stopped`).
+2. While startup is incomplete or a startup prerequisite fails, the Telegram Runtime shall not signal startup completion; during shutdown it shall reject new work admission.
+3. When recovery and worker/polling startup handshakes complete, the Telegram Runtime shall close its in-process `Ready()` channel and emit the `ready` lifecycle diagnostic.
 4. When startup, update processing, scheduled work, or outbound delivery changes state or fails, the Telegram Runtime shall emit an operator-observable diagnostic containing an event category and correlation identifier.
-5. The Telegram Runtime shall expose enough status to distinguish pending, retrying, reconciliation-required, completed, and permanently failed durable work.
-6. The Telegram Runtime shall not expose bot credentials, secret configuration values, personal message bodies, or private response content in logs, health output, or error diagnostics.
+5. The Telegram Runtime shall preserve distinct durable-work states and emit operation outcomes through privacy-safe diagnostics; automated verification shall inspect persisted states directly. No health HTTP server, status endpoint, or aggregate-status API is required.
+6. The Telegram Runtime shall not expose bot credentials, secret configuration values, personal message bodies, or private response content in logs or error diagnostics.
 7. If a diagnostic includes Telegram user, chat, or update identifiers, the Telegram Runtime shall limit them to the minimum identifiers required for operational correlation.
 
 ### Requirement 9: Feature Boundaries and Compatibility

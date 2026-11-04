@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/persistence"
@@ -32,8 +30,8 @@ type lifecycleTransport struct {
 	deadlineTransport
 	fault     <-chan struct{}
 	polling   chan struct{}
-	cancelled chan health.Snapshot
-	state     *health.State
+	cancelled chan error
+	admit     func(context.Context) error
 }
 
 func (f *lifecycleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -49,32 +47,10 @@ func (f *lifecycleTransport) RoundTrip(req *http.Request) (*http.Response, error
 	}
 	select {
 	case <-req.Context().Done():
-		f.cancelled <- f.state.Snapshot()
+		f.cancelled <- f.admit(context.Background())
 		return nil, req.Context().Err()
 	case <-f.fault:
 		return &http.Response{StatusCode: http.StatusConflict, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":409,"description":"private upstream conflict"}`)), Request: req}, nil
-	}
-}
-
-func lifecycleProbe(t *testing.T, ctx context.Context, listener net.Listener, path string, want int) {
-	t.Helper()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+listener.Addr().String()+path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
-	defer client.CloseIdleConnections()
-
-	response, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_ = response.Body.Close()
-
-	if response.StatusCode != want {
-		t.Fatalf("%s status = %d, want %d", path, response.StatusCode, want)
 	}
 }
 
@@ -86,7 +62,7 @@ func TestRuntimeLifecycleDrainsScheduledClaimAcrossIntakeFailureAndCancellation(
 			cfg.BusyTimeout = 5 * time.Second
 			clock := testsupport.NewManualClock(time.Now())
 			fault := make(chan struct{})
-			transport := &lifecycleTransport{fault: fault, polling: make(chan struct{}), cancelled: make(chan health.Snapshot, 4)}
+			transport := &lifecycleTransport{fault: fault, polling: make(chan struct{}), cancelled: make(chan error, 4)}
 			h := &deadlineRuntime{clock: clock, done: make(chan struct{})}
 			entered := make(chan context.Context, 1)
 			returned := make(chan struct{})
@@ -108,15 +84,7 @@ func TestRuntimeLifecycleDrainsScheduledClaimAcrossIntakeFailureAndCancellation(
 					h.db, openErr = persistence.Open(ctx, opts)
 					return h.db, openErr
 				},
-				Listen: func(string, string) (net.Listener, error) {
-					listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
-					if listenErr != nil {
-						return nil, listenErr
-					}
 
-					h.listener = &deadlineListener{Listener: listener}
-					return h.listener, nil
-				},
 				Register: func(r Registrations) error {
 					if _, err := h.db.ExecContext(context.Background(), `CREATE TABLE lifecycle_feature(value INTEGER)`); err != nil {
 						return err
@@ -173,7 +141,7 @@ func TestRuntimeLifecycleDrainsScheduledClaimAcrossIntakeFailureAndCancellation(
 				t.Fatal(err)
 			}
 
-			transport.state = h.runtime.State()
+			transport.admit = h.runtime.admit
 			admissionClosed := make(chan error, 1)
 			h.runtime.newShutdownTimer = func(d time.Duration) runtimeTimer {
 				admissionClosed <- h.runtime.admit(context.Background())
@@ -224,16 +192,14 @@ func TestRuntimeLifecycleDrainsScheduledClaimAcrossIntakeFailureAndCancellation(
 				t.Fatal("scheduled transaction did not start")
 			}
 
-			lifecycleProbe(t, wait, h.listener, "/readyz", http.StatusOK)
-			lifecycleProbe(t, wait, h.listener, "/livez", http.StatusOK)
 			if critical {
 				close(fault)
 			} else {
 				cancel()
 				select {
-				case snapshot := <-transport.cancelled:
-					if snapshot.Ready || snapshot.Lifecycle != health.Draining {
-						t.Fatalf("poll canceled before readiness dropped: %+v", snapshot)
+				case admissionErr := <-transport.cancelled:
+					if !errors.Is(admissionErr, context.Canceled) {
+						t.Fatalf("poll canceled before admission closed: %v", admissionErr)
 					}
 				case <-wait.Done():
 					t.Fatal("drain did not cancel poll admission")
@@ -248,8 +214,6 @@ func TestRuntimeLifecycleDrainsScheduledClaimAcrossIntakeFailureAndCancellation(
 				t.Fatal("shutdown did not close admission")
 			}
 
-			lifecycleProbe(t, wait, h.listener, "/readyz", http.StatusServiceUnavailable)
-			lifecycleProbe(t, wait, h.listener, "/livez", http.StatusOK)
 			if err := clock.WaitForTimers(wait, 1); err != nil {
 				t.Fatal(err)
 			}

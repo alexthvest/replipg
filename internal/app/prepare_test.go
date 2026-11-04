@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"errors"
-	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -19,7 +19,7 @@ func TestPreparationPrecedesAdmissionAndRollsBack(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			prepared, registered, listened := false, false, false
+			prepared, registered := false, false
 			var acquired *persistence.DB
 
 			runtime, err := New(cfg, Options{
@@ -62,11 +62,10 @@ func TestPreparationPrecedesAdmissionAndRollsBack(t *testing.T) {
 					}
 					return nil
 				},
-				Listen: func(string, string) (net.Listener, error) {
-					listened = true
-					return nil, errors.New("stop after preparation")
-				},
-				Register: func(Registrations) error { registered = true; return nil },
+
+				TelegramBaseURL: "http://telegram.invalid",
+				HTTPClient:      &http.Client{Transport: startupTransport(func(*http.Request) (*http.Response, error) { return nil, errors.New("stop after preparation") })},
+				Register:        func(Registrations) error { registered = true; return nil },
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -77,14 +76,14 @@ func TestPreparationPrecedesAdmissionAndRollsBack(t *testing.T) {
 
 			wantStage := "feature_preparation"
 			if mode == "success" {
-				wantStage = "health_listener"
+				wantStage = "telegram_identity"
 			}
 			if !errors.As(err, &failure) || failure.Stage != wantStage {
 				t.Fatalf("error %v, want %s", err, wantStage)
 			}
 
-			if !prepared || registered || listened != (mode == "success") {
-				t.Fatalf("order prepared=%v registered=%v listened=%v", prepared, registered, listened)
+			if !prepared || registered {
+				t.Fatalf("order prepared=%v registered=%v", prepared, registered)
 			}
 
 			select {

@@ -5,24 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"github.com/alexthvest/replipg/internal/scheduler"
-	"github.com/alexthvest/replipg/internal/testsupport"
 )
 
 const privacyBody = "private-message-body-fixture"
@@ -161,173 +156,6 @@ func assertPrivacyDiagnostics(t *testing.T, data string, private ...string) []ma
 	return events
 }
 
-func TestRuntimeStatusPrivacyWithEveryDurableState(t *testing.T) {
-	cfg := testConfig(t)
-	fake := testsupport.NewFakeTelegram(
-		testsupport.TelegramResponse{Body: []byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`)},
-		testsupport.TelegramResponse{Body: []byte(`{"ok":true,"result":true}`)},
-		testsupport.TelegramResponse{WaitForCancellation: true},
-	)
-	defer fake.Close()
-
-	logs := newPrivacyLog()
-	var db *persistence.DB
-	var listener net.Listener
-
-	runtime, err := New(cfg, Options{Diagnostics: observability.NewJSONSink(logs), TelegramBaseURL: fake.URL(), HTTPClient: fake.Client(),
-		Open: func(ctx context.Context, opts persistence.Options) (*persistence.DB, error) {
-			var err error
-
-			db, err = persistence.Open(ctx, opts)
-			return db, err
-		},
-		Listen: func(string, string) (net.Listener, error) {
-			var err error
-
-			listener, err = net.Listen("tcp", "127.0.0.1:0")
-			return listener, err
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() { done <- runtime.Run(ctx) }()
-	defer func() {
-		cancel()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Error(err)
-			}
-		case <-time.After(5 * time.Second):
-			t.Error("runtime did not stop")
-		}
-	}()
-
-	select {
-	case <-runtime.Ready():
-	case <-ctx.Done():
-		t.Fatal("runtime did not become ready")
-	}
-
-	// Install fixtures after startup recovery/reconciliation. Future due/lease
-	// times keep actual running workers from changing this coherent snapshot.
-	future := time.Now().Add(24 * time.Hour).UnixMilli()
-	deliveryStates := []string{"pending", "attempting", "retrying", "reconciliation_required", "completed", "permanent_failure"}
-	jobStates := []string{"pending", "claimed", "retrying", "completed", "cancelled", "permanent_failure"}
-	err = db.WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
-		for index, state := range deliveryStates {
-			for n := 0; n <= index; n++ {
-				var next, terminal, reason any
-
-				if state == "pending" || state == "retrying" {
-					next = future
-				}
-				if state == "completed" || state == "permanent_failure" {
-					terminal = int64(1)
-				}
-				if state == "permanent_failure" || state == "reconciliation_required" {
-					reason = "permanent_failure"
-				}
-				_, err := tx.ExecContext(ctx, `INSERT INTO outbound_deliveries(id,kind,content_version,content,destination_chat_id,target_user_id,authorization_kind,replace_callback_message,state,max_attempts,initial_delay_ms,max_delay_ms,attempt_count,next_attempt_at,reason_code,created_at,updated_at,terminal_at) VALUES(?,?,1,?,-987654321,876543210,'administrator',0,?,3,1,10,1,?,?,1,1,?)`, fmt.Sprintf("private-delivery-%d-%d", index, n), privacyReply, []byte(privacyPayload), state, next, reason, terminal)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		for index, state := range jobStates {
-			for n := 0; n <= index; n++ {
-				var next, owner, correlation, lease, terminal, reason any
-
-				if state == "retrying" {
-					next = future
-				}
-				if state == "claimed" {
-					owner = privacyError
-					correlation = privacyBody
-					lease = future
-				}
-				if state == "completed" || state == "cancelled" || state == "permanent_failure" {
-					terminal = int64(1)
-				}
-				if state == "permanent_failure" {
-					reason = "permanent_failure"
-				}
-				_, err := tx.ExecContext(ctx, `INSERT INTO scheduled_jobs(id,job_type,payload_version,payload,due_at,state,max_attempts,initial_delay_ms,max_delay_ms,attempt_count,next_attempt_at,claim_owner,claim_correlation_id,lease_until,reason_code,created_at,updated_at,terminal_at) VALUES(?,?,1,?,?,?,3,1,10,1,?,?,?,?,?,1,1,?)`, fmt.Sprintf("private-job-%d-%d", index, n), privacyReply, []byte(privacyPayload), future, state, next, owner, correlation, lease, reason, terminal)
-				if err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
-	defer client.CloseIdleConnections()
-
-	for _, path := range []string{"/livez", "/readyz", "/statusz"} {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+listener.Addr().String()+path, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		response, err := client.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		body, err := io.ReadAll(response.Body)
-		_ = response.Body.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if response.StatusCode != http.StatusOK {
-			t.Fatalf("%s status %d", path, response.StatusCode)
-		}
-
-		for _, private := range []string{cfg.BotToken(), cfg.StorageDir, privacyBody, privacyPayload, privacyReply, privacyError, "private-delivery-", "private-job-", "987654321", "876543210"} {
-			if strings.Contains(string(body), private) {
-				t.Fatal("probe exposed private durable data")
-			}
-		}
-
-		if path != "/statusz" {
-			continue
-		}
-
-		// Comparing the complete JSON value rejects extra metadata/content fields,
-		// missing zero-value fields, and state counts accidentally conflated together.
-		var actual any
-
-		if err := json.Unmarshal(body, &actual); err != nil {
-			t.Fatal(err)
-		}
-
-		expectedJSON := `{"lifecycle":"ready","live":true,"ready":true,"deployment_mode":"single_instance","multi_instance_supported":false,"work":{"deliveries":{"pending":1,"attempting":2,"retrying":3,"reconciliation_required":4,"completed":5,"permanent_failure":6},"jobs":{"pending":1,"claimed":2,"retrying":3,"completed":4,"cancelled":5,"permanent_failure":6}}}`
-		var expected any
-
-		if err := json.Unmarshal([]byte(expectedJSON), &expected); err != nil {
-			t.Fatal(err)
-		}
-
-		if !reflect.DeepEqual(actual, expected) {
-			t.Fatalf("status aggregate differs: %s", body)
-		}
-	}
-
-	assertPrivacyDiagnostics(t, logs.snapshot(), cfg.BotToken(), cfg.StorageDir, privacyBody, privacyPayload, privacyReply, privacyError)
-}
-
 func TestRuntimeDiagnosticPrivacyAcrossComposedFaults(t *testing.T) {
 	cfg := testConfig(t)
 	logs := newPrivacyLog()
@@ -383,7 +211,7 @@ func TestRuntimeDiagnosticPrivacyAcrossComposedFaults(t *testing.T) {
 	retry := runtimecontract.RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: time.Second}
 	response := runtimecontract.PublicResponse{Destination: runtimecontract.GroupDestination{ChatID: -987654321, Kind: runtimecontract.ChatKindGroup}, Content: runtimecontract.MessageContent{Text: privacyReply}}
 	runtime, err := New(cfg, Options{Diagnostics: observability.NewJSONSink(logs), TelegramBaseURL: "http://telegram.test", HTTPClient: &http.Client{Transport: transport},
-		Listen: func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
+
 		Open: func(ctx context.Context, opts persistence.Options) (*persistence.DB, error) {
 			var err error
 
@@ -562,7 +390,7 @@ func TestRuntimeStartupFaultDiagnosticPrivacy(t *testing.T) {
 	logs := newPrivacyLog()
 	runtime, err := New(cfg, Options{Diagnostics: observability.NewJSONSink(logs),
 		TelegramBaseURL: "http://telegram.invalid", HTTPClient: &http.Client{Transport: startupTransport(func(req *http.Request) (*http.Response, error) { return startupResponse(req), nil })},
-		Listen:   func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
+
 		Register: func(Registrations) error { return errors.New(privacyError + cfg.StorageDir + cfg.BotToken()) },
 	})
 	if err != nil {
@@ -602,7 +430,4 @@ func TestRuntimeStartupFaultDiagnosticPrivacy(t *testing.T) {
 		t.Fatal("missing categorized startup failure diagnostic")
 	}
 
-	if state := runtime.State().Snapshot(); state.Lifecycle != health.Stopped || state.Ready {
-		t.Fatal("startup failure did not stop runtime")
-	}
 }

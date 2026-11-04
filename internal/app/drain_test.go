@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/observability"
 )
 
@@ -84,7 +83,7 @@ func TestWorkerDrainFinishesAdmittedWorkWithoutAnotherClaim(t *testing.T) {
 	}
 }
 
-func TestDrainReadinessPrecedesAdmissionStopAndPreservesCurrentWork(t *testing.T) {
+func TestDrainClosesAdmissionAndPreservesCurrentWork(t *testing.T) {
 	for _, deadline := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completed", true: "deadline"}[deadline], func(t *testing.T) {
 			cfg := testConfig(t)
@@ -94,11 +93,7 @@ func TestDrainReadinessPrecedesAdmissionStopAndPreservesCurrentWork(t *testing.T
 				t.Fatal(err)
 			}
 
-			for _, d := range []health.Dependency{health.Storage, health.Telegram, health.Intake, health.Outbox, health.Scheduler} {
-				_ = r.state.SetDependency(d, true)
-			}
-
-			r.lifecycle(context.Background(), health.Ready)
+			r.lifecycle(context.Background(), observability.StateReady)
 			work, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -121,8 +116,8 @@ func TestDrainReadinessPrecedesAdmissionStopAndPreservesCurrentWork(t *testing.T
 			done := make(chan struct{})
 			go func() {
 				r.drain(work, &owned, nil, func() {
-					if snapshot := r.state.Snapshot(); snapshot.Ready || snapshot.Lifecycle != health.Draining {
-						t.Error("admission stopped before not-ready draining transition")
+					if err := r.admit(context.Background()); !errors.Is(err, context.Canceled) {
+						t.Errorf("shutdown admits work: %v", err)
 					}
 
 					if work.Err() != nil {

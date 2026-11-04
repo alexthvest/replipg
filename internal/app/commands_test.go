@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -45,7 +44,7 @@ func TestMenuPublicationBeforeReadinessAndAdmission(t *testing.T) {
 			fake := testsupport.NewFakeTelegram(testsupport.TelegramResponse{Body: []byte(`{"ok":true,"result":{"id":123,"is_bot":true}}`)}, testsupport.TelegramResponse{Body: []byte(menu)}, testsupport.TelegramResponse{Body: []byte(`{"ok":true,"result":true}`)}, testsupport.TelegramResponse{WaitForCancellation: true})
 			defer fake.Close()
 
-			runtime, err := New(testConfig(t), Options{Commands: []runtimecontract.CommandDeclaration{{Name: "character", Description: "Inspect", Ephemeral: true}}, TelegramBaseURL: fake.URL(), HTTPClient: fake.Client(), Listen: func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }})
+			runtime, err := New(testConfig(t), Options{Commands: []runtimecontract.CommandDeclaration{{Name: "character", Description: "Inspect", Ephemeral: true}}, TelegramBaseURL: fake.URL(), HTTPClient: fake.Client()})
 			if err != nil {
 				t.Fatal(err)
 			}

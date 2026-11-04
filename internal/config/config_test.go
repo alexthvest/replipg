@@ -16,7 +16,6 @@ func validEnvironment() map[string]string {
 		EnvBotToken:          testToken,
 		EnvStorageDir:        "/var/lib/replipg",
 		EnvStorageFilesystem: "local",
-		EnvHealthAddress:     "127.0.0.1:8080",
 		EnvPollTimeout:       "30s",
 		EnvBusyTimeout:       "5s",
 		EnvHandlerTimeout:    "30s",
@@ -46,7 +45,7 @@ func TestLoaderAcceptsValidConfiguration(t *testing.T) {
 		t.Fatal("BotToken() did not return the configured credential")
 	}
 
-	if cfg.StorageDir != "/var/lib/replipg" || cfg.HealthAddress != "127.0.0.1:8080" {
+	if cfg.StorageDir != "/var/lib/replipg" {
 		t.Fatalf("unexpected paths/addresses: %#v", cfg.Redacted())
 	}
 
@@ -90,8 +89,6 @@ func TestLoaderRejectsInvalidSetting(t *testing.T) {
 		{name: "unclean storage", setting: EnvStorageDir, value: "/var/lib/../replipg"},
 		{name: "root storage", setting: EnvStorageDir, value: "/"},
 		{name: "non-local storage", setting: EnvStorageFilesystem, value: "network"},
-		{name: "invalid health address", setting: EnvHealthAddress, value: "8080"},
-		{name: "zero health port", setting: EnvHealthAddress, value: "127.0.0.1:0"},
 		{name: "poll malformed", setting: EnvPollTimeout, value: "soon"},
 		{name: "poll zero", setting: EnvPollTimeout, value: "0s"},
 		{name: "poll excessive", setting: EnvPollTimeout, value: "51s"},
@@ -293,5 +290,21 @@ func TestOptionalDevSmokeConfiguration(t *testing.T) {
 				t.Fatal("unexpected smoke enablement")
 			}
 		})
+	}
+}
+
+func TestRemovedHealthSettingIsIgnored(t *testing.T) {
+	values := validEnvironment()
+	values["REPLIPG_HEALTH_ADDRESS"] = "invalid obsolete address"
+	cfg, err := NewLoader(func(key string) (string, bool) { value, ok := values[key]; return value, ok }).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(cfg.Redacted())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "health") {
+		t.Fatal("removed health setting remains in configuration output")
 	}
 }

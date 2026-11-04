@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/persistence"
@@ -135,13 +133,6 @@ func (f *deadlineTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 }
 
-type deadlineListener struct {
-	net.Listener
-	closes atomic.Int32
-}
-
-func (l *deadlineListener) Close() error { l.closes.Add(1); return l.Listener.Close() }
-
 type deadlineHandler func(context.Context, runtimecontract.WorkScope, interaction.Event) (interaction.HandlerResult, error)
 
 func (h deadlineHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
@@ -149,13 +140,12 @@ func (h deadlineHandler) Handle(ctx context.Context, scope runtimecontract.WorkS
 }
 
 type deadlineRuntime struct {
-	runtime  *Runtime
-	clock    *testsupport.ManualClock
-	db       *persistence.DB
-	listener *deadlineListener
-	cancel   context.CancelFunc
-	done     chan struct{}
-	err      error
+	runtime *Runtime
+	clock   *testsupport.ManualClock
+	db      *persistence.DB
+	cancel  context.CancelFunc
+	done    chan struct{}
+	err     error
 }
 
 func startDeadlineRuntime(t *testing.T, cfg config.Config, transport *deadlineTransport, register func(Registrations, *persistence.DB) error) *deadlineRuntime {
@@ -167,15 +157,7 @@ func startDeadlineRuntime(t *testing.T, cfg config.Config, transport *deadlineTr
 			h.db = db
 			return db, err
 		},
-		Listen: func(string, string) (net.Listener, error) {
-			l, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				return nil, err
-			}
 
-			h.listener = &deadlineListener{Listener: l}
-			return h.listener, nil
-		},
 		Register: func(r Registrations) error {
 			if register != nil {
 				return register(r, h.db)
@@ -241,24 +223,8 @@ func (h *deadlineRuntime) draining(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if snapshot := h.runtime.State().Snapshot(); snapshot.Ready || snapshot.Lifecycle != health.Draining {
-		t.Fatalf("shutdown did not become not ready: %+v", snapshot)
-	}
-
-	req, err := http.NewRequestWithContext(wait, http.MethodGet, "http://"+h.listener.Addr().String()+"/readyz", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_ = response.Body.Close()
-
-	if response.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("draining readiness = %d", response.StatusCode)
+	if err := h.runtime.admit(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("shutdown admits work: %v", err)
 	}
 
 	select {
@@ -275,10 +241,6 @@ func (h *deadlineRuntime) stopped(t *testing.T, transport *deadlineTransport) {
 		t.Fatal(h.err)
 	}
 
-	if snapshot := h.runtime.State().Snapshot(); snapshot.Ready || snapshot.Lifecycle != health.Stopped {
-		t.Fatalf("shutdown state: %+v", snapshot)
-	}
-
 	if got := h.clock.PendingTimers(); got != 0 {
 		t.Fatalf("shutdown timer leaked: %d", got)
 	}
@@ -287,19 +249,10 @@ func (h *deadlineRuntime) stopped(t *testing.T, transport *deadlineTransport) {
 		t.Fatalf("Bot API requests not joined: %d", got)
 	}
 
-	if got := h.listener.closes.Load(); got != 1 {
-		t.Fatalf("listener closed %d times", got)
-	}
-
 	if _, err := h.db.ExecContext(context.Background(), "SELECT 1"); !errors.Is(err, persistence.ErrPersistenceClosed) {
 		t.Fatalf("database not closed: %v", err)
 	}
 
-	conn, err := net.DialTimeout("tcp", h.listener.Addr().String(), time.Second)
-	if err == nil {
-		_ = conn.Close()
-		t.Fatal("health listener still accepts requests")
-	}
 }
 
 func reopenDeadlineDB(t *testing.T, cfg config.Config) *persistence.DB {

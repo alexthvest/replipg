@@ -1,5 +1,8 @@
 > Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
 
+> Historical record: health endpoints, dependency-health state, and the probe helper were removed on 2026-11-04 by user request. Their recorded checks describe the earlier implementation. Current behavior uses structured lifecycle diagnostics and in-process startup synchronization; see requirements.md and design.md.
+
+
 # Research & Design Decisions
 
 ## Summary

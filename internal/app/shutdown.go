@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/health"
+	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/telegram"
 )
 
@@ -33,14 +33,13 @@ func (r *Runtime) admit(ctx context.Context) error {
 }
 
 // drain closes admission without cancelling work that is already running.
-// The health server has separate ownership so probes remain available while
-// workers finish. Handlers and delivery boundaries must cooperate with context
+// Handlers and delivery boundaries must cooperate with context
 // cancellation: the deadline cancels their work, then joins their cleanup before
 // resources close; Go cannot forcibly terminate an uncooperative goroutine.
 func (r *Runtime) drain(ctx context.Context, owned *sync.WaitGroup, poller *telegram.Poller, stopAdmission, cancelWork context.CancelFunc) {
 	r.mu.Lock()
 	r.draining = true
-	r.lifecycle(ctx, health.Draining)
+	r.lifecycle(ctx, observability.StateDraining)
 	r.mu.Unlock()
 	if poller != nil {
 		poller.StopAccepting()

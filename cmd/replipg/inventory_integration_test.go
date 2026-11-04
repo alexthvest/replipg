@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -69,6 +68,7 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 	t.Helper()
 	h := &inventoryBinaryFixture{ctx: ctx, updates: make(chan string, 1), polls: make(chan int64, 32), replies: make(chan inventoryBinaryReply, 16), menus: make(chan []characterMenuEntry, 64), menuFailures: make(chan struct{}, 8)}
 	identity := make(chan struct{}, 1)
+	polling := make(chan struct{}, 1)
 	release := make(chan struct{})
 	menus := make(chan []characterMenuEntry, 1)
 	proxy, trust := smokeTelegramProxy(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +133,10 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 		case "deleteWebhook", "answerCallbackQuery", "deleteMyCommands":
 			_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 		case "getUpdates":
+			select {
+			case polling <- struct{}{}:
+			default:
+			}
 			var request struct {
 				Offset int64 `json:"offset"`
 				Limit  int   `json:"limit"`
@@ -212,19 +216,8 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 			w.WriteHeader(400)
 		}
 	}))
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	address := listener.Addr().String()
-	if err = listener.Close(); err != nil {
-		t.Fatal(err)
-	}
-
 	env := commandEnvironment()
 	env[config.EnvStorageDir] = dir
-	env[config.EnvHealthAddress] = address
 	env[config.EnvPollTimeout] = "1s"
 	env[config.EnvShutdownDeadline] = "2s"
 	for _, override := range overrides {
@@ -240,7 +233,7 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 
 	h.cmd.Env = append(h.cmd.Env, "HTTPS_PROXY="+proxy, "SSL_CERT_FILE="+trust, "SSL_CERT_DIR="+t.TempDir())
 	h.cmd.Stdout, h.cmd.Stderr = &h.diagnostics, &h.diagnostics
-	if err = h.cmd.Start(); err != nil {
+	if err := h.cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -251,23 +244,22 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 	})
 
 	startupReceive(t, ctx, identity)
-	probeStartup(t, ctx, address, "/readyz", http.StatusServiceUnavailable)
 	// This observation precedes Telegram identity completion, menu publication and
 	// admission, proving preparation committed independently of any inventory open.
 	db := inventoryBinaryDB(t, dir)
 	var count int
 
-	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM inventory_catalog`).Scan(&count); err != nil || count != catalogSize {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM inventory_catalog`).Scan(&count); err != nil || count != catalogSize {
 		t.Fatalf("catalog not prepared before Telegram setup: count=%d err=%v", count, err)
 	}
 
 	if fresh {
-		if err = db.QueryRowContext(ctx, `SELECT count(*) FROM inventories`).Scan(&count); err != nil || count != 0 {
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM inventories`).Scan(&count); err != nil || count != 0 {
 			t.Fatal("startup granted inventory before first open")
 		}
 	}
 
-	if err = db.Close(); err != nil {
+	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -297,7 +289,7 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 		t.Fatal("production menu never published")
 	}
 
-	waitSmokeReady(t, ctx, address)
+	startupReceive(t, ctx, polling)
 	return h
 }
 

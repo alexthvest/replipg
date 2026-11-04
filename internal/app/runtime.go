@@ -4,7 +4,6 @@ package app
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/outbox"
@@ -42,7 +40,6 @@ type Options struct {
 	Register        func(Registrations) error
 	TelegramBaseURL string
 	HTTPClient      *http.Client
-	Listen          func(string, string) (net.Listener, error)
 	Open            func(context.Context, persistence.Options) (*persistence.DB, error)
 }
 
@@ -60,7 +57,6 @@ func (e *StartupError) Error() string {
 type Runtime struct {
 	cfg              config.Config
 	options          Options
-	state            *health.State
 	ready            chan struct{}
 	mu               sync.Mutex
 	used             bool
@@ -93,10 +89,6 @@ func New(cfg config.Config, options Options) (*Runtime, error) {
 		options.Diagnostics = observability.NewJSONSink(os.Stderr)
 	}
 
-	if options.Listen == nil {
-		options.Listen = net.Listen
-	}
-
 	if options.Open == nil {
 		options.Open = persistence.Open
 	}
@@ -106,23 +98,24 @@ func New(cfg config.Config, options Options) (*Runtime, error) {
 		return nil, &StartupError{Stage: "correlation"}
 	}
 
-	return &Runtime{cfg: cfg, options: options, state: health.NewState(), ready: make(chan struct{}), correlation: correlation, newShutdownTimer: func(d time.Duration) runtimeTimer {
+	return &Runtime{cfg: cfg, options: options, ready: make(chan struct{}), correlation: correlation, newShutdownTimer: func(d time.Duration) runtimeTimer {
 		return systemTimer{time.NewTimer(d)}
 	}}, nil
 }
 
-func (r *Runtime) State() *health.State { return r.state }
-
 // Ready closes after every startup prerequisite and owned poll-loop handshake.
 func (r *Runtime) Ready() <-chan struct{} { return r.ready }
 
-func (r *Runtime) emit(ctx context.Context, category observability.EventCategory, operation, outcome string, state health.Lifecycle) {
-	r.options.Diagnostics.Emit(ctx, observability.Diagnostic{Category: category, CorrelationID: r.correlation, Operation: operation, Outcome: outcome, Fields: observability.SafeFields{State: string(state)}})
+func (r *Runtime) emit(ctx context.Context, category observability.EventCategory, operation, outcome, state string) {
+	r.options.Diagnostics.Emit(ctx, observability.Diagnostic{Category: category, CorrelationID: r.correlation, Operation: operation, Outcome: outcome, Fields: observability.SafeFields{State: state}})
 }
 
-func (r *Runtime) lifecycle(ctx context.Context, state health.Lifecycle) {
-	_ = r.state.SetLifecycle(state)
-	r.emit(ctx, observability.CategoryHealth, observability.OperationStateChange, observability.OutcomeOK, state)
+func (r *Runtime) lifecycle(ctx context.Context, state string) {
+	category := observability.CategoryStartup
+	if state == observability.StateDraining || state == observability.StateStopped {
+		category = observability.CategoryShutdown
+	}
+	r.emit(ctx, category, observability.OperationStateChange, observability.OutcomeOK, state)
 }
 
 func (r *Runtime) failure(ctx context.Context, stage string) error {
@@ -141,8 +134,8 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 
 	r.used = true
 	r.mu.Unlock()
-	r.lifecycle(ctx, health.Starting)
-	defer r.lifecycle(context.WithoutCancel(ctx), health.Stopped)
+	r.lifecycle(ctx, observability.StateStarting)
+	defer r.lifecycle(context.WithoutCancel(ctx), observability.StateStopped)
 
 	if ctx.Err() != nil {
 		return nil
@@ -183,26 +176,15 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 	}
 
 	r.emit(ctx, observability.CategoryStorage, observability.OperationMigrate, observability.OutcomeCompleted, "")
-	_ = r.state.SetDependency(health.Storage, true)
-	listener, err := r.options.Listen("tcp", r.cfg.HealthAddress)
-	if err != nil {
-		return r.failure(ctx, "health_listener")
-	}
-
-	server := &http.Server{Handler: health.NewHandler(r.state, health.NewWorkStatus(db)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
-
-	var owned, healthOwned sync.WaitGroup
+	var owned sync.WaitGroup
 	var poller *telegram.Poller
 
-	results := make(chan error, 4+len(r.options.Workers))
+	results := make(chan error, 3+len(r.options.Workers))
 	start := func(stage string, fn func() error) {
 		r.startRequired(workCtx, &owned, results, stage, fn)
 	}
-	r.startRequired(workCtx, &healthOwned, results, "health_server", func() error { return server.Serve(listener) })
 	defer func() {
 		r.drain(workCtx, &owned, poller, stopAdmission, cancelWork)
-		_ = server.Close()
-		healthOwned.Wait()
 		if runErr == nil {
 			select {
 			case runErr = <-results:
@@ -211,7 +193,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		}
 	}()
 
-	r.lifecycle(ctx, health.Recovering)
+	r.lifecycle(ctx, observability.StateRecovering)
 	deliveries := outbox.NewStore(db, outbox.Options{Diagnostics: r.options.Diagnostics})
 	jobs := scheduler.New(db, systemClock{})
 
@@ -251,7 +233,6 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 			return r.failure(ctx, "telegram_commands")
 		}
 	}
-	_ = r.state.SetDependency(health.Telegram, true)
 	sender := telegram.NewDelivery(client, time.Now)
 	router := interaction.NewRouter(routes, db, db, deliveries, jobs, interaction.RouterOptions{Diagnostics: r.options.Diagnostics})
 	processor, err := telegram.NewProcessor(boundedRouter{UpdateRouter: router, timeout: r.cfg.HandlerTimeout}, sender, telegram.ProcessorOptions{Diagnostics: r.options.Diagnostics})
@@ -334,11 +315,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		return <-results
 	}
 
-	for _, dependency := range []health.Dependency{health.Intake, health.Outbox, health.Scheduler} {
-		_ = r.state.SetDependency(dependency, true)
-	}
-
-	r.lifecycle(ctx, health.Ready)
+	r.lifecycle(ctx, observability.StateReady)
 	close(r.ready)
 	r.mu.Unlock()
 
@@ -351,7 +328,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 }
 
 func validateConfig(c config.Config) error {
-	values := map[string]string{config.EnvDevSmoke: strconv.FormatBool(c.DevSmoke), config.EnvBotToken: c.BotToken(), config.EnvStorageDir: c.StorageDir, config.EnvStorageFilesystem: string(c.StorageFilesystem), config.EnvHealthAddress: c.HealthAddress, config.EnvPollTimeout: c.PollTimeout.String(), config.EnvBusyTimeout: c.BusyTimeout.String(), config.EnvHandlerTimeout: c.HandlerTimeout.String(), config.EnvRetryInitial: c.RetryInitial.String(), config.EnvRetryMaximum: c.RetryMaximum.String(), config.EnvRetryAttempts: strconv.Itoa(c.RetryAttempts), config.EnvClaimLease: c.ClaimLease.String(), config.EnvShutdownDeadline: c.ShutdownDeadline.String(), config.EnvDeploymentMode: string(c.DeploymentMode)}
+	values := map[string]string{config.EnvDevSmoke: strconv.FormatBool(c.DevSmoke), config.EnvBotToken: c.BotToken(), config.EnvStorageDir: c.StorageDir, config.EnvStorageFilesystem: string(c.StorageFilesystem), config.EnvPollTimeout: c.PollTimeout.String(), config.EnvBusyTimeout: c.BusyTimeout.String(), config.EnvHandlerTimeout: c.HandlerTimeout.String(), config.EnvRetryInitial: c.RetryInitial.String(), config.EnvRetryMaximum: c.RetryMaximum.String(), config.EnvRetryAttempts: strconv.Itoa(c.RetryAttempts), config.EnvClaimLease: c.ClaimLease.String(), config.EnvShutdownDeadline: c.ShutdownDeadline.String(), config.EnvDeploymentMode: string(c.DeploymentMode)}
 	_, err := config.NewLoader(func(k string) (string, bool) { v, ok := values[k]; return v, ok }).Load()
 
 	return err
@@ -364,16 +341,16 @@ func (r *Runtime) startRequired(ctx context.Context, owned *sync.WaitGroup, resu
 
 		err := fn()
 		r.mu.Lock()
-		expectedExit := err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, telegram.ErrPollerState) || errors.Is(err, http.ErrServerClosed)
+		expectedExit := err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, telegram.ErrPollerState)
 		if (r.draining || ctx.Err() != nil) && expectedExit {
 			r.mu.Unlock()
 			return
 		}
 
 		r.criticalFailed = true
-		r.lifecycle(ctx, health.Draining)
+		r.lifecycle(ctx, observability.StateDraining)
 		r.mu.Unlock()
-		category, operation := observability.CategoryHealth, observability.OperationProbe
+		category, operation := observability.CategoryDispatch, observability.OperationExecute
 		switch stage {
 		case "intake":
 			category, operation = observability.CategoryIntake, observability.OperationPoll

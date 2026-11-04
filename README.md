@@ -83,13 +83,9 @@ Run exactly one instance per bot token and storage directory. Startup removes an
 
 The storage directory holds `replipg.db` and its SQLite WAL and SHM files. Keep these on the same persistent local filesystem; network filesystems are unsupported. The directory must exist before startup and remain available across restarts.
 
-The health server listens on `127.0.0.1:8080` by default. Check readiness from the same machine:
+The bot writes structured JSON diagnostics to stderr. Lifecycle events report `starting`, `recovering`, `ready`, `draining`, and `stopped`; `ready` follows recovery and polling initialization. Failures include a safe category and correlation ID for troubleshooting. No inbound HTTP server or health port is required.
 
-```sh
-curl --fail http://127.0.0.1:8080/readyz
-```
-
-A ready instance returns HTTP 200 with a JSON lifecycle status. `/livez` reports liveness, and `/statusz` provides runtime status. These endpoints have no authentication; keep them private.
+Remove any deployment checks targeting the former health endpoints and remove `REPLIPG_HEALTH_ADDRESS` from deployment configuration.
 
 ## Development
 

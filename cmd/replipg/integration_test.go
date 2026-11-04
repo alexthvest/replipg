@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,13 +38,6 @@ func TestStartupProcessHelper(t *testing.T) {
 		runtime, err := app.New(cfg, app.Options{
 			TelegramBaseURL: os.Getenv("REPLIPG_TEST_TELEGRAM_URL"),
 			HTTPClient:      &http.Client{Timeout: 10 * time.Second},
-			Listen: func(network, address string) (net.Listener, error) {
-				listener, err := net.Listen(network, "127.0.0.1:0")
-				if err == nil {
-					fmt.Println(listener.Addr().String())
-				}
-				return listener, err
-			},
 		})
 		if err != nil {
 			return nil, err
@@ -147,7 +139,6 @@ func TestExecutableStartupReadinessAndWebhook(t *testing.T) {
 			cmd := exec.CommandContext(ctx, executable, "-test.run=^TestStartupProcessHelper$")
 			env := commandEnvironment()
 			env[config.EnvStorageDir] = dir
-			env[config.EnvHealthAddress] = "127.0.0.1:8080"
 			env[config.EnvPollTimeout] = "1s"
 			// Supply only the test's configuration, excluding real operator secrets
 			// and dotenv values inherited by the parent development environment.
@@ -188,13 +179,10 @@ func TestExecutableStartupReadinessAndWebhook(t *testing.T) {
 				<-scanned
 			})
 
-			address := startupReceive(t, ctx, lines)
 			if got := startupReceive(t, ctx, requests); got != "getMe" {
 				t.Fatalf("first request = %s", got)
 			}
 
-			probeStartup(t, ctx, address, "/livez", http.StatusOK)
-			probeStartup(t, ctx, address, "/readyz", http.StatusServiceUnavailable)
 			db := openStartupDB(t, ctx, dir)
 			var migrations int
 
@@ -220,7 +208,6 @@ func TestExecutableStartupReadinessAndWebhook(t *testing.T) {
 				t.Fatalf("second request = %s", got)
 			}
 
-			probeStartup(t, ctx, address, "/readyz", http.StatusServiceUnavailable)
 			select {
 			case line := <-lines:
 				t.Fatalf("readiness signaled before webhook initialization: %q", line)
@@ -234,7 +221,6 @@ func TestExecutableStartupReadinessAndWebhook(t *testing.T) {
 					t.Fatalf("missing owned polling handshake: %q", line)
 				}
 
-				probeStartup(t, ctx, address, "/readyz", http.StatusOK)
 				wantOffset := int64(1)
 				if tc.recover {
 					wantOffset = 40
@@ -302,24 +288,6 @@ func startupReceive[T any](t *testing.T, ctx context.Context, values <-chan T) T
 		var zero T
 
 		return zero
-	}
-}
-
-func probeStartup(t *testing.T, ctx context.Context, address, path string, want int) {
-	t.Helper()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+address+path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	if response.StatusCode != want {
-		t.Fatalf("%s status=%d, want %d", path, response.StatusCode, want)
 	}
 }
 

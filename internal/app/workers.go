@@ -21,7 +21,7 @@ type WorkerFactory struct {
 }
 
 func validateWorkers(factories []WorkerFactory) error {
-	seen := map[string]bool{"health_server": true, "outbox_worker": true, "scheduler_worker": true, "intake": true}
+	seen := map[string]bool{"outbox_worker": true, "scheduler_worker": true, "intake": true}
 	for _, factory := range factories {
 		if factory.Name == "" || len(factory.Name) > 64 || factory.New == nil || seen[factory.Name] {
 			return errors.New("runtime: invalid worker factory")

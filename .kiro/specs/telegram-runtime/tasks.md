@@ -17,7 +17,7 @@
   - _Requirements: 2.7, 4.3, 4.4, 6.2, 7.2_
 
 - [x] 1.3 (P) Implement validated and redacted operator configuration
-  - Parse credentials, local-storage declaration, health address, polling, contention, handler, retry, lease, and shutdown bounds.
+  - Parse credentials, local-storage declaration, polling, contention, handler, retry, lease, and shutdown bounds.
   - Reject missing, unsafe, or multi-instance settings before database or network activity and expose only a redacted view.
   - Done when every invalid input returns a typed error naming only the setting, before side effects, with no sensitive value.
   - _Boundary: Config Loader_
@@ -241,27 +241,21 @@
   - _Boundary: Scheduler Service_
   - _Requirements: 6.4, 7.3, 7.5_
 
-- [x] 7. Expose operational lifecycle and work visibility
-- [x] 7.1 Maintain truthful lifecycle and dependency state
-  - Track starting, recovering, ready, draining, stopped, and required dependency health.
-  - Report single-instance mode and unsupported multi-instance coordination.
-  - Done when readiness is false outside ready and dependency failure returns a safe lifecycle reason.
-  - _Boundary: Operational State_
-  - _Requirements: 1.6, 8.1, 8.2, 8.3, 9.4_
+- [x] 7. Preserve operational lifecycle diagnostics
+- [x] 7.1 Emit lifecycle phases and retain startup synchronization
+  - Emit starting, recovering, ready, draining, and stopped using startup/shutdown categories.
+  - Keep `Ready()` as the one-shot startup handshake and reject new admission during draining.
+  - _Requirements: 8.1–8.4_
 
-- [x] 7.2 Aggregate privacy-safe durable-work status
-  - Count delivery and job states without loading content, payloads, secrets, paths, or Telegram IDs.
-  - Preserve distinctions among pending, active, retrying, reconciliation, completed, cancelled, and permanent.
-  - Done when populated fixtures produce only expected aggregate counts and allowlisted fields.
-  - _Boundary: Operational State_
-  - _Requirements: 8.5, 8.6, 8.7_
+- [x] 7.2 Verify durable-work states directly
+  - Retain distinct persisted work states and verify them with database assertions.
+  - Health HTTP endpoints and aggregate-status queries were removed by user request.
+  - _Requirements: 8.5–8.7_
 
-- [x] 7.3 Serve liveness, readiness, and status endpoints
-  - Return live success only while viable and ready success only while admission is safe.
-  - Serve lifecycle reasons and aggregate status without raw errors or sensitive data.
-  - Done when HTTP tests verify codes and bodies for every lifecycle state and privacy constraint.
-  - _Boundary: Operational State_
-  - _Requirements: 8.1, 8.2, 8.3, 8.5, 8.6, 8.7_
+- [x] 7.3 Remove the operational HTTP surface
+  - Remove health package, address configuration, listener injection, and standalone probe helper.
+  - Verify the built binary processes Telegram interactions without binding a health port.
+  - _Requirements: 8.1–8.7_
 
 - [x] 8. Compose and own the executable runtime lifecycle
 - [x] 8.1 Assemble ordered startup and recovery
@@ -308,7 +302,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 7.1, 7.4, 8.1, 8.2, 8.3_
 
 - [x] 8.7 Add executable local setup artifacts
-  - Provide a machine-readable non-secret configuration example and executable build, run, probe, and check helpers.
+  - Provide a machine-readable non-secret configuration example and executable build, run, and check helpers.
   - Keep secrets and machine-specific paths out of shared artifacts.
   - Done when helpers run through devenv and reject an incomplete configuration example safely.
   - _Boundary: Development Environment_
@@ -325,7 +319,7 @@
 - [x] 9. Validate recovery and cross-component guarantees
 - [x] 9.1 Verify startup, readiness, and webhook integration
   - Run the executable with temporary SQLite and fake Telegram.
-  - Cover configuration handoff, migrations, recovery, webhook preservation, polling-start handshake, and probe transition.
+  - Cover configuration handoff, migrations, recovery, webhook preservation, polling-start handshake, and lifecycle diagnostics.
   - Done when startup stays not-ready through prerequisites, preserves queued updates, then becomes ready exactly once.
   - _Boundary: Runtime App, Persistence Kernel, Update Intake, Operational State_
   - _Depends: 8.8_
@@ -362,7 +356,7 @@
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
 - [x] 9.6 Verify lifecycle admission and resource safety end to end
-  - Fault dependency health, worker exit, signal drain, and deadline cancellation across the runtime.
+  - Fault startup prerequisites, worker exit, signal drain, and deadline cancellation across the runtime.
   - Assert readiness drops before admission closes and cancellation preserves incomplete durable work.
   - Done when the suite closes every owned resource within bounds without leaked goroutines or timers.
   - _Boundary: Runtime App, Operational State_
@@ -371,7 +365,7 @@
 
 - [x] 9.7 Verify diagnostics, privacy, and status end to end
   - Populate every durable state and fault startup, dispatch, delivery, and scheduling diagnostics.
-  - Assert probes, status, and logs contain safe categories and correlations but no secrets, content, raw errors, or unnecessary identifiers.
+  - Assert diagnostics and configuration output contain safe categories and correlations but no secrets, content, raw errors, or unnecessary identifiers.
   - Done when privacy fixtures remain absent and aggregate status distinguishes every required work state.
   - _Boundary: Operational State, Diagnostics_
   - _Depends: 9.4, 9.5, 9.6_
@@ -379,7 +373,7 @@
 
 - [x] 10. Complete runnable validation and quality gates
 - [x] 10.1 Automate the completed runtime smoke gate
-  - Reuse the development-only smoke harness against fake Telegram to exercise the fully composed runtime and operational probes.
+  - Reuse the development-only smoke harness against fake Telegram to exercise the fully composed runtime and lifecycle diagnostics.
   - Cover the same public, callback, ephemeral, and ordinary-message path used by an operator test group without external credentials.
   - Done when the deterministic smoke gate passes with durable workers and lifecycle integration active and no content output.
   - _Boundary: Runtime App, Interaction Router, Telegram Delivery_
@@ -409,7 +403,7 @@
 
 - Task 4.3: Durable stores must receive the tracked transaction capability so database failures remain retryable even after stores sanitize their errors or handlers swallow the returned error.
 - Task 4.4: Invalid immediate responses return a durable `handler_failed` outcome together with a typed validation error; intake must inspect the durable status before deciding to retry. Failure-record persistence errors return no outcome.
-- Tasks 6.5–6.7: Application composition must supply a transaction-bound scheduler work-scope factory and call `Service.Recover` before readiness; required health dependencies start unverified.
+- Tasks 6.5–6.7: Application composition must supply a transaction-bound scheduler work-scope factory and call `Service.Recover` before readiness; startup completion follows all prerequisites.
 
 - Task 1.1: Human approval selected published `modernc.org/sqlite v1.61.0`; its module metadata confirms the matching `modernc.org/libc v1.79.0`, while bounded lock cancellation remains a later persistence-task verification concern.
 - Task 3.2: Scheduler registration explicitly takes a payload version and must be sealed before scheduling; due times and retry durations round upward to SQLite milliseconds so work never becomes eligible early.

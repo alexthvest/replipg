@@ -6,14 +6,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/outbox"
 	"github.com/alexthvest/replipg/internal/persistence"
@@ -237,26 +234,10 @@ func TestDeliveryRecoveryIntegrationTerminalStatus(t *testing.T) {
 	h.status(uncertain, outbox.StateReconciliationRequired, 1)
 	h.status(pending, outbox.StatePending, 0)
 
-	rr := httptest.NewRecorder()
-	health.NewHandler(health.NewState(), health.NewWorkStatus(h.db)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/statusz", nil))
-	var result struct {
-		Work health.WorkCounts `json:"work"`
-	}
-
-	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-
-	want := health.DeliveryCounts{Pending: 1, Retrying: 1, ReconciliationRequired: 1, Completed: 1, PermanentFailure: 2}
-
-	if rr.Code != http.StatusOK || result.Work.Deliveries != want {
-		t.Fatalf("aggregate delivery status = %d %s", rr.Code, rr.Body.String())
-	}
-
-	h.assertPrivate(rr.Body.String())
-	for _, id := range []runtimecontract.DeliveryID{permanent, exhausted, completed, retrying, uncertain, pending} {
-		if strings.Contains(rr.Body.String(), string(id)) {
-			t.Fatal("aggregate status exposed a delivery identifier")
+	for state, want := range map[string]int{"pending": 1, "retrying": 1, "reconciliation_required": 1, "completed": 1, "permanent_failure": 2} {
+		var got int
+		if err := h.db.QueryRowContext(context.Background(), `SELECT count(*) FROM outbound_deliveries WHERE state=?`, state).Scan(&got); err != nil || got != want {
+			t.Fatalf("state %s count=%d want=%d: %v", state, got, want, err)
 		}
 	}
 

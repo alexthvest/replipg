@@ -77,11 +77,9 @@ The selected pattern is a layered modular monolith with ports and adapters. Runt
 ```mermaid
 graph TB
     TelegramAPI[Telegram Bot API]
-    ProbeClient[Probe client]
     Cmd[replipg command]
     App[Runtime App]
     Config[Config Loader]
-    Health[Operational State]
     Contracts[Runtime Contracts]
     Intake[Update Intake]
     Router[Interaction Router]
@@ -94,7 +92,6 @@ graph TB
 
     Cmd --> App
     App --> Config
-    App --> Health
     App --> Contracts
     App --> Intake
     App --> Router
@@ -113,10 +110,9 @@ graph TB
     Outbox --> Persistence
     Scheduler --> Persistence
     Persistence --> SQLite
-    ProbeClient --> Health
 ```
 
-**Dependency direction**: runtime contracts/configuration/diagnostic contracts → persistence implementation → router/outbox/scheduler services → Telegram and health adapters → application composition → command. `internal/runtimecontract` imports only the Go standard library and is the sole owner of cross-service value types and `WorkScope`; it never imports interaction, persistence, outbox, scheduler, adapters, or gameplay. Each later package imports only layers to its left or an interface it owns. Concrete adapters depend inward on the service ports they implement.
+**Dependency direction**: runtime contracts/configuration/diagnostic contracts → persistence implementation → router/outbox/scheduler services → Telegram adapters → application composition → command. `internal/runtimecontract` imports only the Go standard library and is the sole owner of cross-service value types and `WorkScope`; it never imports interaction, persistence, outbox, scheduler, adapters, or gameplay. Each later package imports only layers to its left or an interface it owns. Concrete adapters depend inward on the service ports they implement.
 
 **Key decisions**:
 
@@ -130,11 +126,11 @@ graph TB
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Runtime | Go 1.26+ | Process, concurrency, HTTP probes, typed contracts | Pinned by devenv and `go.mod` |
+| Runtime | Go 1.26+ | Process, concurrency, typed contracts | Pinned by devenv and `go.mod` |
 | Telegram adapter | `github.com/go-telegram/bot` v1.27.0 | Bot API 10.3 methods, models, typed API errors | Built-in polling is deliberately not used |
 | Polling | Stdlib `net/http` and `encoding/json` | Completion-controlled `getUpdates` request/response only | Contract-tested against Bot API fixtures |
 | Data | `database/sql`, `modernc.org/sqlite` v1.61.0, `modernc.org/libc` v1.79.0 | No-CGO durable local state and transactions | Bundled SQLite 3.54.1; local WAL only |
-| Observability | Stdlib `log/slog` and `net/http` | Structured diagnostics and probe/status endpoints | No message bodies, content, or secrets |
+| Observability | Stdlib `log/slog` | Structured lifecycle and operation diagnostics | No message bodies, content, or secrets |
 | Migrations | Stdlib `embed` and ordered SQL files | Atomic, versioned startup upgrades | No new migration framework |
 
 ## File Structure Plan
@@ -156,10 +152,6 @@ internal/
 ├── config/
 │   ├── config.go                   # Config Loader environment parsing, validation, and redacted view
 │   └── config_test.go              # Invalid-setting and redaction cases
-├── health/
-│   ├── state.go                    # Operational State lifecycle and aggregate status snapshot
-│   ├── http.go                     # livez, readyz, and statusz HTTP handlers
-│   └── http_test.go                # Probe codes, state transitions, and safe response bodies
 ├── observability/
 │   ├── diagnostics.go              # Typed event categories, correlation IDs, and privacy-safe logging
 │   └── diagnostics_test.go         # Redaction and minimum-identifier assertions
@@ -200,7 +192,7 @@ internal/
     ├── clock.go                    # Deterministic clock and timer implementation
     └── telegram.go                 # Fake Bot API server and request recorder
 .env.example                        # Non-secret runtime configuration names and examples
-README.md                           # Build, configure, run, probe, migrate, and test-group demo guide
+README.md                           # Build, configure, run, migrate, and test-group demo guide
 ```
 
 ### Modified and Generated Files
@@ -225,17 +217,16 @@ sequenceDiagram
     participant DB
     participant Telegram
     participant Workers
-    participant Health
 
     Main->>App: Run with signal context
-    App->>Health: Set starting and not ready
+    App->>App: Emit starting diagnostic
     App->>App: Validate configuration
     App->>DB: Open verify and migrate
     App->>DB: Recover attempts jobs and cursor
     App->>Telegram: Verify identity and delete webhook
     App->>Workers: Start outbox and scheduler
     App->>Telegram: Initialize long polling
-    App->>Health: Set ready
+    App->>App: Close Ready channel and emit ready diagnostic
 ```
 
 Any failed step cancels already-started resources in reverse order, leaves readiness false, emits a redacted categorized diagnostic, and returns a non-success process result. `deleteWebhook` always preserves pending updates.
@@ -289,19 +280,17 @@ The worker writes `attempting` before network I/O. On restart, every leftover `a
 sequenceDiagram
     participant Signal
     participant App
-    participant Health
     participant Intake
     participant Workers
     participant DB
 
     Signal->>App: Cancel root context
-    App->>Health: Set draining and not ready
+    App->>App: Close admission and emit draining diagnostic
     App->>Intake: Stop new polling and dispatch
     App->>Workers: Stop new claims and retry waits
     App->>Workers: Drain until deadline
     App->>Workers: Cancel remaining work
     App->>DB: Preserve state and close resources
-    App->>Health: Stop probe server
 ```
 
 ## Requirements Traceability
@@ -310,10 +299,10 @@ sequenceDiagram
 |-------------|---------|------------|------------|-------|
 | 1.1 | Validate all configuration before work | Config Loader, Runtime App | `Load`, `Validate` | Startup |
 | 1.2 | Fail with redacted setting diagnostic | Config Loader, Diagnostics | `ConfigError`, `Diagnostic` | Startup |
-| 1.3 | Prepare, migrate, clean webhook, then poll and ready | Runtime App, Persistence Kernel, Update Intake, Operational State | `Run`, `Migrate`, `Initialize` | Startup |
-| 1.4 | Startup dependency failure remains not ready | Runtime App, Operational State | lifecycle state | Startup |
+| 1.3 | Prepare, migrate, clean webhook, then poll and ready | Runtime App, Persistence Kernel, Update Intake, Diagnostics | `Run`, `Migrate`, `Initialize` | Startup |
+| 1.4 | Startup dependency failure remains not ready | Runtime App, Diagnostics | lifecycle state | Startup |
 | 1.5 | No inbound public endpoint | Update Intake | `getUpdates` port | Startup, Update Completion |
-| 1.6 | One active instance and unsupported coordination reported | Runtime App, Operational State | status snapshot | Startup |
+| 1.6 | One active instance and unsupported coordination reported | Runtime App, Diagnostics | validated deployment mode | Startup |
 | 2.1 | Receive commands, callbacks, and group messages | Update Intake, Interaction Router | interaction variants | Update Completion |
 | 2.2 | Include update, chat, user, and interaction identity | Interaction Router | `Event` types | Update Completion |
 | 2.3 | Acknowledge callback independently | Telegram Delivery, Update Intake | `AcknowledgeCallback` | Update Completion |
@@ -331,7 +320,7 @@ sequenceDiagram
 | 4.2 | Complete only after definitive acceptance | Outbox Service, Telegram Delivery | `DeliveryOutcome` | Delivery State |
 | 4.3 | Retain and bound transient retries | Outbox Service | `RetryPolicy` | Delivery State |
 | 4.4 | Honor Telegram retry delay | Outbox Service | `RetryAfter` | Delivery State |
-| 4.5 | Retain permanent failure reason | Outbox Service, Operational State | state/status contract | Delivery State |
+| 4.5 | Retain permanent failure reason | Outbox Service, Diagnostics | persisted state and diagnostics | Delivery State |
 | 4.6 | Quarantine indeterminate attempts | Outbox Service | `ReconciliationRequired` | Delivery State |
 | 4.7 | Recover retry and reconciliation work | Runtime App, Outbox Service | `Recover` | Startup, Delivery State |
 | 4.8 | Cancel waits and preserve incomplete intent | Outbox Service, Runtime App | worker lifecycle | Shutdown |
@@ -349,24 +338,24 @@ sequenceDiagram
 | 6.5 | Complete durably and do not repeat | Scheduler Service | terminal completion | Job lifecycle |
 | 6.6 | Persist cancellation and prevent execution | Scheduler Service | `Cancel` | Job lifecycle |
 | 6.7 | Retry retryable job outcome | Scheduler Service | `JobOutcome`, `RetryPolicy` | Job lifecycle |
-| 6.8 | Retain permanent job failure | Scheduler Service, Operational State | state/status contract | Job lifecycle |
-| 7.1 | Stop admission and become not ready | Runtime App, Operational State, Update Intake | lifecycle state | Shutdown |
+| 6.8 | Retain permanent job failure | Scheduler Service, Diagnostics | persisted state and diagnostics | Job lifecycle |
+| 7.1 | Stop admission and become not ready | Runtime App, Diagnostics, Update Intake | lifecycle state | Shutdown |
 | 7.2 | Drain only to configured deadline | Runtime App | shutdown deadline | Shutdown |
 | 7.3 | Cancel remaining work and preserve durable state | Runtime App, Outbox Service, Scheduler Service | worker lifecycle | Shutdown |
 | 7.4 | Release intake, storage, timers, and resources | Runtime App | reverse close order | Shutdown |
 | 7.5 | Recover durable work before readiness | Runtime App, Outbox Service, Scheduler Service | `Recover` | Startup |
 | 7.6 | Recover unknown send as reconciliation required | Outbox Service | startup state transition | Startup, Delivery State |
-| 8.1 | Report live while process can operate | Operational State | `/livez` | Health request |
-| 8.2 | Report not ready during unsafe states | Operational State, Runtime App | `/readyz` | Startup, Shutdown |
-| 8.3 | Report ready only after intake can process | Operational State, Runtime App | readiness state | Startup |
+| 8.1 | Emit lifecycle transitions | Runtime App, Diagnostics | `Diagnostic` | Startup, Shutdown |
+| 8.2 | Gate startup completion and shutdown admission | Runtime App | `Ready`, admission guard | Startup, Shutdown |
+| 8.3 | Report ready only after intake can process | Diagnostics, Runtime App | readiness state | Startup |
 | 8.4 | Diagnose state/failure with category and correlation | Diagnostics, all services | `Diagnostic` | All flows |
-| 8.5 | Distinguish durable-work states | Operational State, Outbox Service, Scheduler Service | `/statusz` aggregate counts | Status request |
-| 8.6 | Exclude secrets and content from outputs | Config Loader, Diagnostics, Operational State | redacted views | All flows |
+| 8.5 | Distinguish durable-work states | Diagnostics, Outbox Service, Scheduler Service | persisted state and diagnostics | Work lifecycle |
+| 8.6 | Exclude secrets and content from outputs | Config Loader, Diagnostics, Diagnostics | redacted views | All flows |
 | 8.7 | Minimize Telegram identifiers in diagnostics | Diagnostics | field allowlist | All flows |
 | 9.1 | Provide runtime capabilities without game rules | All runtime services | public ports | All flows |
 | 9.2 | Preserve opaque feature results | Interaction Router, Outbox Service, Scheduler Service | typed opaque payloads | Update and job flows |
 | 9.3 | Define routing but no game commands | Interaction Router | registration contracts | Update Completion |
-| 9.4 | Exclude multi-instance coordination | Runtime App, Operational State | deployment-mode status | Startup |
+| 9.4 | Exclude multi-instance coordination | Runtime App, Diagnostics | deployment-mode validation | Startup |
 | 9.5 | Expose ordinary messages without scoring | Update Intake, Interaction Router | `GroupMessage` | Update Completion |
 
 ## Components and Interfaces
@@ -382,7 +371,6 @@ sequenceDiagram
 | Telegram Delivery | Telegram adapter | Validate and perform callback, public, and ephemeral calls | 2.3, 3.1–3.6, 4.2–4.6 | Telegram API P0 | Service |
 | Outbox Service | Runtime service | Persist and advance recoverable delivery state | 4.1–4.8, 7.3, 7.5, 7.6, 8.5, 9.1, 9.2 | Persistence Kernel P0, Telegram Delivery P0 | Service, Batch, State |
 | Scheduler Service | Runtime service | Persist, claim, execute, retry, cancel, and recover jobs | 6.1–6.8, 7.3, 7.5, 8.5, 9.1, 9.2 | Persistence Kernel P0 | Service, Batch, State |
-| Operational State | Operations adapter | Expose lifecycle and aggregate work status | 1.4, 1.6, 4.5, 6.8, 7.1, 8.1–8.6, 9.4 | Runtime App P0 | API, State |
 | Runtime App | Composition | Enforce startup, recovery, readiness, and shutdown order | 1.1–1.6, 4.7, 4.8, 7.1–7.6, 8.1–8.4 | all components P0 | Service, State |
 
 ### Foundation
@@ -420,7 +408,7 @@ type WorkScope interface {
 
 **Responsibilities & Constraints**
 
-- Parses required bot token, storage directory, health address, Telegram timeout, busy timeout, handler timeout, retry bounds, claim lease, and shutdown deadline.
+- Parses required bot token, storage directory, Telegram timeout, busy timeout, handler timeout, retry bounds, claim lease, and shutdown deadline.
 - Validates absolute/clean storage placement, an explicit local-filesystem operator assertion, positive bounded durations, and single-instance deployment mode before any network or database activity. The runtime cannot reliably identify every network-mounted path and documents that residual operator responsibility.
 - Returns a separate redacted view; the token has no string formatting path that reveals its value.
 
@@ -721,34 +709,19 @@ A `Completed` outcome commits feature changes and job completion together. Retry
 
 ### Operations and Composition
 
-#### Operational State
+#### Lifecycle Diagnostics
 
-**Responsibilities & Constraints**
+Runtime App emits lifecycle diagnostics using the existing observability state constants. Startup phases use category `startup`; draining and stopped use `shutdown`. `Ready()` is a one-shot in-process startup handshake, not an ongoing health signal. Admission is protected by the runtime mutex and draining flag. Critical-worker failures remain fatal and cause orderly shutdown. Generic feature-worker failures use category `dispatch` and operation `execute`.
 
-- Maintains an atomic lifecycle state: `starting`, `recovering`, `ready`, `draining`, or `stopped`, plus dependency health and aggregate durable-work counts.
-- Serves `GET /livez`, `GET /readyz`, and `GET /statusz`. Liveness returns success while the process can continue; readiness returns success only in `ready` with required dependencies available.
-- Reports `deployment_mode=single_instance` and `multi_instance_supported=false` without attempting distributed enforcement.
-
-**Dependencies**
-
-- Inbound: Runtime App and durable workers — publish lifecycle/dependency/count snapshots (P0); probe clients — read endpoints (P1).
-- External: stdlib `net/http` — probe server (P1).
-
-| Endpoint | Success | Failure | Body constraints |
-|----------|---------|---------|------------------|
-| `GET /livez` | 200 while process can operate | 503 when terminal | lifecycle only |
-| `GET /readyz` | 200 only when accepting work | 503 otherwise | state and safe reason code |
-| `GET /statusz` | 200 while live | 503 when terminal | aggregate counts by work state and deployment mode |
-
-No endpoint includes tokens, paths containing secrets, message/private content, opaque payloads, raw errors, or Telegram IDs.
+There is no health package, listener, dependency-health snapshot, or aggregate-status API. Queue state is persisted by Outbox and Scheduler and inspected directly in automated tests. This removal supersedes health/probe instructions in earlier downstream specifications and historical verification records; gameplay HP and development commands are unaffected.
 
 #### Runtime App
 
 **Responsibilities & Constraints**
 
-- Owns every goroutine, worker cancellation function, wait group, timer, server, and close action.
+- Owns every goroutine, worker cancellation function, wait group, timer, and close action.
 - Runs the fixed startup order shown above and unwinds partial startup in reverse acquisition order.
-- On signal, marks not-ready before closing admission, drains to the configured deadline, cancels remaining work, waits for owned goroutines, and closes resources once.
+- On signal, closes admission and emits the draining diagnostic, drains to the configured deadline, cancels remaining work, waits for owned goroutines, and closes resources once.
 - Treats unexpected exit of intake or another required worker as a readiness failure and initiates coordinated shutdown; individual durable-work failures remain record-level outcomes.
 
 Telegram initialization constructs the pinned client, performs its bounded identity check, deletes the webhook without dropping updates, loads the durable cursor, and starts an owned poll loop that signals it has entered the polling state before readiness becomes true. A later temporary poll failure is retried without changing the cursor. Repeated responses that cannot expose any update ID are unsafe to acknowledge; after the configured bounded attempts they terminate intake, make readiness false, and trigger coordinated shutdown.
@@ -756,7 +729,7 @@ Telegram initialization constructs the pinned client, performs its bounded ident
 **Dependencies**
 
 - Inbound: command process and signal context — start and stop ownership (P0).
-- Outbound: Config Loader, Operational State, Persistence Kernel, Update Intake, Outbox Service, Scheduler Service, and Diagnostics — composed runtime (P0).
+- Outbound: Config Loader, Diagnostics, Persistence Kernel, Update Intake, Outbox Service, Scheduler Service, and Diagnostics — composed runtime (P0).
 
 ```go
 type Runtime interface {
@@ -833,7 +806,7 @@ erDiagram
 | `schema_migrations` | `version INTEGER`, `applied_at INTEGER` | primary key on version; versions never mutate |
 | `runtime_cursors` | `source TEXT`, `last_completed_id INTEGER`, `updated_at INTEGER` | primary key on source; monotonic update enforced by repository |
 | `processed_updates` | `update_id INTEGER`, `status TEXT`, `correlation_id TEXT`, `failure_code TEXT`, `completed_at INTEGER` | primary key; checked status; no message body or payload |
-| `outbound_deliveries` | ID, kind, versioned content blob, destination IDs, ephemeral authorization, status, retry policy, attempts, next time, reason, timestamps | checked state; due-state composite index; content never queried by status endpoint |
+| `outbound_deliveries` | ID, kind, versioned content blob, destination IDs, ephemeral authorization, status, retry policy, attempts, next time, reason, timestamps | checked state; due-state composite index; content excluded from diagnostics |
 | `outbound_attempts` | ID, delivery ID, correlation ID, start/finish time, outcome, safe reason | foreign key to delivery; index by delivery; no raw response body |
 | `scheduled_jobs` | ID, job type, payload version/blob, due time, state, retry policy, attempts, lease owner/time, reason, timestamps | checked state; due-state composite index; stable ID uniqueness |
 
@@ -862,7 +835,7 @@ All instants use UTC Unix milliseconds in SQLite and typed `time.Time` at Go bou
 |----------|------------------|
 | Invalid feature request | Reject before I/O with a field/reason code that contains no content |
 | Unauthorized or forbidden Telegram request | Permanent failure; retain safe API category |
-| Telegram conflict during polling | Mark dependency not ready and terminate intake because another receiver may exist |
+| Telegram conflict during polling | Emit a safe failure and terminate intake because another receiver may exist |
 | Telegram 429 | Retry no earlier than `retry_after`, subject to maximum attempts |
 | Pre-transmission/transient server failure | Bounded cancellation-aware retry with capped backoff |
 | Possibly transmitted request without response | Reconciliation required; no automatic resend |
@@ -872,7 +845,7 @@ All instants use UTC Unix milliseconds in SQLite and typed `time.Time` at Go bou
 
 ### Monitoring
 
-Diagnostics use categories `startup`, `intake`, `dispatch`, `callback_ack`, `delivery`, `reconciliation`, `scheduler`, `storage`, `health`, and `shutdown`. Each operation carries a correlation ID and safe outcome. Aggregate status distinguishes pending, attempting/claimed, retrying, reconciliation-required, completed, cancelled, and permanently failed where applicable. No baseline external telemetry dependency is introduced.
+Diagnostics use categories `startup`, `intake`, `dispatch`, `callback_ack`, `delivery`, `reconciliation`, `scheduler`, `storage`, and `shutdown`. Each operation carries a correlation ID and safe outcome. Persisted state distinguishes pending, attempting/claimed, retrying, reconciliation-required, completed, cancelled, and permanently failed where applicable. No baseline external telemetry dependency is introduced.
 
 ## Testing Strategy
 
@@ -901,10 +874,10 @@ Diagnostics use categories `startup`, `intake`, `dispatch`, `callback_ack`, `del
 
 ### End-to-End and Operational Validation
 
-- Launch one container against a temporary persistent volume and fake Telegram server; verify invalid config exits nonzero, migrations run, probes transition from not-ready to ready, and shutdown returns to not-ready before exit (1.1–1.4, 7.1–7.4, 8.1–8.3).
+- Launch one container against a temporary persistent volume and fake Telegram server; verify invalid config exits nonzero, migrations run, startup completion waits for recovery and polling, and shutdown closes admission before exit (1.1–1.4, 7.1–7.4, 8.1–8.3).
 - In a Telegram test group, register a development-only echo feature and demonstrate a public response, callback acknowledgement, restricted ephemeral response, ordinary-message intake, and no private/public fallback. Record reproducible commands without tokens (2.1–3.6, 9.5).
 - Interrupt the process after durable enqueue, during retry wait, during a scheduled claim, and after outbound transmission before response persistence; restart on the same volume and verify the required recovery states (4.7, 4.8, 6.4, 7.3, 7.5, 7.6).
-- Query `/statusz` with every durable state represented and assert only aggregate counts/deployment mode appear (8.5–8.7, 9.4).
+- Inspect persisted delivery and job states directly; verify logs retain only allowed diagnostics (8.5–8.7, 9.4).
 
 ### Quality Gates
 
@@ -912,17 +885,17 @@ Implementation runs the repository-prescribed devenv commands: `golangci-lint fm
 
 ## Security Considerations
 
-- The bot token is required from the environment, stored only in the validated config object, never persisted, and excluded from formatting, diagnostics, probes, examples, and test fixtures.
-- Message bodies, private response content, and opaque feature payloads are not logged. Runtime persistence stores outbound/job content only when needed for durable execution and status endpoints never expose it.
+- The bot token is required from the environment, stored only in the validated config object, never persisted, and excluded from formatting, diagnostics, examples, and test fixtures.
+- Message bodies, private response content, and opaque feature payloads are not logged. Runtime persistence stores outbound/job content only when needed for durable execution and diagnostics never expose it.
 - Raw Telegram identifiers are included in diagnostics only when required to correlate an operational incident; correlation IDs are preferred.
 - Bot API requests use HTTPS and context deadlines. Debug modes that log request/response bodies are not enabled in production composition.
-- Health/status endpoints expose no mutation operation. Binding and network exposure remain operator configuration; public exposure requires infrastructure access control outside this spec.
+- Runtime creates no inbound HTTP listener. Telegram communication remains outbound long polling.
 - SQLite paths and DSN values are application-constructed from validated settings; features never supply pragmas, filenames, or raw migration paths.
 
 ## Performance and Scalability
 
 - The design targets one replica and one in-flight inbound update. Correctness takes precedence over intake concurrency; poll-to-terminal latency and Telegram backlog warnings provide evidence for later revalidation.
-- SQLite remains single-writer. Transactions exclude network calls, use immediate acquisition, close reads promptly, cap connections, and bound contention. WAL size/checkpoint health is observable without exposing data.
+- SQLite remains single-writer. Transactions exclude network calls, use immediate acquisition, close reads promptly, cap connections, and bound contention. Storage failures use privacy-safe diagnostics.
 - Outbox and scheduler each default to one worker. Their conditional claims preserve correctness if internal concurrency is later raised, but multiple processes are unsupported.
 - Retry timers use one cancellation-aware next-due wakeup per worker rather than one goroutine/timer per item. The database is the source of truth after every wake or restart.
 - No unsubstantiated throughput SLA is introduced. Implementation benchmarks only after real test-group and SQLite workload evidence identifies a bottleneck.

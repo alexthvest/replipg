@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"testing"
 	"time"
@@ -57,7 +56,7 @@ func TestFeatureFactoriesAndLivePortsBeforeAdmission(t *testing.T) {
 			cfg := testConfig(t)
 			transport := &deadlineTransport{}
 			registered := false
-			r, err := New(cfg, Options{TelegramBaseURL: "http://telegram.invalid", HTTPClient: &http.Client{Transport: transport}, Diagnostics: observability.NewJSONSink(io.Discard), Listen: func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }, Register: func(ports Registrations) error {
+			r, err := New(cfg, Options{TelegramBaseURL: "http://telegram.invalid", HTTPClient: &http.Client{Transport: transport}, Diagnostics: observability.NewJSONSink(io.Discard), Register: func(ports Registrations) error {
 				if ports.Membership == nil || ports.Menus == nil {
 					return errors.New("missing live ports")
 				}
@@ -114,7 +113,7 @@ func TestFeatureWorkerSupervisionAndDrain(t *testing.T) {
 			transport := &deadlineTransport{}
 			worker := &drainRunner{entered: make(chan context.Context, 1), release: make(chan struct{})}
 			fault := make(chan struct{})
-			r, err := New(cfg, Options{TelegramBaseURL: "http://telegram.invalid", HTTPClient: &http.Client{Transport: transport}, Diagnostics: observability.NewJSONSink(io.Discard), Listen: func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }, Workers: []WorkerFactory{{Name: "menus", New: func(runtimecontract.Transactor, runtimecontract.GroupMenuWriter) (Worker, error) {
+			r, err := New(cfg, Options{TelegramBaseURL: "http://telegram.invalid", HTTPClient: &http.Client{Transport: transport}, Diagnostics: observability.NewJSONSink(io.Discard), Workers: []WorkerFactory{{Name: "menus", New: func(runtimecontract.Transactor, runtimecontract.GroupMenuWriter) (Worker, error) {
 				if mode == "critical" || mode == "panic" {
 					return featureWorkerFunc(func(context.Context) (bool, error) {
 						<-fault

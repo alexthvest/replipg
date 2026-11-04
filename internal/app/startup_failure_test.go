@@ -5,15 +5,12 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/outbox"
 	"github.com/alexthvest/replipg/internal/persistence"
@@ -31,10 +28,7 @@ func TestStartupInvalidConfigurationPreventsAcquisition(t *testing.T) {
 			called = true
 			return nil, errors.New("unexpected acquisition")
 		},
-		Listen: func(string, string) (net.Listener, error) {
-			called = true
-			return nil, errors.New("unexpected acquisition")
-		},
+
 		Register: func(Registrations) error {
 			called = true
 			return nil
@@ -66,7 +60,6 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 			`INSERT INTO schema_migrations VALUES(5,1)`,
 		}},
 		{name: "failing_migration", stage: "migrations", fixture: []string{`CREATE TABLE processed_updates(poison TEXT)`}},
-		{name: "listener", stage: "health_listener"},
 		{name: "outbox_recovery", stage: "outbox_recovery", migrate: true, fixture: []string{
 			`INSERT INTO outbound_deliveries(id,kind,content_version,content,destination_chat_id,replace_callback_message,state,max_attempts,initial_delay_ms,max_delay_ms,attempt_count,created_at,updated_at) VALUES('interrupted','feature',1,X'01',-123,0,'attempting',3,1,10,1,1,1)`,
 			`CREATE TRIGGER fail_recovery BEFORE UPDATE ON outbound_deliveries BEGIN SELECT RAISE(ABORT,'private-startup-fixture'); END`,
@@ -93,10 +86,9 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 			defer cancel()
 
 			var db *persistence.DB
-			var listener *startupListener
 			var diagnostics bytes.Buffer
 
-			requestCount, registrations, listens := 0, 0, 0
+			requestCount, registrations := 0, 0
 			options := Options{
 				Diagnostics:     observability.NewJSONSink(&diagnostics),
 				TelegramBaseURL: "http://telegram.invalid",
@@ -130,20 +122,7 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 					}
 					return db, nil
 				},
-				Listen: func(string, string) (net.Listener, error) {
-					listens++
-					if tc.name == "listener" {
-						return nil, errors.New(startupPrivateFixture)
-					}
 
-					ln, err := net.Listen("tcp", "127.0.0.1:0")
-					if err != nil {
-						return nil, err
-					}
-
-					listener = &startupListener{Listener: ln, db: db}
-					return listener, nil
-				},
 				Register: func(registrationsForStartup Registrations) error {
 					registrations++
 					if tc.name == "registration" {
@@ -169,19 +148,13 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 				t.Fatalf("Telegram requests = %d, want %d", requestCount, tc.requests)
 			}
 
-			if tc.stage == "storage" || tc.stage == "migrations" {
-				if listens != 0 {
-					t.Fatal("listener acquired after storage failure")
-				}
-			}
-
-			if tc.stage == "storage" || tc.stage == "migrations" || tc.stage == "health_listener" || strings.HasSuffix(tc.stage, "_recovery") {
+			if tc.stage == "storage" || tc.stage == "migrations" || strings.HasSuffix(tc.stage, "_recovery") {
 				if registrations != 0 {
 					t.Fatal("registration ran after earlier failure")
 				}
 			}
 
-			assertStartupResourcesClosed(t, cfg, db, listener)
+			assertStartupResourcesClosed(t, cfg, db)
 
 			if tc.name == "failing_migration" {
 				reopened, err := persistence.Open(ctx, persistence.Options{StorageDir: cfg.StorageDir, StorageFilesystem: cfg.StorageFilesystem, BusyTimeout: cfg.BusyTimeout})
@@ -220,25 +193,6 @@ func startupResponse(req *http.Request) *http.Response {
 		body = `{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`
 	}
 	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}
-}
-
-type startupListener struct {
-	net.Listener
-	db       *persistence.DB
-	mu       sync.Mutex
-	closed   bool
-	closeErr error
-}
-
-func (l *startupListener) Close() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.closed = true
-	var value int
-
-	l.closeErr = l.db.QueryRowContext(context.Background(), "SELECT 1").Scan(&value)
-	return l.Listener.Close()
 }
 
 func migrateStartupFixture(t *testing.T, ctx context.Context, db *persistence.DB) {
@@ -281,28 +235,10 @@ func assertStartupFailure(t *testing.T, app *Runtime, err error, stage, diagnost
 	default:
 	}
 
-	if state := app.State().Snapshot(); state.Ready || state.Lifecycle != health.Stopped {
-		t.Fatalf("failed startup state = %+v", state)
-	}
 }
 
-func assertStartupResourcesClosed(t *testing.T, cfg config.Config, db *persistence.DB, listener *startupListener) {
+func assertStartupResourcesClosed(t *testing.T, cfg config.Config, db *persistence.DB) {
 	t.Helper()
-
-	if listener != nil {
-		listener.mu.Lock()
-		closed, closeErr := listener.closed, listener.closeErr
-		listener.mu.Unlock()
-		if !closed || closeErr != nil {
-			t.Fatalf("listener must close before database: closed=%v db query=%v", closed, closeErr)
-		}
-
-		conn, err := net.DialTimeout("tcp", listener.Addr().String(), time.Second)
-		if err == nil {
-			_ = conn.Close()
-			t.Fatal("health listener still accepts connections")
-		}
-	}
 
 	if db == nil {
 		return
@@ -340,7 +276,6 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 
 			entered, exited := make(chan struct{}), make(chan struct{})
 			var db *persistence.DB
-			var listener *startupListener
 			var diagnostics bytes.Buffer
 
 			app, err := New(cfg, Options{
@@ -360,15 +295,6 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 
 					db, err = persistence.Open(ctx, opts)
 					return db, err
-				},
-				Listen: func(string, string) (net.Listener, error) {
-					ln, err := net.Listen("tcp", "127.0.0.1:0")
-					if err != nil {
-						return nil, err
-					}
-
-					listener = &startupListener{Listener: ln, db: db}
-					return listener, nil
 				},
 			})
 			if err != nil {
@@ -401,7 +327,7 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 				wantStage = "intake_initialization"
 			}
 			assertStartupFailure(t, app, err, wantStage, diagnostics.String(), cfg)
-			assertStartupResourcesClosed(t, cfg, db, listener)
+			assertStartupResourcesClosed(t, cfg, db)
 		})
 	}
 }

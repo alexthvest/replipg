@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/health"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/outbox"
@@ -22,7 +20,7 @@ import (
 	"github.com/alexthvest/replipg/internal/scheduler"
 )
 
-func TestRequiredLoopExitRemovesReadiness(t *testing.T) {
+func TestRequiredLoopExitReportsCriticalFailure(t *testing.T) {
 	for _, exit := range []error{nil, errors.New("private cause")} {
 		t.Run("exit", func(t *testing.T) {
 			r, err := New(testConfig(t), Options{Diagnostics: observability.NewJSONSink(io.Discard)})
@@ -30,11 +28,7 @@ func TestRequiredLoopExitRemovesReadiness(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			for _, d := range []health.Dependency{health.Storage, health.Telegram, health.Intake, health.Outbox, health.Scheduler} {
-				_ = r.state.SetDependency(d, true)
-			}
-
-			r.lifecycle(context.Background(), health.Ready)
+			r.lifecycle(context.Background(), observability.StateReady)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -44,8 +38,8 @@ func TestRequiredLoopExitRemovesReadiness(t *testing.T) {
 			r.startRequired(ctx, &owned, results, "intake", func() error { return exit })
 			owned.Wait()
 
-			if r.state.Snapshot().Ready {
-				t.Fatal("required loop exited while readiness remained true")
+			if !r.criticalFailed {
+				t.Fatal("required loop exit did not set critical failure")
 			}
 
 			select {
@@ -176,11 +170,7 @@ func TestRecordFailuresKeepRequiredWorkersReady(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			for _, d := range []health.Dependency{health.Storage, health.Telegram, health.Intake, health.Outbox, health.Scheduler} {
-				_ = r.state.SetDependency(d, true)
-			}
-
-			r.lifecycle(context.Background(), health.Ready)
+			r.lifecycle(context.Background(), observability.StateReady)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -200,8 +190,8 @@ func TestRecordFailuresKeepRequiredWorkersReady(t *testing.T) {
 				t.Fatal("record failure stopped required worker")
 			}
 
-			if !r.state.Snapshot().Ready {
-				t.Fatal("record failure removed readiness")
+			if r.criticalFailed {
+				t.Fatal("record failure became a critical failure")
 			}
 
 			cancel()
@@ -215,8 +205,8 @@ func TestRecordFailuresKeepRequiredWorkersReady(t *testing.T) {
 	}
 }
 
-func TestCriticalIntakeAndHealthExitStopRuntime(t *testing.T) {
-	for _, stage := range []string{"intake", "health_server", "storage"} {
+func TestCriticalIntakeAndStorageExitStopRuntime(t *testing.T) {
+	for _, stage := range []string{"intake", "storage"} {
 		t.Run(stage, func(t *testing.T) {
 			release := make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -242,15 +232,9 @@ func TestCriticalIntakeAndHealthExitStopRuntime(t *testing.T) {
 
 			defer releaseOnce.Do(func() { close(release) })
 
-			var listener net.Listener
 			var database *persistence.DB
 
-			r, err := New(testConfig(t), Options{Diagnostics: observability.NewJSONSink(io.Discard), TelegramBaseURL: server.URL, HTTPClient: server.Client(), Listen: func(string, string) (net.Listener, error) {
-				var listenErr error
-
-				listener, listenErr = net.Listen("tcp", "127.0.0.1:0")
-				return listener, listenErr
-			}, Open: func(ctx context.Context, options persistence.Options) (*persistence.DB, error) {
+			r, err := New(testConfig(t), Options{Diagnostics: observability.NewJSONSink(io.Discard), TelegramBaseURL: server.URL, HTTPClient: server.Client(), Open: func(ctx context.Context, options persistence.Options) (*persistence.DB, error) {
 				var openErr error
 
 				database, openErr = persistence.Open(ctx, options)
@@ -278,10 +262,6 @@ func TestCriticalIntakeAndHealthExitStopRuntime(t *testing.T) {
 				if err = database.Close(); err != nil {
 					t.Fatal(err)
 				}
-			default:
-				if err = listener.Close(); err != nil {
-					t.Fatal(err)
-				}
 			}
 
 			select {
@@ -303,9 +283,6 @@ func TestCriticalIntakeAndHealthExitStopRuntime(t *testing.T) {
 				t.Fatal("critical worker exit did not stop owned runtime")
 			}
 
-			if snapshot := r.state.Snapshot(); snapshot.Ready || snapshot.Lifecycle != health.Stopped {
-				t.Fatalf("unsafe state: %+v", snapshot)
-			}
 		})
 	}
 }

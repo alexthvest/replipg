@@ -100,7 +100,6 @@ func TestInventoryPostCommitDeliveryAndPersonalPrivacy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.captureProbes(t)
 	h.stop(t)
 	h.assertNoSensitiveDiagnostics(t, sensitive...)
 	h = startCharacterRuntime(t, dir, productionCharacterOptions(t), false)
@@ -125,7 +124,6 @@ func TestInventoryPostCommitDeliveryAndPersonalPrivacy(t *testing.T) {
 		}
 	}
 
-	h.captureProbes(t)
 	h.stop(t)
 	h.assertNoSensitiveDiagnostics(t, sensitive...)
 }

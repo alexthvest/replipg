@@ -1,5 +1,8 @@
 > Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
 
+> Historical record: health endpoints, dependency-health state, and the probe helper were removed on 2026-11-04 by user request. Their recorded checks describe the earlier implementation. Current behavior uses structured lifecycle diagnostics and in-process startup synchronization; see requirements.md and design.md.
+
+
 # Telegram Runtime Implementation and Validation
 
 ## Validation Report
@@ -132,3 +135,13 @@ The automated revalidation remains separate from the owner's subsequent acceptan
 - EVIDENCE: All 53 subtasks checked; existing 60/60 requirements, independent design/integration reviews, and explicit owner acceptance of the remaining manual gate. Shared repository checks were refreshed immediately before this documentation-only closure: `./scripts/check` exited 0 (formatting, full tests, vet, lint with 0 issues, and race); `./scripts/smoke` exited 0 (production binary smoke 0.455s).
 - GAPS: No remaining runtime acceptance blocker. Detailed live per-probe observations were not supplied; gate closure records the owner's explicit acceptance rather than inventing those observations.
 - NOTES: No code, configuration, deployment, or real Telegram messaging changes. Single-instance, local-storage, privacy, and reconciliation constraints remain in force.
+
+## Health removal verification (2026-11-04)
+
+User-approved scope: remove operational HTTP health endpoints, address configuration, listener injection, dependency snapshots, aggregate work status, and the probe helper. Character health and Telegram development commands retain their behavior. Lifecycle events use structured startup/shutdown diagnostics; `Runtime.Ready()` remains the in-process startup handshake.
+
+- `devenv shell -- golangci-lint fmt ./...`: completed.
+- `./scripts/check`: configuration verification, formatting verification, lint (0 issues), full tests, build, and race tests passed.
+- Built-binary smoke coverage exercises Telegram interactions and signal shutdown while the former default health port is occupied. Startup and recovery tests use controlled Telegram requests and `Ready()`; shutdown tests assert admission rejection and resource cleanup. Queue recovery uses direct database assertions.
+- No database migration or deployment service is introduced. Remove old endpoint probes and `REPLIPG_HEALTH_ADDRESS` from deployment configuration.
+- Live Telegram verification was not performed in this run. Automated transport and production-binary fixtures supplied the integration evidence above; previous live acceptance is not evidence for this change.

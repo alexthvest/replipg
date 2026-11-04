@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,8 +43,6 @@ type characterRuntimeFixture struct {
 	stopping       chan struct{}
 	menus          chan []characterMenuEntry
 	diagnostics    bytes.Buffer
-	probes         bytes.Buffer
-	healthURL      string
 }
 
 func startCharacterRuntime(t *testing.T, dir string, options app.Options, reject bool) *characterRuntimeFixture {
@@ -128,13 +125,6 @@ func startCharacterRuntime(t *testing.T, dir string, options app.Options, reject
 	options.TelegramBaseURL = h.server.URL
 	options.HTTPClient = h.server.Client()
 	options.Diagnostics = observability.NewJSONSink(&h.diagnostics)
-	options.Listen = func(string, string) (net.Listener, error) {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		if err == nil {
-			h.healthURL = "http://" + listener.Addr().String()
-		}
-		return listener, err
-	}
 	options.Open = func(ctx context.Context, o persistence.Options) (*persistence.DB, error) {
 		db, err := persistence.Open(ctx, o)
 		h.db = db
@@ -253,25 +243,6 @@ func (h *characterRuntimeFixture) assertMenu(t *testing.T, names ...string) {
 	}
 }
 
-func (h *characterRuntimeFixture) captureProbes(t *testing.T) {
-	t.Helper()
-	client := &http.Client{Timeout: 2 * time.Second}
-	for _, path := range []string{"/livez", "/readyz", "/statusz"} {
-		response, err := client.Get(h.healthURL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		body, readErr := io.ReadAll(io.LimitReader(response.Body, 32<<10))
-		closeErr := response.Body.Close()
-		if readErr != nil || closeErr != nil || response.StatusCode != http.StatusOK {
-			t.Fatal("health probe failed")
-		}
-
-		h.probes.Write(body)
-	}
-}
-
 func (h *characterRuntimeFixture) assertNoSensitiveDiagnostics(t *testing.T, sensitive ...string) {
 	t.Helper()
 
@@ -279,13 +250,13 @@ func (h *characterRuntimeFixture) assertNoSensitiveDiagnostics(t *testing.T, sen
 		t.Fatal("diagnostics must be read after runtime shutdown")
 	}
 
-	if h.diagnostics.Len() == 0 || h.probes.Len() == 0 {
-		t.Fatal("missing diagnostic or probe evidence")
+	if h.diagnostics.Len() == 0 {
+		t.Fatal("missing diagnostic evidence")
 	}
 
 	for _, content := range sensitive {
-		if content != "" && (strings.Contains(h.diagnostics.String(), content) || strings.Contains(h.probes.String(), content)) {
-			t.Fatal("sensitive fixture appeared in diagnostics or health probes")
+		if content != "" && strings.Contains(h.diagnostics.String(), content) {
+			t.Fatal("sensitive fixture appeared in diagnostics")
 		}
 	}
 }
@@ -391,7 +362,6 @@ func TestCharacterRejectedDeliveryRetainsState(t *testing.T) {
 
 	// Processing this next update proves the first rejected delivery completed.
 	h.command(t, 2, 7, -100, "/character")
-	h.captureProbes(t)
 	h.stop(t)
 	h.assertNoSensitiveDiagnostics(t, failedReply.text, "/dev_character_damage 10", "private delivery fixture", commandEnvironment()[config.EnvBotToken])
 	var sawRejectedDelivery bool
@@ -684,7 +654,6 @@ func TestCharacterRuntimeSensitiveInputsAndActorIsolation(t *testing.T) {
 		t.Fatal("untrusted actor or target arguments created or mutated a character")
 	}
 
-	h.captureProbes(t)
 	h.stop(t)
 	h.assertNoSensitiveDiagnostics(t, commandSecret, profileName, profileUsername, chatName, first.text, other.text, observed.text, usage.text, invalidDamage.text, commandEnvironment()[config.EnvBotToken])
 	select {

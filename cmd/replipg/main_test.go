@@ -18,8 +18,8 @@ import (
 func commandEnvironment() map[string]string {
 	return map[string]string{
 		config.EnvBotToken: "123456:COMMAND_SECRET", config.EnvStorageDir: "/var/lib/replipg",
-		config.EnvStorageFilesystem: "local", config.EnvHealthAddress: "127.0.0.1:8080",
-		config.EnvPollTimeout: "30s", config.EnvBusyTimeout: "5s", config.EnvHandlerTimeout: "30s",
+		config.EnvStorageFilesystem: "local",
+		config.EnvPollTimeout:       "30s", config.EnvBusyTimeout: "5s", config.EnvHandlerTimeout: "30s",
 		config.EnvRetryInitial: "250ms", config.EnvRetryMaximum: "30s", config.EnvRetryAttempts: "5",
 		config.EnvClaimLease: "1m", config.EnvShutdownDeadline: "20s", config.EnvDeploymentMode: "single",
 	}

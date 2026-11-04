@@ -191,7 +191,7 @@ func TestIdentifierPolicyRejectsExcessiveAndWrongCategoryIdentifiers(t *testing.
 		)
 	}
 
-	for _, category := range []EventCategory{CategoryStartup, CategoryReconciliation, CategoryScheduler, CategoryStorage, CategoryHealth, CategoryShutdown} {
+	for _, category := range []EventCategory{CategoryStartup, CategoryReconciliation, CategoryScheduler, CategoryStorage, CategoryShutdown} {
 		for _, identifier := range []struct {
 			name   string
 			fields SafeFields
@@ -242,7 +242,7 @@ func TestDeclaredOperationalVocabularyIsAccepted(t *testing.T) {
 		OperationPoll, OperationReceive, OperationDispatch, OperationAcknowledge,
 		OperationSend, OperationSendPublic, OperationSendEphemeral, OperationAttempt,
 		OperationReconcile, OperationSchedule, OperationExecute, OperationTransaction,
-		OperationProbe, OperationStateChange, OperationDrain, OperationClose,
+		OperationStateChange, OperationDrain, OperationClose,
 	}
 	for _, operation := range operations {
 		if _, err := NewDiagnostic(CategoryStartup, correlationID, operation, OutcomeOK, SafeFields{}); err != nil {
@@ -287,7 +287,6 @@ func TestJSONSinkSupportsEveryCategoryAndOmitsUnsetFields(t *testing.T) {
 		CategoryReconciliation,
 		CategoryScheduler,
 		CategoryStorage,
-		CategoryHealth,
 		CategoryShutdown,
 	}
 	for _, category := range categories {
@@ -357,7 +356,7 @@ func TestSensitiveOrInvalidValuesAreRejectedWithoutDisclosure(t *testing.T) {
 			return Diagnostic{Category: CategoryStorage, CorrelationID: validCorrelation, Operation: value, Outcome: "failed"}
 		}, field: "operation"},
 		{name: "negative duration", event: func(string) Diagnostic {
-			return Diagnostic{Category: CategoryHealth, CorrelationID: validCorrelation, Operation: "probe", Outcome: "failed", Fields: SafeFields{Duration: -time.Second}}
+			return Diagnostic{Category: CategoryShutdown, CorrelationID: validCorrelation, Operation: OperationDrain, Outcome: "failed", Fields: SafeFields{Duration: -time.Second}}
 		}, field: "duration"},
 		{name: "invalid retry time", event: func(string) Diagnostic {
 			return Diagnostic{Category: CategoryDelivery, CorrelationID: validCorrelation, Operation: "send", Outcome: "retryable", Fields: SafeFields{RetryAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)}}
