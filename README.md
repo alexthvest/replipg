@@ -275,3 +275,47 @@ Run `./scripts/check`, `./scripts/smoke`, and
 `devenv shell -- go test -count=1 ./internal/localization ./internal/settings`.
 See `.kiro/specs/localization/manual-verification.md` for Telegram test-group
 steps and the separate live evidence status.
+
+## Sharing personal views
+
+Character summaries, inventory pages and item details have a **Share** button.
+Opening, navigating or managing equipment stays personal. Settings and development
+responses have no Share button. Failed personal delivery has no public fallback.
+
+Press Share to post an ordinary, read-only copy in the same group, attributed to
+your numeric user identity even without a username. The copy preserves the body
+and language you were viewing; it has no buttons. Later gameplay, browsing or
+language changes do not update it. Each displayed view has a 30-second cooldown
+from its last confirmed successful publication. Pressing again during pending
+work or cooldown gives personal guidance. After the cooldown, deliberately press
+Share again to create another copy; all earlier public copies remain.
+
+Share follows the source menu's existing usability rules. Inventory controls
+retain their five-minute deadline; reopen `/inventory` when needed. Sharing adds
+no separate expiry to character views. A definite publication failure permits
+another deliberate attempt. An uncertain outcome means the copy may already be
+visible: check the group before trying again when guidance permits it. Uncertain
+sends are not automatically reposted; exactly-once delivery is not guaranteed.
+A failed personal confirmation does not trigger another public post.
+
+Accepted delivery content is retained temporarily for delivery and recovery.
+Resolved public and personal-feedback delivery content is cleaned independently
+after 24 hours from its recorded outcome; unresolved work remains until safely
+resolved. This cleanup does not delete public Telegram messages. Usable views
+retain authorization metadata, and accepted actions retain replay protection;
+there is no permanent archive of private view bodies.
+
+Sharing migration 0005 is additive. Stop the single active replica and back up
+the entire local SQLite storage directory before upgrading. Schema-4 binaries
+refuse schema 5; restore a compatible stopped whole-directory backup with its
+matching binary, or roll forward. Sharing does not change command-menu scopes.
+
+Reproduce the automated character journey without Telegram credentials:
+
+```sh
+devenv shell -- go test ./cmd/replipg -run TestSharingCharacterMilestone -count=1
+```
+
+See [sharing verification](.kiro/specs/menu-sharing/manual-verification.md) for
+isolated test-group steps, expected observations and separate automated/live
+evidence. Live sharing checkpoints remain unperformed until recorded there.

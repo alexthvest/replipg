@@ -59,7 +59,7 @@ func TestInventoryMigrationFromVersionTwoAndReopen(t *testing.T) {
 	if err := db.Migrate(ctx, runtimeMigrationsForTest(t)); err != nil {
 		t.Fatal(err)
 	}
-	assertLedgerVersions(t, db, []int{1, 2, 3, 4})
+	assertLedgerVersions(t, db, []int{1, 2, 3, 4, 5})
 	assertRowCount(t, db, "inventories", "1=1", 0)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)

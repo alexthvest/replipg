@@ -1,6 +1,16 @@
 package localization
 
 var manifest = map[Key]messageSpec{
+	SharingShare:                            {limit: 64, params: map[string]ParamKind{}},
+	SharingAttribution:                      {limit: 4096, params: map[string]ParamKind{"user_id": IntegerParam}},
+	SharingPending:                          {limit: 4096, params: map[string]ParamKind{}},
+	SharingSuccess:                          {limit: 4096, params: map[string]ParamKind{}},
+	SharingFailure:                          {limit: 4096, params: map[string]ParamKind{}},
+	SharingUnknown:                          {limit: 4096, params: map[string]ParamKind{}},
+	SharingUnknownRetry:                     {limit: 4096, params: map[string]ParamKind{}},
+	SharingCooldown:                         {limit: 4096, params: map[string]ParamKind{"seconds": IntegerParam}},
+	SharingUnavailable:                      {limit: 4096, params: map[string]ParamKind{}},
+	SharingReopen:                           {limit: 4096, params: map[string]ParamKind{}},
 	Key("character.created"):                {limit: 4096, plural: false, params: map[string]ParamKind{}},
 	Key("character.summary"):                {limit: 4096, plural: false, params: map[string]ParamKind{"health": IntegerParam, "max": IntegerParam, "attack": IntegerParam, "defense": IntegerParam, "state": TextParam}},
 	Key("character.recovery"):               {limit: 4096, plural: false, params: map[string]ParamKind{"deadline": TextParam}},

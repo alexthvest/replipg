@@ -11,6 +11,7 @@ import (
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
+	sharingcontract "github.com/alexthvest/replipg/internal/sharing/contract"
 )
 
 // Register installs the production personal inventory command and opaque controls.
@@ -106,6 +107,10 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+		content, err = p.decorate(ctx, scope.DBTX(), now, e.Identity, locale, sharingcontract.InventoryPage, 0, content)
+		if err != nil {
+			return interaction.HandlerResult{}, err
+		}
 		return inventoryResponse(e.Identity, auth, content)
 	case interaction.Callback:
 		if e.ActorIsBot || e.Update <= 0 || e.User <= 0 || e.Chat >= 0 || e.QueryID == "" || e.EphemeralMessageID <= 0 || int64(int(e.EphemeralMessageID)) != int64(e.EphemeralMessageID) || !inventoryGroup(e.ChatKind) {
@@ -169,6 +174,14 @@ func (h inventoryHandler) handle(ctx context.Context, scope runtimecontract.Work
 			}
 			return inventoryResponseForMessage(e.Identity, auth, int(e.EphemeralMessageID), runtimecontract.MessageContent{Text: value})
 		}
+		if err != nil {
+			return interaction.HandlerResult{}, err
+		}
+		kind := sharingcontract.ItemDetails
+		if control.Action == "page" {
+			kind = sharingcontract.InventoryPage
+		}
+		content, err = p.decorate(ctx, scope.DBTX(), now, e.Identity, locale, kind, int64(e.EphemeralMessageID), content)
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}

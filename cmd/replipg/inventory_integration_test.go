@@ -458,7 +458,7 @@ func TestInventoryProductionBinaryInspectionRestart(t *testing.T) {
 	coin := first.button(t, "2")
 	h.submit(t, 7, -100, "owner_one", coin, true)
 	detail := h.reply(t, 7, -100)
-	if !strings.Contains(detail.text, "Coin • owner_one") || !strings.Contains(detail.text, "Category: inert") || !strings.Contains(detail.text, "Owned: 10") || len(detail.buttons) != 1 || detail.buttons[0][0].Text != "Back" {
+	if !strings.Contains(detail.text, "Coin • owner_one") || !strings.Contains(detail.text, "Category: inert") || !strings.Contains(detail.text, "Owned: 10") || len(detail.buttons) != 2 || detail.buttons[0][0].Text != "Back" {
 		t.Fatal("inert detail gained mechanics or lost owned quantity")
 	}
 	h.submit(t, 7, -100, "owner_one", detail.button(t, "Back"), true)
@@ -468,7 +468,7 @@ func TestInventoryProductionBinaryInspectionRestart(t *testing.T) {
 	}
 	h.submit(t, 7, -100, "owner_one", first.button(t, "3"), true)
 	potion := h.reply(t, 7, -100)
-	if !strings.Contains(potion.text, "Usable during battle") || len(potion.buttons) != 1 || potion.buttons[0][0].Text != "Back" {
+	if !strings.Contains(potion.text, "Usable during battle") || len(potion.buttons) != 2 || potion.buttons[0][0].Text != "Back" {
 		t.Fatal("healing detail exposed standalone consumption")
 	}
 	h.submit(t, 7, -200, "", "/inventory", false)

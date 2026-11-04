@@ -6,6 +6,7 @@ import (
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
+	sharingcontract "github.com/alexthvest/replipg/internal/sharing/contract"
 	"reflect"
 	"strings"
 	"time"
@@ -80,6 +81,17 @@ func (h commandHandler) Handle(ctx context.Context, scope runtimecontract.WorkSc
 		}
 	}
 	result := personalResponse(command, text)
+	if h.presentation != nil && h.presentation.Sharing != nil {
+		response := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+		response.Content, err = h.presentation.Sharing.Decorate(ctx, scope.DBTX(), sharingcontract.View{
+			Owner: command.User, Destination: response.Destination,
+			Kind: sharingcontract.CharacterSummary, Locale: locale, Body: response.Content,
+		})
+		if err != nil {
+			return interaction.HandlerResult{}, err
+		}
+		result.ImmediateResponses[0] = response
+	}
 	if err := runtimecontract.ValidateResponse(result.ImmediateResponses[0]); err != nil {
 		return interaction.HandlerResult{}, err
 	}

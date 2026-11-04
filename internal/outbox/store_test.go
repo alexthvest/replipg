@@ -192,6 +192,18 @@ func TestSafeStatusForEveryState(t *testing.T) {
 		if err != nil || status.State != state {
 			t.Fatalf("status = %+v, %v", status, err)
 		}
+		if err := db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
+			transactional, err := store.StatusInTransaction(ctx, tx, "fixed-id")
+			if err != nil {
+				return err
+			}
+			if transactional != status {
+				t.Errorf("transactional status = %+v, want %+v", transactional, status)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
 		if strings.Contains(fmt.Sprintf("%+v", status), "sensitive") || strings.Contains(fmt.Sprintf("%+v", status), "private") {
 			t.Fatal("status leaks content")
 		}
@@ -333,4 +345,60 @@ func enqueue(t *testing.T, db *persistence.DB, store *Store, req runtimecontract
 		_, err := store.Enqueue(ctx, tx, req)
 		return err
 	})
+}
+
+func TestStatusInTransactionReadsCallerWrites(t *testing.T) {
+	db := openDB(t, t.TempDir())
+	now := time.Unix(1000, 0).UTC()
+	store := newTestStore(t, db, now, publicResponse())
+	store.generateID = func() (runtimecontract.DeliveryID, error) { return "transactional", nil }
+	abort := errors.New("rollback")
+	err := db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
+		id, err := store.Enqueue(ctx, tx, deliveryRequest(t, 1))
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE outbound_deliveries SET state='completed',next_attempt_at=NULL,terminal_at=?,updated_at=?,reason_code='private raw failure' WHERE id=?`, now.UnixMilli()+20, now.UnixMilli()+30, id); err != nil {
+			return err
+		}
+		status, err := store.StatusInTransaction(ctx, tx, id)
+		if err != nil {
+			t.Errorf("transaction status: %v", err)
+			return abort
+		}
+		if status.ID != id || status.State != StateCompleted || !status.TerminalAt.Equal(now.Add(20*time.Millisecond)) || !status.UpdatedAt.Equal(now.Add(30*time.Millisecond)) || status.ReasonCode != "delivery_failed" {
+			t.Errorf("transaction status = %+v", status)
+		}
+		if _, err := store.StatusInTransaction(ctx, tx, "missing"); !errors.Is(err, ErrNotFound) {
+			t.Errorf("missing status = %v", err)
+		}
+		return abort
+	})
+	if !errors.Is(err, abort) {
+		t.Fatal(err)
+	}
+	if _, err := store.Status(context.Background(), "transactional"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("status after rollback = %v", err)
+	}
+}
+
+func TestStatusInTransactionValidatesCapabilityAndCancellation(t *testing.T) {
+	store := NewStore(nil, Options{})
+	var typedNil *persistence.DB
+	for _, tx := range []runtimecontract.DBTX{nil, typedNil} {
+		_, err := store.StatusInTransaction(context.Background(), tx, "id")
+		var invalid *runtimecontract.ValidationError
+		if !errors.As(err, &invalid) {
+			t.Errorf("nil transaction = %v", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := store.StatusInTransaction(ctx, nil, "id"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled status = %v", err)
+	}
+	db := openDB(t, t.TempDir())
+	if _, err := store.StatusInTransaction(context.Background(), db, ""); err == nil {
+		t.Fatal("empty ID accepted")
+	}
 }

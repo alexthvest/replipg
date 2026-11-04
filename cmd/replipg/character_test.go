@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/alexthvest/replipg/internal/app"
 	"github.com/alexthvest/replipg/internal/character"
 	"github.com/alexthvest/replipg/internal/config"
 	"github.com/alexthvest/replipg/internal/interaction"
@@ -21,7 +20,7 @@ func TestProductionCharacterComposition(t *testing.T) {
 	if options.Register == nil {
 		t.Fatal("missing normal behavior")
 	}
-	if err := options.Register(app.Registrations{Registry: registry, Membership: unavailableMembership{}}); err != nil {
+	if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
 		t.Fatal(err)
 	}
 	registry.Seal()
@@ -66,7 +65,7 @@ func TestStrictCharacterDevelopmentMode(t *testing.T) {
 				t.Fatal(err)
 			}
 			registry := interaction.NewRegistry()
-			if err := options.Register(app.Registrations{Registry: registry, Membership: unavailableMembership{}}); err != nil {
+			if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
 				t.Fatal(err)
 			}
 			registry.Seal()

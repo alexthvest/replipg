@@ -31,6 +31,8 @@ type Identity struct {
 	ChatKind runtimecontract.ChatKind
 	// ActorUsername is optional transient presentation metadata. It must never
 	// determine ownership or authorization, or enter persistent feature state.
+	// A label already rendered in an explicitly accepted share may be copied
+	// only into its bounded delivery payload; profile fields remain transient.
 	ActorUsername string
 }
 
@@ -77,6 +79,18 @@ type Callback struct {
 	MessageID          MessageID
 	EphemeralMessageID EphemeralMessageID
 	Data               string
+	Source             *CallbackSource
+}
+
+// CallbackSource is copied, immutable-by-convention evidence from an accessible
+// callback message. Body contains text and explicit entities, never buttons.
+// This personal content must never enter logs, diagnostics, or generic archives.
+// ReceiverUserID is zero when the source supplies no receiver identity.
+type CallbackSource struct {
+	Body               runtimecontract.MessageContent
+	CallbackData       []string
+	ReceiverUserID     runtimecontract.UserID
+	EphemeralMessageID int64
 }
 
 func (Callback) eventKind() EventKind { return EventKindCallback }

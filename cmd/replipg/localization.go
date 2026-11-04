@@ -13,6 +13,7 @@ import (
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"github.com/alexthvest/replipg/internal/settings"
+	"github.com/alexthvest/replipg/internal/sharing"
 )
 
 // productionOptions validates all presentation resources before constructing the
@@ -61,6 +62,10 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	if err := catalog.ValidateItems(ids, inventory.ValidateItemText); err != nil {
 		return app.Options{}, err
 	}
+	shares, err := sharing.NewService(catalog, sharing.ServiceOptions{Now: time.Now})
+	if err != nil {
+		return app.Options{}, err
+	}
 	specs := []settings.CommandSpec{{Name: "character", Description: localization.Key("command.character"), Ephemeral: true}}
 	if development {
 		specs = append(specs, settings.CommandSpec{Name: "dev_character_damage", Description: localization.Key("command.dev_character_damage"), Ephemeral: true}, settings.CommandSpec{Name: "dev_character_defeat", Description: localization.Key("command.dev_character_defeat"), Ephemeral: true})
@@ -82,6 +87,16 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	if err != nil {
 		return app.Options{}, err
 	}
+	var ledger *sharingLedger
+	var projector *sharing.Projector
+	// Runtime finishes registration and worker construction before admitting
+	// updates. Bind refresh through that existing ordering without reordering recovery.
+	refresh := func(ctx context.Context, tx runtimecontract.DBTX, token string) error {
+		if projector == nil {
+			return errors.New("sharing: projector not initialized")
+		}
+		return projector.Refresh(ctx, tx, token)
+	}
 	return app.Options{
 		Commands: commands,
 		Prepare: func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -91,7 +106,14 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			return store.Prepare(ctx, tx, time.Now())
 		},
 		Register: func(r app.Registrations) error {
-			characterPresentation := character.Presentation{Catalog: catalog, Resolve: store.Resolve}
+			ledger, err = newSharingLedger(r.Outbox)
+			if err != nil {
+				return err
+			}
+			if err := sharing.Register(r.Registry, shares, ledger, refresh, store.Resolve); err != nil {
+				return err
+			}
+			characterPresentation := character.Presentation{Catalog: catalog, Resolve: store.Resolve, Sharing: shares}
 			if err := character.RegisterWithPresentation(r.Registry, characters, time.Now, characterPresentation); err != nil {
 				return err
 			}
@@ -100,7 +122,7 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 					return err
 				}
 			}
-			inventoryPresentation := inventory.Presentation{Catalog: catalog, Resolve: store.Resolve}
+			inventoryPresentation := inventory.Presentation{Catalog: catalog, Resolve: store.Resolve, Sharing: shares}
 			if err := inventory.RegisterWithPresentation(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
 				return err
 			}
@@ -119,6 +141,16 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 		},
 		Workers: []app.WorkerFactory{{Name: "group_menu", New: func(tx runtimecontract.Transactor, menus runtimecontract.GroupMenuWriter) (app.Worker, error) {
 			return settings.NewMenuWorker(tx, store, menus, settings.WorkerOptions{Now: time.Now, InitialDelay: cfg.RetryInitial, MaximumDelay: cfg.RetryMaximum})
+		}}, {Name: "menu_sharing", New: func(tx runtimecontract.Transactor, _ runtimecontract.GroupMenuWriter) (app.Worker, error) {
+			if ledger == nil {
+				return nil, errors.New("sharing: delivery ledger not initialized")
+			}
+			worker, err := sharing.NewProjector(tx, ledger, catalog, store.Resolve, time.Now)
+			if err != nil {
+				return nil, err
+			}
+			projector = worker
+			return worker, nil
 		}}},
 	}, nil
 }

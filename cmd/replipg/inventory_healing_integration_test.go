@@ -73,7 +73,7 @@ func TestInventoryProductionBinaryHealingProbeLifecycle(t *testing.T) {
 	assertText(first, "Healing potion (3)")
 	potion := call(first.button(t, "3"), true)
 	assertText(potion, "Usable during battle")
-	if len(potion.buttons) != 1 || len(potion.buttons[0]) != 1 || potion.buttons[0][0].Text != "Back" {
+	if len(potion.buttons) != 2 || len(potion.buttons[0]) != 1 || potion.buttons[0][0].Text != "Back" || len(potion.buttons[1]) != 1 || potion.buttons[1][0].Text != "Share" {
 		t.Fatal("production inventory exposed a standalone healing action")
 	}
 	h.submit(t, 8, -100, "other_owner", "/inventory", false)

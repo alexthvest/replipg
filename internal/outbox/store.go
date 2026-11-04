@@ -143,17 +143,30 @@ func (s *Store) Enqueue(ctx context.Context, tx runtimecontract.DBTX, req runtim
 // Status reads only operational columns, never content or authorization values.
 // Unknown reason codes are replaced with a stable safe category.
 func (s *Store) Status(ctx context.Context, id runtimecontract.DeliveryID) (DeliveryStatus, error) {
+	return deliveryStatus(ctx, s.db, id)
+}
+
+// StatusInTransaction reads the same content-free status as Status using the
+// caller's transaction, including changes that have not committed yet.
+func (s *Store) StatusInTransaction(ctx context.Context, tx runtimecontract.DBTX, id runtimecontract.DeliveryID) (DeliveryStatus, error) {
+	return deliveryStatus(ctx, tx, id)
+}
+
+func deliveryStatus(ctx context.Context, tx runtimecontract.DBTX, id runtimecontract.DeliveryID) (DeliveryStatus, error) {
 	if err := ctx.Err(); err != nil {
 		return DeliveryStatus{}, err
 	}
 	if id == "" {
 		return DeliveryStatus{}, invalid("delivery.id", runtimecontract.ReasonRequired)
 	}
+	if isNilDBTX(tx) {
+		return DeliveryStatus{}, invalid("transaction", runtimecontract.ReasonRequired)
+	}
 	var status DeliveryStatus
 	var next, terminal sql.NullInt64
 	var reason sql.NullString
 	var created, updated int64
-	rows, err := s.db.QueryContext(ctx, `SELECT id, state, attempt_count, max_attempts,
+	rows, err := tx.QueryContext(ctx, `SELECT id, state, attempt_count, max_attempts,
 		next_attempt_at, reason_code, created_at, updated_at, terminal_at
 		FROM outbound_deliveries WHERE id = ?`, id)
 	if err != nil {

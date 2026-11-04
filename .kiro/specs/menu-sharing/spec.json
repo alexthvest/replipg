@@ -1,0 +1,22 @@
+{
+  "feature_name": "menu-sharing",
+  "created_at": "2026-10-28T15:59:18Z",
+  "updated_at": "2026-10-28T17:41:30Z",
+  "language": "en",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

@@ -167,7 +167,7 @@ func TestProductionSmokeRequiresExplicitEnablement(t *testing.T) {
 			t.Fatal("explicit smoke enablement ignored")
 		}
 		registry := interaction.NewRegistry()
-		if err := options.Register(app.Registrations{Registry: registry, Membership: unavailableMembership{}}); err != nil {
+		if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
 			t.Fatal(err)
 		}
 		registry.Seal()

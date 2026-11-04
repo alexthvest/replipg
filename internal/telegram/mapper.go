@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
@@ -83,7 +84,7 @@ func DecodeUpdate(raw json.RawMessage) (DecodedUpdate, error) {
 		}
 		identity := message.identity(result.UpdateID, callback.From.ID)
 		identity.ActorUsername = callback.From.Username
-		result.Event = interaction.Callback{Identity: identity, ActorIsBot: callback.From.IsBot, QueryID: result.CallbackQueryID, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Data: *callback.Data}
+		result.Event = interaction.Callback{Identity: identity, ActorIsBot: callback.From.IsBot, QueryID: result.CallbackQueryID, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Data: *callback.Data, Source: message.callbackSource()}
 	} else if messagePresent {
 		var message *inboundMessage
 		if json.Unmarshal(messageRaw, &message) != nil || message == nil {
@@ -147,12 +148,17 @@ type inboundMessage struct {
 		ID   int64                    `json:"id"`
 		Type runtimecontract.ChatKind `json:"type"`
 	} `json:"chat"`
-	Text     string `json:"text"`
-	Entities []struct {
-		Type   string `json:"type"`
-		Offset int    `json:"offset"`
-		Length int    `json:"length"`
-	} `json:"entities"`
+	Text         string          `json:"text"`
+	Entities     json.RawMessage `json:"entities"`
+	ReceiverUser json.RawMessage `json:"receiver_user"`
+	ReplyMarkup  json.RawMessage `json:"reply_markup"`
+}
+
+type inboundEntity struct {
+	Type   string `json:"type"`
+	Offset *int   `json:"offset"`
+	Length *int   `json:"length"`
+	URL    string `json:"url"`
 }
 
 func (m inboundMessage) sentAt() time.Time {
@@ -172,7 +178,15 @@ func (m inboundMessage) identity(update runtimecontract.UpdateID, user int64) in
 	return interaction.Identity{Update: update, Chat: runtimecontract.ChatID(m.Chat.ID), User: runtimecontract.UserID(user), ChatKind: m.Chat.Type}
 }
 func (m inboundMessage) command() (name, args string, command, valid bool) {
-	for _, entity := range m.Entities {
+	var entities []struct {
+		Type   string `json:"type"`
+		Offset int    `json:"offset"`
+		Length int    `json:"length"`
+	}
+	if len(m.Entities) > 0 && json.Unmarshal(m.Entities, &entities) != nil {
+		return "", "", false, false
+	}
+	for _, entity := range entities {
 		if entity.Type != "bot_command" || entity.Offset != 0 {
 			continue
 		}
@@ -220,4 +234,78 @@ func (m inboundMessage) command() (name, args string, command, valid bool) {
 
 func commandCharacter(char rune) bool {
 	return char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_'
+}
+
+func (m inboundMessage) callbackSource() *interaction.CallbackSource {
+	if m.EphemeralMessageID <= 0 || m.Text == "" || !utf8.ValidString(m.Text) {
+		return nil
+	}
+	source := &interaction.CallbackSource{
+		Body:               runtimecontract.MessageContent{Text: m.Text},
+		EphemeralMessageID: m.EphemeralMessageID,
+	}
+	var entities []inboundEntity
+	if len(m.Entities) > 0 && json.Unmarshal(m.Entities, &entities) != nil {
+		return nil
+	}
+	// Check every raw entity before excluding automatic lexical annotations.
+	boundaries := map[int]bool{0: true}
+	textLength := 0
+	for _, r := range m.Text {
+		textLength += utf16.RuneLen(r)
+		boundaries[textLength] = true
+	}
+	for _, entity := range entities {
+		if entity.Offset == nil || entity.Length == nil {
+			return nil
+		}
+		offset, length := *entity.Offset, *entity.Length
+		if offset < 0 || length <= 0 || length > textLength || offset > textLength-length || !boundaries[offset] || !boundaries[offset+length] {
+			return nil
+		}
+		switch entity.Type {
+		case "mention", "hashtag", "cashtag", "bot_command", "url", "email", "phone_number":
+			if entity.URL != "" {
+				return nil
+			}
+			continue
+		case "bold", "italic", "code", "text_link":
+			if (entity.Type == "text_link") != (entity.URL != "") || !utf8.ValidString(entity.URL) {
+				return nil
+			}
+		default:
+			return nil
+		}
+		source.Body.Entities = append(source.Body.Entities, runtimecontract.TextEntity{
+			Kind: runtimecontract.TextEntityKind(entity.Type), Offset: offset, Length: length, URL: entity.URL,
+		})
+	}
+	if len(m.ReceiverUser) > 0 && string(m.ReceiverUser) != "null" {
+		var receiver inboundUser
+		if json.Unmarshal(m.ReceiverUser, &receiver) != nil || receiver.ID <= 0 {
+			return nil
+		}
+		source.ReceiverUserID = runtimecontract.UserID(receiver.ID)
+	}
+	if len(m.ReplyMarkup) > 0 && string(m.ReplyMarkup) != "null" {
+		var markup struct {
+			InlineKeyboard [][]struct {
+				CallbackData *string `json:"callback_data"`
+			} `json:"inline_keyboard"`
+		}
+		if json.Unmarshal(m.ReplyMarkup, &markup) != nil {
+			return nil
+		}
+		for _, row := range markup.InlineKeyboard {
+			for _, button := range row {
+				if button.CallbackData != nil {
+					if *button.CallbackData == "" || len(*button.CallbackData) > 64 || !utf8.ValidString(*button.CallbackData) {
+						return nil
+					}
+					source.CallbackData = append(source.CallbackData, *button.CallbackData)
+				}
+			}
+		}
+	}
+	return source
 }

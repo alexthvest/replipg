@@ -41,6 +41,33 @@ func TestBoundaryCheckerRejectsForbiddenImports(t *testing.T) {
 		{"settings imports localization subpackage", "internal/settings/commands.go", modulePath + "/internal/localization/extra"},
 		{"character imports settings", "internal/character/commands.go", modulePath + "/internal/settings"},
 		{"inventory imports settings", "internal/inventory/commands.go", modulePath + "/internal/settings"},
+		{"runtime imports sharing", "internal/app/runtime.go", modulePath + "/internal/sharing"},
+		{"runtime imports sharing contract", "internal/interaction/dispatch.go", modulePath + "/internal/sharing/contract"},
+		{"nested runtime imports sharing", "internal/scheduler/nested/worker_windows.go", modulePath + "/internal/sharing/store"},
+		{"character imports sharing implementation", "internal/character/commands.go", modulePath + "/internal/sharing"},
+		{"inventory imports sharing implementation", "internal/inventory/commands.go", modulePath + "/internal/sharing"},
+		{"character imports nested sharing contract", "internal/character/render.go", modulePath + "/internal/sharing/contract/extra"},
+		{"inventory imports nested sharing contract", "internal/inventory/render.go", modulePath + "/internal/sharing/contract/extra"},
+		{"gameplay imports sharing implementation", "internal/battle/service.go", modulePath + "/internal/sharing"},
+		{"sharing contract imports implementation", "internal/sharing/contract/views.go", modulePath + "/internal/sharing"},
+		{"sharing contract imports gameplay", "internal/sharing/contract/views.go", modulePath + "/internal/character/contract"},
+		{"sharing contract imports interaction", "internal/sharing/contract/views.go", modulePath + "/internal/interaction"},
+		{"sharing contract imports outbox", "internal/sharing/contract/views.go", modulePath + "/internal/outbox"},
+		{"sharing contract imports persistence", "internal/sharing/contract/views.go", modulePath + "/internal/persistence"},
+		{"sharing contract imports runtime subpackage", "internal/sharing/contract/views.go", modulePath + "/internal/runtimecontract/extra"},
+		{"sharing contract imports localization subpackage", "internal/sharing/contract/views.go", modulePath + "/internal/localization/extra"},
+		{"sharing contract imports third party", "internal/sharing/contract/views.go", "example.com/types"},
+		{"nested sharing contract imports transport", "internal/sharing/contract/nested/views_windows.go", modulePath + "/internal/telegram"},
+		{"sharing imports gameplay", "internal/sharing/service.go", modulePath + "/internal/character"},
+		{"sharing imports gameplay contract", "internal/sharing/service.go", modulePath + "/internal/inventory/contract"},
+		{"sharing imports outbox", "internal/sharing/store.go", modulePath + "/internal/outbox"},
+		{"sharing imports scheduler", "internal/sharing/worker.go", modulePath + "/internal/scheduler"},
+		{"sharing imports transport", "internal/sharing/commands.go", modulePath + "/internal/telegram"},
+		{"sharing imports persistence", "internal/sharing/store.go", modulePath + "/internal/persistence"},
+		{"sharing imports nested contract", "internal/sharing/service.go", modulePath + "/internal/sharing/contract/extra"},
+		{"sharing imports runtime subpackage", "internal/sharing/service.go", modulePath + "/internal/runtimecontract/extra"},
+		{"sharing imports interaction subpackage", "internal/sharing/commands.go", modulePath + "/internal/interaction/extra"},
+		{"sharing imports localization subpackage", "internal/sharing/commands.go", modulePath + "/internal/localization/extra"},
 		{"Telegram model leakage", "internal/interaction/events.go", "github.com/go-telegram/bot/models"},
 		{"SQLite driver leakage", "internal/scheduler/store.go", "modernc.org/sqlite"},
 		{"SQLite support leakage", "internal/outbox/store.go", "modernc.org/libc"},
@@ -127,6 +154,12 @@ func TestBoundaryCheckerAllowsContractsAndComposition(t *testing.T) {
 		"internal/localization/catalog.go":                  {"embed", "encoding/json", "text/template"},
 		"internal/character/render.go":                      {modulePath + "/internal/localization"},
 		"internal/inventory/render.go":                      {modulePath + "/internal/localization"},
+		"internal/character/presentation.go":                {modulePath + "/internal/sharing/contract"},
+		"internal/inventory/presentation.go":                {modulePath + "/internal/sharing/contract"},
+		"internal/sharing/contract/views.go":                {"context", "time", modulePath + "/internal/runtimecontract", modulePath + "/internal/localization"},
+		"internal/sharing/contract/nested/views_windows.go": {modulePath + "/internal/runtimecontract", modulePath + "/internal/localization"},
+		"internal/sharing/service.go":                       {modulePath + "/internal/sharing/contract", modulePath + "/internal/runtimecontract", modulePath + "/internal/interaction", modulePath + "/internal/localization"},
+		"cmd/replipg/sharing.go":                            {modulePath + "/internal/sharing", modulePath + "/internal/sharing/contract"},
 		"internal/devsmoke/render.go":                       {modulePath + "/internal/localization"},
 		"internal/runtimecontract/database.go":              {"context", "database/sql", "time"},
 		"internal/telegram/delivery.go":                     {"github.com/go-telegram/bot", "github.com/go-telegram/bot/models", modulePath + "/internal/runtimecontract"},
@@ -223,6 +256,16 @@ func allowedDependency(source, dependency string) bool {
 		return dependency == modulePath+"/internal/runtimecontract" ||
 			dependency == modulePath+"/internal/character/contract"
 	}
+	if strings.HasPrefix(source, "internal/sharing/contract/") {
+		return dependency == modulePath+"/internal/runtimecontract" ||
+			dependency == modulePath+"/internal/localization"
+	}
+	if owner == "sharing" {
+		return dependency == modulePath+"/internal/sharing/contract" ||
+			dependency == modulePath+"/internal/runtimecontract" ||
+			dependency == modulePath+"/internal/interaction" ||
+			dependency == modulePath+"/internal/localization"
+	}
 	if owner == "localization" {
 		return false
 	}
@@ -231,6 +274,7 @@ func allowedDependency(source, dependency string) bool {
 	}
 	if owner == "inventory" {
 		return dependency == modulePath+"/internal/localization" || dependency == modulePath+"/internal/runtimecontract" ||
+			dependency == modulePath+"/internal/sharing/contract" ||
 			dependency == modulePath+"/internal/interaction" ||
 			dependency == modulePath+"/internal/character/contract" ||
 			dependency == modulePath+"/internal/inventory" ||
@@ -238,6 +282,7 @@ func allowedDependency(source, dependency string) bool {
 	}
 	if owner == "character" {
 		return dependency == modulePath+"/internal/localization" || dependency == modulePath+"/internal/runtimecontract" ||
+			dependency == modulePath+"/internal/sharing/contract" ||
 			dependency == modulePath+"/internal/interaction" ||
 			dependency == modulePath+"/internal/character" ||
 			strings.HasPrefix(dependency, modulePath+"/internal/character/") && !strings.HasPrefix(dependency, modulePath+"/internal/character/contract/")
