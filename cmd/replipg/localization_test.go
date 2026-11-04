@@ -16,11 +16,13 @@ import (
 )
 
 func TestLocalizationProductionComposition(t *testing.T) {
-	options, err := productionOptions(config.Config{DevSmoke: true}, commandLookup(map[string]string{envDevCharacter: "true", envDevInventory: "true"}))
+	options, err := productionOptions(config.Config{DevSmoke: true}, commandLookup(map[string]string{envDevCharacter: "true", envDevInventory: "true", envOwnerTelegramUserID: "7"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"character", "dev_character_damage", "dev_character_defeat", "inventory", "dev_inventory_grant", "dev_inventory_heal", "settings", "dev_smoke", "dev_smoke_ephemeral"}
+
+	want := []string{"character", "dev_character_damage", "dev_character_defeat", "inventory", "dev_item", "dev_inventory_grant", "dev_inventory_heal", "settings", "dev_smoke", "dev_smoke_ephemeral"}
+
 	if len(options.Commands) != len(want) {
 		t.Fatalf("complete enabled menu: got %d want %d", len(options.Commands), len(want))
 	}

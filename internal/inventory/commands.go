@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/localization"
-
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
+	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	sharingcontract "github.com/alexthvest/replipg/internal/sharing/contract"
 )
@@ -275,7 +275,7 @@ func (s *Service) detailContent(ctx context.Context, tx runtimecontract.DBTX, no
 
 	controls := viewControls{Back: data}
 	item, found := s.catalog.Lookup(control.ItemID)
-	if found && (item.Category == contract.CategoryWeapon || item.Category == contract.CategoryArmor) {
+	if found && (item.Category == itemcontract.CategoryWeapon || item.Category == itemcontract.CategoryArmor) {
 		action := control
 		action.ExpectedRevision = snapshot.Revision
 		action.Slot = contract.Slot(item.Category)

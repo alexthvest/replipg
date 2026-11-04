@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alexthvest/replipg/internal/localization"
-
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
+	"github.com/alexthvest/replipg/internal/localization"
 )
 
 const validCatalogJSON = `{"items":[
@@ -32,7 +32,8 @@ func TestCatalogEmbeddedAndCopies(t *testing.T) {
 	}
 
 	coin, ok := catalog.Lookup("coin")
-	if !ok || coin.Category != contract.CategoryInert || coin.AttackBonus != 0 || coin.DefenseBonus != 0 || coin.HealingHP != 0 {
+
+	if !ok || coin.Category != itemcontract.CategoryInert || coin.AttackBonus != 0 || coin.DefenseBonus != 0 || coin.HealingHP != 0 {
 		t.Fatalf("coin = %+v, %v", coin, ok)
 	}
 

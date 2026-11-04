@@ -13,7 +13,7 @@ func TestInventoryProductionBinaryHealingProbeLifecycle(t *testing.T) {
 
 	binary := buildInventoryBinary(t, ctx, false)
 	dir := t.TempDir()
-	enabled := map[string]string{envDevCharacter: "true", envDevInventory: "true"}
+	enabled := map[string]string{envDevCharacter: "true", envDevInventory: "true", envOwnerTelegramUserID: "7"}
 	h := startInventoryBinary(t, ctx, binary, dir, 4, true, enabled)
 	db := inventoryBinaryDB(t, dir)
 	defer func() { _ = db.Close() }()

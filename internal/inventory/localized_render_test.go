@@ -11,6 +11,7 @@ import (
 
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
@@ -170,7 +171,7 @@ func TestLocalizedInventoryDevelopmentMessages(t *testing.T) {
 	p := Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return localization.Russian, nil
 	}}
-	h := developmentHandler{service: service, now: clock.Now, presentation: p}
+	h := developmentHandler{service: service, owner: 42, now: clock.Now, presentation: p}
 	cmd := interaction.Command{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup}, Name: "dev_inventory_grant", EphemeralMessageID: 1, SentAt: clock.Now()}
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := service.Prepare(ctx, tx); err != nil {
@@ -276,10 +277,11 @@ func TestLocalizedMaximumPageAndDetailBudgets(t *testing.T) {
 	snapshot := contract.Snapshot{Weapon: "stick", Armor: "cloth_armor", Modifiers: contract.Modifiers{Attack: math.MaxInt64, Defense: math.MaxInt64}}
 	controls := viewControls{Previous: "inv:pppppppppppppppppppppp", Next: "inv:nnnnnnnnnnnnnnnnnnnnnn", Back: "inv:bbbbbbbbbbbbbbbbbbbbbb", Unequip: "inv:uuuuuuuuuuuuuuuuuuuuuu"}
 	for i := 0; i < 8; i++ {
-		snapshot.Items = append(snapshot.Items, contract.OwnedItem{ItemID: contract.ItemID(ids[i%len(ids)]), Quantity: math.MaxInt64})
+		snapshot.Items = append(snapshot.Items, contract.OwnedItem{ItemID: itemcontract.ItemID(ids[i%len(ids)]), Quantity: math.MaxInt64})
 		controls.Items = append(controls.Items, fmt.Sprintf("inv:%022d", i))
 	}
-	for _, id := range []contract.ItemID{"stick", "cloth_armor"} {
+
+	for _, id := range []itemcontract.ItemID{"stick", "cloth_armor"} {
 		item, _ := catalog.Lookup(id)
 		if id == "stick" {
 			item.AttackBonus = math.MaxInt64
@@ -301,7 +303,8 @@ func TestLocalizedMaximumPageAndDetailBudgets(t *testing.T) {
 		if len(content.Buttons) != 2 || len(content.Buttons[0]) != 8 || !strings.Contains(content.Text, "9223372036854775807") {
 			t.Fatal("maximum page lost rows, controls or integer values")
 		}
-		for _, id := range []contract.ItemID{"stick", "cloth_armor", "healing_potion"} {
+
+		for _, id := range []itemcontract.ItemID{"stick", "cloth_armor", "healing_potion"} {
 			detail, err := renderDetailLocalized(catalog, snapshot, id, strings.Repeat("😀", 64), controls, p, locale)
 			if err != nil {
 				t.Fatal(err)

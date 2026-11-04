@@ -69,7 +69,7 @@ func TestRegistrationRequiresPresentation(t *testing.T) {
 			return Register(registry, service, time.Now, p)
 		},
 		func(registry *interaction.Registry, p Presentation) error {
-			return RegisterDevelopment(registry, service, time.Now, p)
+			return RegisterDevelopment(registry, service, 42, time.Now, p)
 		},
 	} {
 		for _, p := range []Presentation{{}, {Catalog: valid.Catalog}, {Resolve: valid.Resolve}} {

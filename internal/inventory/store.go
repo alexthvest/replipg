@@ -7,6 +7,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -15,7 +16,8 @@ import (
 func prepareCatalog(ctx context.Context, tx runtimecontract.DBTX, catalog Catalog) error {
 	compatible := true
 	err := queryInventoryRows(ctx, tx, `SELECT item_id,category,attack_bonus,defense_bonus,healing_hp FROM inventory_catalog`, nil, func(rows *sql.Rows) error {
-		var saved ItemDefinition
+		var saved itemcontract.Definition
+
 		if err := rows.Scan(&saved.ID, &saved.Category, &saved.AttackBonus, &saved.DefenseBonus, &saved.HealingHP); err != nil {
 			return err
 		}
@@ -132,7 +134,8 @@ func readInventoryMetadata(ctx context.Context, tx runtimecontract.DBTX, catalog
 	invalidEquipment := false
 	err := queryInventoryRows(ctx, tx, `SELECT slot,item_id FROM inventory_equipment WHERE character_id=? ORDER BY slot`, []any{id}, func(rows *sql.Rows) error {
 		var slot contract.Slot
-		var itemID contract.ItemID
+		var itemID itemcontract.ItemID
+
 		if err := rows.Scan(&slot, &itemID); err != nil {
 			return err
 		}

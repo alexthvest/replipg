@@ -1,0 +1,20 @@
+{
+  "starter": [
+    {
+      "item_id": "coin",
+      "quantity": 10
+    },
+    {
+      "item_id": "stick",
+      "quantity": 1
+    },
+    {
+      "item_id": "cloth_armor",
+      "quantity": 1
+    },
+    {
+      "item_id": "healing_potion",
+      "quantity": 3
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -23,7 +24,7 @@ type inventoryControl struct {
 	ChatID           runtimecontract.ChatID
 	CharacterID      charactercontract.ID
 	Action           string
-	ItemID           contract.ItemID
+	ItemID           itemcontract.ItemID
 	Slot             contract.Slot
 	Page             int
 	ExpectedRevision int64
@@ -105,7 +106,8 @@ func resolveControl(ctx context.Context, tx runtimecontract.DBTX, now time.Time,
 		if err := rows.Scan(&control.Token, &control.UserID, &control.ChatID, &control.CharacterID, &control.Action, &item, &slot, &control.Page, &control.ExpectedRevision, &expires); err != nil {
 			return err
 		}
-		control.ItemID = contract.ItemID(item.String)
+
+		control.ItemID = itemcontract.ItemID(item.String)
 		control.Slot = contract.Slot(slot.String)
 		control.ExpiresAt = time.UnixMilli(expires).UTC()
 		found = true

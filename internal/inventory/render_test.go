@@ -9,9 +9,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/alexthvest/replipg/internal/localization"
-
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
+	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -40,7 +40,7 @@ func TestRenderNumberedInventoryAndDetails(t *testing.T) {
 	}
 
 	assertRenderedResponse(t, content)
-	for _, id := range []contract.ItemID{"coin", "healing_potion", "stick"} {
+	for _, id := range []itemcontract.ItemID{"coin", "healing_potion", "stick"} {
 		snapshot.Items = append(snapshot.Items, contract.OwnedItem{ItemID: "healing_potion", Quantity: 3})
 		detail, err := renderDetailLocalized(catalog, snapshot, id, "player", controls, p, localization.English)
 		if err != nil {
@@ -131,7 +131,7 @@ func TestRenderEightRowsAndPageLocalControls(t *testing.T) {
 
 	p := presentationWithItemText(t, text)
 	for page := 0; page < 2; page++ {
-		for _, id := range []contract.ItemID{"stick", "cloth_armor"} {
+		for _, id := range []itemcontract.ItemID{"stick", "cloth_armor"} {
 			item, _ := catalog.Lookup(id)
 			item.AttackBonus, item.DefenseBonus = math.MaxInt64, math.MaxInt64
 			catalog.byID[id] = item
@@ -207,7 +207,7 @@ func TestRenderEquipmentActionsAndMissingItems(t *testing.T) {
 
 	p := englishPresentation(t)
 	controls := viewControls{Equip: "inv:eeeeeeeeeeeeeeeeeeeeee", Unequip: "inv:uuuuuuuuuuuuuuuuuuuuuu", Back: "inv:bbbbbbbbbbbbbbbbbbbbbb"}
-	for _, id := range []contract.ItemID{"stick", "cloth_armor"} {
+	for _, id := range []itemcontract.ItemID{"stick", "cloth_armor"} {
 		for _, equipped := range []bool{false, true} {
 			snapshot := contract.Snapshot{Items: []contract.OwnedItem{{ItemID: id, Quantity: 1}}}
 			if equipped {

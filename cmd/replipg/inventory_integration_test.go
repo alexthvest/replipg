@@ -280,7 +280,7 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 		}
 		expected = append(expected, "inventory")
 		if env[envDevInventory] == "true" {
-			expected = append(expected, "dev_inventory_grant", "dev_inventory_heal")
+			expected = append(expected, "dev_item", "dev_inventory_grant", "dev_inventory_heal")
 		}
 		expected = append(expected, "settings")
 
@@ -445,7 +445,7 @@ func buildInventoryBinary(t *testing.T, ctx context.Context, extra bool) string 
 	if extra {
 		// A build overlay supplies test tuning to the real embedded catalog without
 		// changing version-controlled files or adding production configuration.
-		source, err := filepath.Abs("../../internal/inventory/items.json")
+		source, err := filepath.Abs("../../internal/item/items.json")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -463,12 +463,30 @@ func buildInventoryBinary(t *testing.T, ctx context.Context, extra bool) string 
 		if err = json.Unmarshal(raw, &catalog); err != nil {
 			t.Fatal(err)
 		}
+
+		starterSource, err := filepath.Abs("../../internal/inventory/starter.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		starterRaw, err := os.ReadFile(starterSource)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := json.Unmarshal(starterRaw, &catalog); err != nil {
+			t.Fatal(err)
+		}
+
 		for n := 0; n < 6; n++ {
 			id := fmt.Sprintf("extra_%d", n)
 			catalog.Items = append(catalog.Items, map[string]any{"id": id, "category": "inert"})
 			catalog.Starter = append(catalog.Starter, map[string]any{"item_id": id, "quantity": 1})
 		}
-		raw, err = json.Marshal(catalog)
+
+		raw, err = json.Marshal(struct {
+			Items []map[string]any `json:"items"`
+		}{catalog.Items})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -479,6 +497,20 @@ func buildInventoryBinary(t *testing.T, ctx context.Context, extra bool) string 
 		}
 
 		replacements := localizedPaginationOverlay(t, source, replacement)
+		starterRaw, err = json.Marshal(struct {
+			Starter []map[string]any `json:"starter"`
+		}{catalog.Starter})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		starterReplacement := filepath.Join(t.TempDir(), "starter.json")
+		if err := os.WriteFile(starterReplacement, starterRaw, 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		replacements[starterSource] = starterReplacement
+
 		overlay, err := json.Marshal(map[string]any{"Replace": replacements})
 		if err != nil {
 			t.Fatal(err)

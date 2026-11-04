@@ -72,7 +72,8 @@ func TestInventoryProductionPreparation(t *testing.T) {
 func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 	for _, value := range []string{"true", "false", "TRUE", "1", "", "true ", "private-value"} {
 		t.Run(value, func(t *testing.T) {
-			options, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: value}))
+			options, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: value, envOwnerTelegramUserID: "7"}))
+
 			if value != "true" && value != "false" {
 				if err == nil || strings.Contains(err.Error(), "private-value") {
 					t.Fatal("invalid flag accepted/leaked")
@@ -92,7 +93,7 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 
 			registry.Seal()
 			enabled := value == "true"
-			for _, name := range []interaction.CommandName{"dev_inventory_grant", "dev_inventory_heal"} {
+			for _, name := range []interaction.CommandName{"dev_item", "dev_inventory_grant", "dev_inventory_heal"} {
 				if _, ok := registry.Resolve(interaction.Command{Identity: interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}, Name: name}); ok != enabled {
 					t.Fatal("development route mismatch")
 				}
@@ -100,7 +101,7 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 
 			want := 3
 			if enabled {
-				want = 5
+				want = 6
 			}
 
 			if len(options.Commands) != want {
@@ -114,7 +115,8 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 			}
 		})
 	}
-	for _, flags := range []map[string]string{nil, {envDevInventory: "true", envDevCharacter: "true"}, {envDevInventory: "false", envDevCharacter: "true"}, {envDevInventory: "true", envDevCharacter: "false"}} {
+
+	for _, flags := range []map[string]string{nil, {envDevInventory: "true", envOwnerTelegramUserID: "7", envDevCharacter: "true"}, {envDevInventory: "false", envDevCharacter: "true"}, {envDevInventory: "true", envOwnerTelegramUserID: "7", envDevCharacter: "false"}} {
 		options, err := productionOptions(config.Config{DevSmoke: true}, commandLookup(flags))
 		if err != nil {
 			t.Fatal(err)
@@ -127,7 +129,7 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 
 		want := 5
 		if flags[envDevInventory] == "true" {
-			want += 2
+			want += 3
 		}
 		if flags[envDevCharacter] == "true" {
 			want += 2
@@ -135,6 +137,37 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 
 		if len(options.Commands) != want {
 			t.Fatal("independent menu flags")
+		}
+	}
+}
+
+func TestInventoryDevelopmentRequiresStrictOwner(t *testing.T) {
+	for _, value := range []string{"", "0", "-1", "+7", " 7", "7 ", "9223372036854775808", "secret-owner"} {
+		t.Run(value, func(t *testing.T) {
+			_, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: "true", "REPLIPG_OWNER_TELEGRAM_USER_ID": value}))
+			if err == nil {
+				t.Fatal("invalid owner accepted")
+			}
+
+			if value == "secret-owner" && strings.Contains(err.Error(), value) {
+				t.Fatal("owner leaked")
+			}
+		})
+	}
+
+	if _, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: "true"})); err == nil {
+		t.Fatal("missing owner accepted")
+	}
+
+	if _, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: "false", "REPLIPG_OWNER_TELEGRAM_USER_ID": "invalid"})); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInventoryDevelopmentOwnerAcceptsPositiveInt64(t *testing.T) {
+	for _, value := range []string{"1", "7", "0007", "9223372036854775807"} {
+		if _, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: "true", envOwnerTelegramUserID: value})); err != nil {
+			t.Fatalf("valid owner %s: %v", value, err)
 		}
 	}
 }

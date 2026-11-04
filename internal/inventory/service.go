@@ -2,13 +2,14 @@ package inventory
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"time"
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -26,41 +27,115 @@ type characterPort interface {
 // Returned results remain tentative until that transaction commits.
 type Service struct {
 	catalog    Catalog
+	starter    []contract.GrantLine
 	characters characterPort
 	clock      func() time.Time
 }
 
-// NewService validates and copies immutable content without accessing storage.
-func NewService(catalog Catalog, characters characterPort, clock func() time.Time) (*Service, error) {
-	if characters == nil || (reflect.ValueOf(characters).Kind() == reflect.Pointer && reflect.ValueOf(characters).IsNil()) || clock == nil {
+func nilPort(value any) bool {
+	if value == nil {
+		return true
+	}
+
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	}
+	return false
+}
+
+type catalogSnapshot struct {
+	items []itemcontract.Definition
+	byID  map[itemcontract.ItemID]itemcontract.Definition
+}
+
+func (c catalogSnapshot) Lookup(id itemcontract.ItemID) (itemcontract.Definition, bool) {
+	d, ok := c.byID[id]
+	return d, ok
+}
+
+func (c catalogSnapshot) Items() []itemcontract.Definition { return slices.Clone(c.items) }
+
+func (c catalogSnapshot) Effect(id itemcontract.ItemID) (itemcontract.EffectDefinition, error) {
+	if err := id.Validate(); err != nil {
+		return itemcontract.EffectDefinition{}, err
+	}
+
+	d, ok := c.Lookup(id)
+	if !ok {
+		return itemcontract.EffectDefinition{}, &itemcontract.DomainError{Kind: itemcontract.ErrorInvalidInput, Field: "item_id"}
+	}
+
+	return d.EffectDefinition()
+}
+
+// NewService validates and copies all catalog definitions and starter lines before admission.
+func NewService(catalog Catalog, starter []contract.GrantLine, characters characterPort, clock func() time.Time) (*Service, error) {
+	if nilPort(catalog) || nilPort(characters) || clock == nil {
 		return nil, contract.ErrInvalidInput
 	}
-	content := catalogContent{}
-	for _, item := range catalog.Items() {
-		effect := contract.EffectKind("")
-		if item.Category == contract.CategoryConsumable {
-			effect = contract.EffectHealSelfFixedHP
+
+	snapshot := catalogSnapshot{byID: make(map[itemcontract.ItemID]itemcontract.Definition)}
+	for _, d := range catalog.Items() {
+		if d.Validate() != nil {
+			return nil, invalidCatalog("mechanics")
 		}
-		content.Items = append(content.Items, struct {
-			ItemDefinition
-			Effect contract.EffectKind `json:"effect"`
-		}{item, effect})
+
+		if _, ok := snapshot.byID[d.ID]; ok {
+			return nil, invalidCatalog("item_id")
+		}
+
+		lookup, ok := catalog.Lookup(d.ID)
+		if !ok || lookup != d {
+			return nil, invalidCatalog("catalog")
+		}
+
+		expected, effectErr := d.EffectDefinition()
+		actual, err := catalog.Effect(d.ID)
+		if effectErr == nil {
+			if err != nil || actual != expected {
+				return nil, invalidCatalog("mechanics")
+			}
+		} else if !errors.Is(err, itemcontract.ErrNotUsable) {
+			return nil, invalidCatalog("mechanics")
+		}
+
+		snapshot.byID[d.ID] = d
+		snapshot.items = append(snapshot.items, d)
 	}
-	for _, line := range catalog.Starter() {
-		content.Starter = append(content.Starter, struct {
-			ItemID   contract.ItemID `json:"item_id"`
-			Quantity int64           `json:"quantity"`
-		}{line.ItemID, line.Quantity})
+
+	if len(snapshot.items) == 0 {
+		return nil, invalidCatalog("items")
 	}
-	data, err := json.Marshal(content)
-	if err != nil {
-		return nil, invalidCatalog("content")
-	}
-	validated, err := ParseCatalog(data)
+
+	copied, err := validateStarter(snapshot, starter)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{catalog: validated, characters: characters, clock: clock}, nil
+
+	return &Service{catalog: snapshot, starter: copied, characters: characters, clock: clock}, nil
+}
+
+func inventoryItemError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var domain *itemcontract.DomainError
+
+	if errors.As(err, &domain) {
+		kind := contract.ErrorInvalidInput
+		if domain.Kind == itemcontract.ErrorNotUsable {
+			kind = contract.ErrorNotUsable
+		}
+		if domain.Kind == itemcontract.ErrorInvalidCatalog {
+			kind = contract.ErrorInvalidCatalog
+		}
+		return &contract.DomainError{Kind: kind, Field: domain.Field}
+	}
+
+	return contract.ErrInvalidInput
 }
 
 // Prepare rejects incompatible saved definitions and registers new identities.
@@ -97,7 +172,7 @@ func (s *Service) Open(ctx context.Context, tx runtimecontract.DBTX, user runtim
 
 		result.CharacterCreated = created
 		if !starter {
-			grant, err := s.grant(ctx, tx, contract.GrantRequest{OperationID: starterOperationID(ch.ID), CharacterID: ch.ID, Items: s.catalog.Starter()}, "starter")
+			grant, err := s.grant(ctx, tx, contract.GrantRequest{OperationID: starterOperationID(ch.ID), CharacterID: ch.ID, Items: s.starter}, "starter")
 			if err != nil {
 				return err
 			}

@@ -15,6 +15,7 @@ import (
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/inventory"
 	inventorycontract "github.com/alexthvest/replipg/internal/inventory/contract"
+	"github.com/alexthvest/replipg/internal/item"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/observability"
 	"github.com/alexthvest/replipg/internal/persistence"
@@ -60,14 +61,22 @@ func newInventorySourceFixture(t *testing.T, resources *localization.Catalog) *i
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := inventory.LoadCatalog()
+
+	catalog, err := item.LoadCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.items, err = inventory.NewService(catalog, f.characters, clock)
+
+	starter, err := inventory.LoadStarter(catalog)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	f.items, err = inventory.NewService(catalog, starter, f.characters, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	token := 0
 	f.service, err = NewService(resources, ServiceOptions{Now: clock, NewToken: func() (string, error) { token++; return fmt.Sprintf("%032x", token), nil }})
 	if err != nil {

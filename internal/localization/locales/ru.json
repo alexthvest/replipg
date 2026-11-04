@@ -1,4 +1,8 @@
 {
+  "usage.item": "Использование: /dev_item <item-id>",
+  "item.unknown": "Неизвестный предмет.",
+  "item.probe": "{{.name}}\nID: {{.id}}\nКатегория: {{.category}}",
+  "command.dev_item": "Осмотреть предмет (только владелец)",
   "sharing.share": "Поделиться",
   "sharing.attribution": "Поделился пользователь {{.user_id}}",
   "sharing.pending": "Публикация ещё выполняется. Подождите.",

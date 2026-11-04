@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "id": "coin",
+      "category": "inert"
+    },
+    {
+      "id": "stick",
+      "category": "weapon",
+      "attack_bonus": 1
+    },
+    {
+      "id": "cloth_armor",
+      "category": "armor",
+      "defense_bonus": 1
+    },
+    {
+      "id": "healing_potion",
+      "category": "consumable",
+      "healing_hp": 10,
+      "effect": "heal_self_fixed_hp"
+    }
+  ]
+}

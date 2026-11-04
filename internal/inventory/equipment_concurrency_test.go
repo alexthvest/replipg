@@ -10,6 +10,7 @@ import (
 
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -36,7 +37,7 @@ func TestEquipmentConcurrentControlsAcrossGroups(t *testing.T) {
 
 		before = opened.Current
 		for i := range controls {
-			item, slot := contract.ItemID("stick"), contract.SlotWeapon
+			item, slot := itemcontract.ItemID("stick"), contract.SlotWeapon
 			if i%2 != 0 {
 				item, slot = "cloth_armor", contract.SlotArmor
 			}

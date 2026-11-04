@@ -1,6 +1,10 @@
 package localization
 
 var manifest = map[Key]messageSpec{
+	Key("usage.item"):                       {limit: 4096, params: map[string]ParamKind{}},
+	Key("item.unknown"):                     {limit: 4096, params: map[string]ParamKind{}},
+	Key("item.probe"):                       {limit: 4096, params: map[string]ParamKind{"name": TextParam, "id": TextParam, "category": TextParam}},
+	Key("command.dev_item"):                 {limit: 256, params: map[string]ParamKind{}},
 	SharingShare:                            {limit: 64, params: map[string]ParamKind{}},
 	SharingAttribution:                      {limit: 4096, params: map[string]ParamKind{"user_id": IntegerParam}},
 	SharingPending:                          {limit: 4096, params: map[string]ParamKind{}},

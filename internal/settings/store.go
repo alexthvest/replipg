@@ -122,6 +122,12 @@ func (s *Store) Resolve(ctx context.Context, tx runtimecontract.DBTX, chat runti
 	return v.Locale, err
 }
 
+// ResolveReadOnly resolves saved language or English without initializing settings.
+func (s *Store) ResolveReadOnly(ctx context.Context, tx runtimecontract.DBTX, chat runtimecontract.ChatID) (localization.Locale, error) {
+	v, err := s.view(ctx, tx, chat, time.Now())
+	return v.Locale, err
+}
+
 // view reads callback presentation without managing a group for a rejected control.
 func (s *Store) view(ctx context.Context, tx runtimecontract.DBTX, chat runtimecontract.ChatID, now time.Time) (Snapshot, error) {
 	if s == nil || s.menu == nil || tx == nil || chat >= 0 {

@@ -10,6 +10,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -53,7 +54,7 @@ func TestCanonicalInventoryRequests(t *testing.T) {
 	}
 
 	consume := contract.ConsumeRequest{OperationID: "consume:1", CharacterID: storeCharacterID, ItemID: "potion"}
-	effect := contract.EffectDefinition{ItemID: "potion", Kind: contract.EffectHealSelfFixedHP, HealingHP: 10}
+	effect := itemcontract.EffectDefinition{ItemID: "potion", Kind: itemcontract.EffectHealSelfFixedHP, HealingHP: 10}
 	first, err = canonicalConsume(consume, effect)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +125,7 @@ func TestInventoryReceiptsReplayConflictAndReopen(t *testing.T) {
 		consume := receipt
 		consume.OperationID = "test:consume"
 		consume.Kind = "consume"
-		consume.EffectKind = contract.EffectHealSelfFixedHP
+		consume.EffectKind = itemcontract.EffectHealSelfFixedHP
 		consume.HealingHP = 10
 		if err := recordOperation(ctx, tx, consume); err != nil {
 			return err

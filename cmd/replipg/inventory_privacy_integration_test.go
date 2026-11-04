@@ -15,7 +15,7 @@ import (
 
 func TestInventoryPostCommitDeliveryAndPersonalPrivacy(t *testing.T) {
 	dir := t.TempDir()
-	options, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: "true", envDevCharacter: "true"}))
+	options, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevInventory: "true", envOwnerTelegramUserID: "42", envDevCharacter: "true"}))
 	if err != nil {
 		t.Fatal(err)
 	}

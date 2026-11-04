@@ -7,6 +7,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -18,13 +19,15 @@ func ensureInventoryRoot(ctx context.Context, tx runtimecontract.DBTX, id charac
 
 	return nil
 }
-func ownedQuantity(ctx context.Context, tx runtimecontract.DBTX, id charactercontract.ID, item contract.ItemID) (int64, error) {
+
+func ownedQuantity(ctx context.Context, tx runtimecontract.DBTX, id charactercontract.ID, item itemcontract.ItemID) (int64, error) {
 	var quantity int64
 
 	err := queryInventoryRows(ctx, tx, `SELECT quantity FROM inventory_items WHERE character_id=? AND item_id=?`, []any{id, item}, func(rows *sql.Rows) error { return rows.Scan(&quantity) })
 	return quantity, err
 }
-func increaseQuantity(ctx context.Context, tx runtimecontract.DBTX, id charactercontract.ID, item contract.ItemID, quantity int64) error {
+
+func increaseQuantity(ctx context.Context, tx runtimecontract.DBTX, id charactercontract.ID, item itemcontract.ItemID, quantity int64) error {
 	if quantity <= 0 {
 		return contract.ErrInvalidInput
 	}
@@ -45,7 +48,8 @@ func increaseQuantity(ctx context.Context, tx runtimecontract.DBTX, id character
 
 	return nil
 }
-func decreaseQuantity(ctx context.Context, tx runtimecontract.DBTX, id charactercontract.ID, item contract.ItemID, quantity int64) error {
+
+func decreaseQuantity(ctx context.Context, tx runtimecontract.DBTX, id charactercontract.ID, item itemcontract.ItemID, quantity int64) error {
 	if quantity <= 0 {
 		return contract.ErrInvalidInput
 	}

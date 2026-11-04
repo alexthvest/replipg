@@ -430,7 +430,7 @@ func TestSharingProductionWorkerComposition(t *testing.T) {
 }
 
 func TestSharingProductionExcludesSettingsAndDevelopment(t *testing.T) {
-	options, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevCharacter: "true", envDevInventory: "true"}))
+	options, err := productionOptions(config.Config{}, commandLookup(map[string]string{envDevCharacter: "true", envDevInventory: "true", envOwnerTelegramUserID: "7"}))
 	if err != nil {
 		t.Fatal(err)
 	}

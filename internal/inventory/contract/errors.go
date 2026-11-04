@@ -94,8 +94,10 @@ type StorageError struct{ cause error }
 // propagate this error to the owner of the transaction for rollback and retry.
 func NewStorageError(cause error) *StorageError { return &StorageError{cause: cause} }
 
-func (e *StorageError) Error() string        { return "inventory storage operation failed" }
-func (e *StorageError) Unwrap() error        { return e.cause }
+func (e *StorageError) Error() string { return "inventory storage operation failed" }
+
+func (e *StorageError) Unwrap() error { return e.cause }
+
 func (e *StorageError) Is(target error) bool { return target == ErrStorage }
 
 // StorageFailure identifies failures that must reach the transaction owner even

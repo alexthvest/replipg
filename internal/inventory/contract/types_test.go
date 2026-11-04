@@ -16,14 +16,6 @@ func TestIdentityValidation(t *testing.T) {
 		value interface{ Validate() error }
 		valid bool
 	}{
-		{"item", contract.ItemID("AZaz_09-"), true},
-		{"max item", contract.ItemID(strings.Repeat("x", 64)), true},
-		{"empty item", contract.ItemID(""), false},
-		{"long item", contract.ItemID(strings.Repeat("x", 65)), false},
-		{"unicode item", contract.ItemID("é"), false},
-		{"space item", contract.ItemID("a b"), false},
-		{"punctuation item", contract.ItemID("a/b"), false},
-		{"control item", contract.ItemID("a\x00"), false},
 		{"operation", contract.OperationID("battle:reward:character"), true},
 		{"max operation", contract.OperationID(strings.Repeat("x", 128)), true},
 		{"empty operation", contract.OperationID(""), false},
@@ -53,21 +45,14 @@ func checkValidation(t *testing.T, err error, valid bool) {
 }
 
 func TestClosedValues(t *testing.T) {
-	for _, c := range []contract.Category{contract.CategoryConsumable, contract.CategoryWeapon, contract.CategoryArmor, contract.CategoryInert} {
-		if !c.Valid() {
-			t.Errorf("category %q rejected", c)
-		}
-	}
 	for _, s := range []contract.Slot{contract.SlotWeapon, contract.SlotArmor} {
 		if !s.Valid() {
 			t.Errorf("slot %q rejected", s)
 		}
 	}
-	if contract.Category("").Valid() || contract.Category("currency").Valid() || contract.Slot("inert").Valid() || contract.EffectKind("damage").Valid() {
-		t.Fatal("unsupported value accepted")
-	}
-	if !contract.EffectHealSelfFixedHP.Valid() {
-		t.Fatal("self healing rejected")
+
+	if contract.Slot("inert").Valid() {
+		t.Fatal("unsupported slot accepted")
 	}
 }
 
@@ -96,11 +81,6 @@ func TestRequestValidation(t *testing.T) {
 		{"consume", contract.ConsumeRequest{OperationID: "op", CharacterID: "id", ItemID: "potion"}, true},
 		{"missing consume item", contract.ConsumeRequest{OperationID: "op", CharacterID: "id"}, false},
 		{"missing consume operation", contract.ConsumeRequest{CharacterID: "id", ItemID: "potion"}, false},
-		{"effect", contract.EffectDefinition{ItemID: "potion", Kind: contract.EffectHealSelfFixedHP, HealingHP: math.MaxInt64}, true},
-		{"unknown effect", contract.EffectDefinition{ItemID: "potion", Kind: "heal_other", HealingHP: 1}, false},
-		{"zero healing", contract.EffectDefinition{ItemID: "potion", Kind: contract.EffectHealSelfFixedHP}, false},
-		{"negative healing", contract.EffectDefinition{ItemID: "potion", Kind: contract.EffectHealSelfFixedHP, HealingHP: -1}, false},
-		{"missing effect item", contract.EffectDefinition{Kind: contract.EffectHealSelfFixedHP, HealingHP: 1}, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) { checkValidation(t, tt.value.Validate(), tt.valid) })
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/alexthvest/replipg/internal/testsupport"
 )
 
-func inventoryFixture(t *testing.T) (*persistence.DB, Catalog, *testsupport.ManualClock, string) {
+func inventoryFixture(t *testing.T) (*persistence.DB, fixtureCatalog, *testsupport.ManualClock, string) {
 	t.Helper()
 	dir := t.TempDir()
 	db := openInventoryDB(t, dir)

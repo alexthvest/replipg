@@ -10,6 +10,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -37,8 +38,8 @@ func TestStoreCatalogPreparation(t *testing.T) {
 	for _, kind := range []string{"changed", "removed"} {
 		t.Run(kind, func(t *testing.T) {
 			candidate := catalog
-			candidate.items = append([]ItemDefinition{{ID: "added", Category: contract.CategoryInert}}, catalog.Items()...)
-			candidate.byID = make(map[contract.ItemID]ItemDefinition)
+			candidate.items = append([]itemcontract.Definition{{ID: "added", Category: itemcontract.CategoryInert}}, catalog.Items()...)
+			candidate.byID = make(map[itemcontract.ItemID]itemcontract.Definition)
 			for i, item := range candidate.items {
 				if item.ID == "stick" && kind == "changed" {
 					item.AttackBonus++
@@ -147,7 +148,7 @@ func TestStoreReadsEmptyAndMissing(t *testing.T) {
 func TestStoreReadsPagesEquipmentAndReopen(t *testing.T) {
 	db, catalog, _, dir := inventoryFixture(t)
 	for i := 0; i < 18; i++ {
-		item := ItemDefinition{ID: contract.ItemID(fmt.Sprintf("extra_%02d", i)), Category: contract.CategoryInert}
+		item := itemcontract.Definition{ID: itemcontract.ItemID(fmt.Sprintf("extra_%02d", i)), Category: itemcontract.CategoryInert}
 		catalog.items = append(catalog.items, item)
 		catalog.byID[item.ID] = item
 	}
@@ -230,7 +231,7 @@ func TestStoreReadsPagesEquipmentAndReopen(t *testing.T) {
 func TestStoreCatalogNewIdentityAndStorageErrors(t *testing.T) {
 	db, catalog, _, _ := inventoryFixture(t)
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error { return prepareCatalog(ctx, tx, catalog) })
-	item := ItemDefinition{ID: "new_coin", Category: contract.CategoryInert}
+	item := itemcontract.Definition{ID: "new_coin", Category: itemcontract.CategoryInert}
 	catalog.items = append(catalog.Items(), item)
 	catalog.byID[item.ID] = item
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error { return prepareCatalog(ctx, tx, catalog) })

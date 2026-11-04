@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 )
 
 // equipmentRule validates an assignment without changing ownership or equipment.
@@ -22,14 +23,15 @@ func equipmentRule(snapshot contract.Snapshot, catalog Catalog, change contract.
 	}
 
 	if err := change.ItemID.Validate(); err != nil {
-		return false, err
+		return false, inventoryItemError(err)
 	}
 
 	item, exists := catalog.Lookup(change.ItemID)
 	if !exists {
 		return false, contract.ErrInvalidInput
 	}
-	compatible := change.Slot == contract.SlotWeapon && item.Category == contract.CategoryWeapon || change.Slot == contract.SlotArmor && item.Category == contract.CategoryArmor
+
+	compatible := change.Slot == contract.SlotWeapon && item.Category == itemcontract.CategoryWeapon || change.Slot == contract.SlotArmor && item.Category == itemcontract.CategoryArmor
 	if !compatible {
 		return false, contract.ErrIncompatibleSlot
 	}

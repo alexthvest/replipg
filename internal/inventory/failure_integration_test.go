@@ -38,8 +38,11 @@ func (inventoryFaultDriver) Open(mode string) (driver.Conn, error) {
 }
 
 func (inventoryFaultConn) Prepare(string) (driver.Stmt, error) { return nil, errInventoryFault }
-func (inventoryFaultConn) Begin() (driver.Tx, error)           { return nil, errInventoryFault }
-func (inventoryFaultConn) Close() error                        { return nil }
+
+func (inventoryFaultConn) Begin() (driver.Tx, error) { return nil, errInventoryFault }
+
+func (inventoryFaultConn) Close() error { return nil }
+
 func (c inventoryFaultConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
 	if c.mode == "query" {
 		return nil, errInventoryFault

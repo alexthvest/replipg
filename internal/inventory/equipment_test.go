@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -105,7 +106,7 @@ func TestEquipmentMutationReplayAndStaleness(t *testing.T) {
 
 func TestEquipmentReplacementAndFailureRollback(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
-	alternate := ItemDefinition{ID: "sword", Category: contract.CategoryWeapon, AttackBonus: 3}
+	alternate := itemcontract.Definition{ID: "sword", Category: itemcontract.CategoryWeapon, AttackBonus: 3}
 	catalog.items = append(catalog.Items(), alternate)
 	catalog.byID[alternate.ID] = alternate
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)

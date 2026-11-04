@@ -1,4 +1,8 @@
 {
+  "usage.item": "Usage: /dev_item <item-id>",
+  "item.unknown": "Unknown item.",
+  "item.probe": "{{.name}}\nID: {{.id}}\nCategory: {{.category}}",
+  "command.dev_item": "Inspect an item (owner only)",
   "sharing.share": "Share",
   "sharing.attribution": "Shared by user {{.user_id}}",
   "sharing.pending": "Sharing is still in progress. Please wait.",

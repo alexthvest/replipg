@@ -221,7 +221,7 @@ func TestInventorySharingExcludesGuidanceAndDevelopment(t *testing.T) {
 			return err
 		}
 
-		dev := developmentHandler{service: service, now: clock.Now, presentation: p}
+		dev := developmentHandler{service: service, owner: 42, now: clock.Now, presentation: p}
 		for _, command := range []interaction.Command{
 			{Identity: identity, Name: "dev_inventory_grant", Arguments: "coin 1", EphemeralMessageID: 1, SentAt: clock.Now()},
 			{Identity: identity, Name: "dev_inventory_heal", Arguments: "healing_potion", EphemeralMessageID: 1, SentAt: clock.Now()},

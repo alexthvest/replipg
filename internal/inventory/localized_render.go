@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
@@ -24,7 +25,8 @@ func (r *localizedRenderer) text(k localization.Key, args localization.Args) str
 	r.err = e
 	return s
 }
-func (r *localizedRenderer) item(id contract.ItemID) localization.ItemText {
+
+func (r *localizedRenderer) item(id itemcontract.ItemID) localization.ItemText {
 	if r.err != nil {
 		return localization.ItemText{}
 	}
@@ -76,7 +78,7 @@ func renderPageLocalized(catalog Catalog, page inventoryPage, label string, cont
 	text.WriteString("\n" + r.text("inventory.equipment", nil) + "\n")
 	for _, slot := range []struct {
 		key    localization.Key
-		id     contract.ItemID
+		id     itemcontract.ItemID
 		weapon bool
 	}{{"inventory.weapon", page.Current.Weapon, true}, {"inventory.armor", page.Current.Armor, false}} {
 		label := r.text(slot.key, nil)
@@ -117,7 +119,8 @@ func renderPageLocalized(catalog Catalog, page inventoryPage, label string, cont
 	}
 	return content, r.err
 }
-func renderDetailLocalized(catalog Catalog, snapshot contract.Snapshot, id contract.ItemID, label string, controls viewControls, p Presentation, l localization.Locale) (runtimecontract.MessageContent, error) {
+
+func renderDetailLocalized(catalog Catalog, snapshot contract.Snapshot, id itemcontract.ItemID, label string, controls viewControls, p Presentation, l localization.Locale) (runtimecontract.MessageContent, error) {
 	item, ok := catalog.Lookup(id)
 	if !ok {
 		return runtimecontract.MessageContent{}, contract.ErrNotFound
@@ -143,12 +146,12 @@ func renderDetailLocalized(catalog Catalog, snapshot contract.Snapshot, id contr
 	var actions []runtimecontract.InlineButton
 
 	switch item.Category {
-	case contract.CategoryConsumable:
+	case itemcontract.CategoryConsumable:
 		text += r.text("inventory.healing", localization.Args{"value": localization.Integer(item.HealingHP)})
-	case contract.CategoryWeapon, contract.CategoryArmor:
+	case itemcontract.CategoryWeapon, itemcontract.CategoryArmor:
 		key := localization.Key("inventory.defense")
 		value := item.DefenseBonus
-		if item.Category == contract.CategoryWeapon {
+		if item.Category == itemcontract.CategoryWeapon {
 			key = "inventory.attack"
 			value = item.AttackBonus
 		}

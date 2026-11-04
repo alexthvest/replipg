@@ -31,9 +31,10 @@ func inventoryCharacters(t *testing.T, now func() time.Time) *character.Service 
 
 	return service
 }
-func inventoryService(t *testing.T, catalog Catalog, characters characterPort, now func() time.Time) *Service {
+
+func inventoryService(t *testing.T, catalog fixtureCatalog, characters characterPort, now func() time.Time) *Service {
 	t.Helper()
-	s, err := NewService(catalog, characters, now)
+	s, err := NewService(catalog, catalog.Starter(), characters, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,11 +305,11 @@ func TestServiceConstructorRejectsInvalidInputs(t *testing.T) {
 	_, catalog, clock, _ := inventoryFixture(t)
 	chars := inventoryCharacters(t, clock.Now)
 	for _, tc := range []struct {
-		catalog Catalog
+		catalog fixtureCatalog
 		chars   characterPort
 		clock   func() time.Time
-	}{{Catalog{}, chars, clock.Now}, {catalog, nil, clock.Now}, {catalog, (*character.Service)(nil), clock.Now}, {catalog, chars, nil}} {
-		if _, err := NewService(tc.catalog, tc.chars, tc.clock); err == nil {
+	}{{fixtureCatalog{}, chars, clock.Now}, {catalog, nil, clock.Now}, {catalog, (*character.Service)(nil), clock.Now}, {catalog, chars, nil}} {
+		if _, err := NewService(tc.catalog, tc.catalog.Starter(), tc.chars, tc.clock); err == nil {
 			t.Fatal("accepted invalid inputs")
 		}
 	}

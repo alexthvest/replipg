@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -48,7 +49,7 @@ func (s *Service) grant(ctx context.Context, tx runtimecontract.DBTX, req contra
 
 	// canonicalGrant validated every line and checked aggregate arithmetic.
 	// Apply exactly those canonical quantities once per item.
-	totals := make(map[contract.ItemID]int64, len(req.Items))
+	totals := make(map[itemcontract.ItemID]int64, len(req.Items))
 	for _, line := range req.Items {
 		totals[line.ItemID] += line.Quantity
 	}

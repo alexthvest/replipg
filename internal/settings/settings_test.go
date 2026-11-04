@@ -844,3 +844,43 @@ func TestTransientMenuFailuresUseCappedExponentialBackoff(t *testing.T) {
 		now = now.Add(delay)
 	}
 }
+
+func TestResolveReadOnlyDoesNotCreateSettings(t *testing.T) {
+	db, store, _, now := fixture(t)
+	ctx := context.Background()
+	if err := db.WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
+		locale, err := store.ResolveReadOnly(ctx, tx, -1)
+		if err != nil || locale != localization.English {
+			t.Fatalf("default %s: %v", locale, err)
+		}
+
+		var count int
+
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM group_settings`).Scan(&count); err != nil {
+			return err
+		}
+
+		if count != 0 {
+			t.Fatal("read created group settings")
+		}
+
+		saved, err := store.Inspect(ctx, tx, -1, now)
+		if err != nil {
+			return err
+		}
+
+		_, err = store.Change(ctx, tx, -1, saved.Revision, localization.Russian, now)
+		if err != nil {
+			return err
+		}
+
+		locale, err = store.ResolveReadOnly(ctx, tx, -1)
+		if err != nil || locale != localization.Russian {
+			t.Fatalf("saved %s: %v", locale, err)
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

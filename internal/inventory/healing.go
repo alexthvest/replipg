@@ -7,22 +7,14 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 // Effect exposes a trusted fixed healing definition to gameplay consumers.
-func (s *Service) Effect(id contract.ItemID) (contract.EffectDefinition, error) {
-	if err := id.Validate(); err != nil {
-		return contract.EffectDefinition{}, err
-	}
-	item, ok := s.catalog.Lookup(id)
-	if !ok {
-		return contract.EffectDefinition{}, &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "item_id"}
-	}
-	if item.Category != contract.CategoryConsumable {
-		return contract.EffectDefinition{}, &contract.DomainError{Kind: contract.ErrorNotUsable}
-	}
-	return contract.EffectDefinition{ItemID: id, Kind: contract.EffectHealSelfFixedHP, HealingHP: item.HealingHP}, nil
+func (s *Service) Effect(id itemcontract.ItemID) (itemcontract.EffectDefinition, error) {
+	effect, err := s.catalog.Effect(id)
+	return effect, inventoryItemError(err)
 }
 
 // ConsumeHealing atomically spends one item and heals through the character service.
@@ -136,7 +128,7 @@ func (s *Service) ConsumeHealing(ctx context.Context, tx runtimecontract.DBTX, r
 
 // An existing identity is compared using its frozen effect before consulting
 // current definitions, so changed item inputs conflict even when not usable.
-func (s *Service) consumptionEffect(ctx context.Context, tx runtimecontract.DBTX, req contract.ConsumeRequest) (contract.EffectDefinition, error) {
+func (s *Service) consumptionEffect(ctx context.Context, tx runtimecontract.DBTX, req contract.ConsumeRequest) (itemcontract.EffectDefinition, error) {
 	var target charactercontract.ID
 	var kind string
 	var effectKind sql.NullString
@@ -148,7 +140,7 @@ func (s *Service) consumptionEffect(ctx context.Context, tx runtimecontract.DBTX
 		return rows.Scan(&target, &kind, &effectKind, &healing)
 	})
 	if err != nil {
-		return contract.EffectDefinition{}, err
+		return itemcontract.EffectDefinition{}, err
 	}
 
 	if !found {
@@ -156,11 +148,12 @@ func (s *Service) consumptionEffect(ctx context.Context, tx runtimecontract.DBTX
 	}
 
 	if target != req.CharacterID || kind != "consume" {
-		return contract.EffectDefinition{}, &contract.DomainError{Kind: contract.ErrorOperationConflict}
+		return itemcontract.EffectDefinition{}, &contract.DomainError{Kind: contract.ErrorOperationConflict}
 	}
-	effect := contract.EffectDefinition{ItemID: req.ItemID, Kind: contract.EffectKind(effectKind.String), HealingHP: healing.Int64}
+
+	effect := itemcontract.EffectDefinition{ItemID: req.ItemID, Kind: itemcontract.EffectKind(effectKind.String), HealingHP: healing.Int64}
 	if err := effect.Validate(); err != nil {
-		return contract.EffectDefinition{}, contract.NewStorageError(err)
+		return itemcontract.EffectDefinition{}, contract.NewStorageError(err)
 	}
 
 	return effect, nil

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 )
 
 func TestEquipmentRuleSlotCategories(t *testing.T) {
@@ -22,7 +23,8 @@ func TestEquipmentRuleSlotCategories(t *testing.T) {
 				before := snapshot
 				before.Items = append([]contract.OwnedItem(nil), snapshot.Items...)
 				changed, err := equipmentRule(snapshot, catalog, contract.EquipmentChange{Slot: slot, ItemID: item.ID})
-				compatible := slot == contract.SlotWeapon && item.Category == contract.CategoryWeapon || slot == contract.SlotArmor && item.Category == contract.CategoryArmor
+				compatible := slot == contract.SlotWeapon && item.Category == itemcontract.CategoryWeapon || slot == contract.SlotArmor && item.Category == itemcontract.CategoryArmor
+
 				if compatible {
 					if err != nil || !changed {
 						t.Fatalf("changed=%v err=%v", changed, err)
@@ -48,7 +50,7 @@ func TestEquipmentRuleTransitions(t *testing.T) {
 	for _, tt := range []struct {
 		name                string
 		slot                contract.Slot
-		item, weapon, armor contract.ItemID
+		item, weapon, armor itemcontract.ItemID
 		quantity            int64
 		changed             bool
 		want                error

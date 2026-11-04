@@ -12,6 +12,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -21,7 +22,7 @@ type operationRecord struct {
 	Kind             string
 	CanonicalRequest string
 	AppliedRevision  int64
-	EffectKind       contract.EffectKind
+	EffectKind       itemcontract.EffectKind
 	HealingHP        int64
 }
 
@@ -29,7 +30,8 @@ func canonicalGrant(req contract.GrantRequest) (string, error) {
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
-	totals := make(map[contract.ItemID]int64, len(req.Items))
+
+	totals := make(map[itemcontract.ItemID]int64, len(req.Items))
 	for _, line := range req.Items {
 		if totals[line.ItemID] > math.MaxInt64-line.Quantity {
 			return "", &contract.DomainError{Kind: contract.ErrorExhausted, Field: "quantity"}
@@ -39,8 +41,8 @@ func canonicalGrant(req contract.GrantRequest) (string, error) {
 	}
 
 	type line struct {
-		ItemID   contract.ItemID `json:"item_id"`
-		Quantity int64           `json:"quantity"`
+		ItemID   itemcontract.ItemID `json:"item_id"`
+		Quantity int64               `json:"quantity"`
 	}
 
 	lines := make([]line, 0, len(totals))
@@ -61,20 +63,20 @@ func canonicalEquipment(req contract.EquipmentChange) (string, error) {
 	}
 
 	return canonicalJSON(struct {
-		Version          int             `json:"version"`
-		Slot             contract.Slot   `json:"slot"`
-		ItemID           contract.ItemID `json:"item_id"`
-		ExpectedRevision int64           `json:"expected_revision"`
+		Version          int                 `json:"version"`
+		Slot             contract.Slot       `json:"slot"`
+		ItemID           itemcontract.ItemID `json:"item_id"`
+		ExpectedRevision int64               `json:"expected_revision"`
 	}{1, req.Slot, req.ItemID, req.ExpectedRevision})
 }
 
-func canonicalConsume(req contract.ConsumeRequest, effect contract.EffectDefinition) (string, error) {
+func canonicalConsume(req contract.ConsumeRequest, effect itemcontract.EffectDefinition) (string, error) {
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
 
 	if err := effect.Validate(); err != nil {
-		return "", err
+		return "", inventoryItemError(err)
 	}
 
 	if req.ItemID != effect.ItemID {
@@ -82,10 +84,10 @@ func canonicalConsume(req contract.ConsumeRequest, effect contract.EffectDefinit
 	}
 
 	return canonicalJSON(struct {
-		Version    int                 `json:"version"`
-		ItemID     contract.ItemID     `json:"item_id"`
-		EffectKind contract.EffectKind `json:"effect_kind"`
-		HealingHP  int64               `json:"healing_hp"`
+		Version    int                     `json:"version"`
+		ItemID     itemcontract.ItemID     `json:"item_id"`
+		EffectKind itemcontract.EffectKind `json:"effect_kind"`
+		HealingHP  int64                   `json:"healing_hp"`
 	}{1, req.ItemID, effect.Kind, effect.HealingHP})
 }
 
@@ -150,7 +152,8 @@ func checkOperation(ctx context.Context, tx runtimecontract.DBTX, want operation
 		if err := rows.Scan(&stored.CharacterID, &stored.Kind, &stored.CanonicalRequest, &stored.AppliedRevision, &kind, &healing); err != nil {
 			return err
 		}
-		stored.EffectKind, stored.HealingHP = contract.EffectKind(kind.String), healing.Int64
+
+		stored.EffectKind, stored.HealingHP = itemcontract.EffectKind(kind.String), healing.Int64
 		found = true
 		return nil
 	})

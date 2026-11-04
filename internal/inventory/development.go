@@ -9,23 +9,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/localization"
-
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
+	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
 // RegisterDevelopment installs explicitly enabled self-only verification probes.
-func RegisterDevelopment(registry *interaction.Registry, service *Service, now func() time.Time, p Presentation) error {
+func RegisterDevelopment(registry *interaction.Registry, service *Service, owner runtimecontract.UserID, now func() time.Time, p Presentation) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
-	if registry == nil || service == nil || now == nil {
+
+	if registry == nil || service == nil || owner <= 0 || now == nil {
 		return contract.ErrInvalidInput
 	}
-	h := developmentHandler{service: service, now: now, presentation: p}
+
+	h := developmentHandler{service: service, owner: owner, now: now, presentation: p}
 	if err := registry.RegisterCommand("dev_inventory_grant", h); err != nil {
 		return err
 	}
@@ -34,6 +36,7 @@ func RegisterDevelopment(registry *interaction.Registry, service *Service, now f
 }
 
 type developmentHandler struct {
+	owner        runtimecontract.UserID
 	service      *Service
 	now          func() time.Time
 	presentation Presentation
@@ -45,7 +48,7 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 		command = *pointer
 		ok = true
 	}
-	if !ok || !authorizedInventoryCommand(command, h.now()) || (command.Name != "dev_inventory_grant" && command.Name != "dev_inventory_heal") {
+	if !ok || h.owner <= 0 || command.User != h.owner || !authorizedInventoryCommand(command, h.now()) || (command.Name != "dev_inventory_grant" && command.Name != "dev_inventory_heal") {
 		return interaction.HandlerResult{}, nil
 	}
 
@@ -74,7 +77,8 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 	if len(fields) != count {
 		return respond(usage)
 	}
-	item := contract.ItemID(fields[0])
+
+	item := itemcontract.ItemID(fields[0])
 	if item.Validate() != nil {
 		return respond(usage)
 	}

@@ -6,110 +6,81 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/localization"
 )
 
-// Seed tuning: Stick adds 1 attack, Cloth armor adds 1 defense and Healing
-// potion heals 10 HP. The starter grants 1 weapon, 1 armor, 3 potions and 10
-// ordinary inert Coins. Starter equipment is owned, never automatically equipped.
-// These are version-controlled balances, independent of presentation mockups.
-//
-//go:embed items.json
-var embeddedCatalog []byte
-
-// ItemDefinition describes fungible copies and keeps mechanics separate from
-// character base attributes. Consumables always use fixed self-healing.
-type ItemDefinition struct {
-	ID           contract.ItemID   `json:"id"`
-	Category     contract.Category `json:"category"`
-	AttackBonus  int64             `json:"attack_bonus"`
-	DefenseBonus int64             `json:"defense_bonus"`
-	HealingHP    int64             `json:"healing_hp"`
+// Catalog is the inventory-owned read port for immutable item mechanics.
+type Catalog interface {
+	Lookup(itemcontract.ItemID) (itemcontract.Definition, bool)
+	Items() []itemcontract.Definition
+	Effect(itemcontract.ItemID) (itemcontract.EffectDefinition, error)
 }
 
-// Catalog contains validated immutable definitions and starter quantities.
-// Lookup returns values; slice accessors return independent copies.
-type Catalog struct {
-	items   []ItemDefinition
-	byID    map[contract.ItemID]ItemDefinition
-	starter []contract.GrantLine
+//go:embed starter.json
+var embeddedStarter []byte
+
+// LoadStarter loads version-controlled starter quantities for the item catalog.
+func LoadStarter(catalog Catalog) ([]contract.GrantLine, error) {
+	return ParseStarter(embeddedStarter, catalog)
 }
 
-type catalogContent struct {
-	Items []struct {
-		ItemDefinition
-		Effect contract.EffectKind `json:"effect"`
-	} `json:"items"`
-	Starter []struct {
-		ItemID   contract.ItemID `json:"item_id"`
-		Quantity int64           `json:"quantity"`
-	} `json:"starter"`
-}
-
-// LoadCatalog validates the embedded version-controlled content without I/O.
-func LoadCatalog() (Catalog, error) { return ParseCatalog(embeddedCatalog) }
-
-// ParseCatalog strictly validates content before exposing any definitions.
-// Errors identify only a fixed field name and never echo supplied content.
-func ParseCatalog(data []byte) (Catalog, error) {
+// ParseStarter strictly validates inventory-owned starter quantities.
+func ParseStarter(data []byte, catalog Catalog) ([]contract.GrantLine, error) {
 	if !utf8.Valid(data) || !strictJSON(data) {
-		return Catalog{}, invalidCatalog("content")
+		return nil, invalidCatalog("starter")
 	}
-	var content catalogContent
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&content); err != nil {
-		return Catalog{}, invalidCatalog("content")
+
+	var content struct {
+		Starter []struct {
+			ItemID   itemcontract.ItemID `json:"item_id"`
+			Quantity int64               `json:"quantity"`
+		} `json:"starter"`
 	}
-	catalog := Catalog{byID: make(map[contract.ItemID]ItemDefinition)}
-	for _, item := range content.Items {
-		definition := item.ItemDefinition
-		if definition.ID.Validate() != nil {
-			return Catalog{}, invalidCatalog("item_id")
-		}
-		if _, exists := catalog.byID[definition.ID]; exists {
-			return Catalog{}, invalidCatalog("item_id")
-		}
-		if !validMechanics(definition, item.Effect) {
-			return Catalog{}, invalidCatalog("mechanics")
-		}
-		catalog.byID[definition.ID] = definition
-		catalog.items = append(catalog.items, definition)
+
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&content); err != nil {
+		return nil, invalidCatalog("starter")
 	}
-	seen := make(map[contract.ItemID]bool)
-	categories := make(map[contract.Category]bool)
-	for _, line := range content.Starter {
-		definition, exists := catalog.byID[line.ItemID]
-		if !exists || seen[line.ItemID] || line.Quantity <= 0 {
-			return Catalog{}, invalidCatalog("starter")
-		}
-		seen[line.ItemID] = true
-		categories[definition.Category] = true
-		catalog.starter = append(catalog.starter, contract.GrantLine{ItemID: line.ItemID, Quantity: line.Quantity})
+
+	lines := make([]contract.GrantLine, 0, len(content.Starter))
+	for _, v := range content.Starter {
+		lines = append(lines, contract.GrantLine{ItemID: v.ItemID, Quantity: v.Quantity})
 	}
-	if !categories[contract.CategoryWeapon] || !categories[contract.CategoryArmor] || !categories[contract.CategoryConsumable] {
-		return Catalog{}, invalidCatalog("starter")
-	}
-	return catalog, nil
+	return validateStarter(catalog, lines)
 }
 
-// Lookup resolves a stable identity to an independent definition value.
-func (c Catalog) Lookup(id contract.ItemID) (ItemDefinition, bool) {
-	item, ok := c.byID[id]
-	return item, ok
+func validateStarter(catalog Catalog, lines []contract.GrantLine) ([]contract.GrantLine, error) {
+	if nilPort(catalog) {
+		return nil, invalidCatalog("catalog")
+	}
+
+	seen := make(map[itemcontract.ItemID]bool)
+	categories := make(map[itemcontract.Category]bool)
+	result := make([]contract.GrantLine, 0, len(lines))
+	for _, v := range lines {
+		d, ok := catalog.Lookup(v.ItemID)
+		if !ok || seen[v.ItemID] || v.Validate() != nil {
+			return nil, invalidCatalog("starter")
+		}
+
+		seen[v.ItemID] = true
+		categories[d.Category] = true
+		result = append(result, v)
+	}
+
+	if !categories[itemcontract.CategoryWeapon] || !categories[itemcontract.CategoryArmor] || !categories[itemcontract.CategoryConsumable] {
+		return nil, invalidCatalog("starter")
+	}
+
+	return result, nil
 }
-
-// Items lists definitions in version-controlled content order.
-func (c Catalog) Items() []ItemDefinition { return slices.Clone(c.items) }
-
-// Starter lists positive starter quantities without equipment assignments.
-func (c Catalog) Starter() []contract.GrantLine { return slices.Clone(c.starter) }
 
 func invalidCatalog(field string) error {
 	return &contract.DomainError{Kind: contract.ErrorInvalidCatalog, Field: field}
@@ -126,21 +97,6 @@ func validCatalogText(text string, limit int) bool {
 		}
 	}
 	return true
-}
-
-func validMechanics(item ItemDefinition, effect contract.EffectKind) bool {
-	switch item.Category {
-	case contract.CategoryConsumable:
-		return item.HealingHP > 0 && item.AttackBonus == 0 && item.DefenseBonus == 0 && effect == contract.EffectHealSelfFixedHP
-	case contract.CategoryWeapon:
-		return item.AttackBonus >= 0 && item.DefenseBonus == 0 && item.HealingHP == 0 && effect == ""
-	case contract.CategoryArmor:
-		return item.DefenseBonus >= 0 && item.AttackBonus == 0 && item.HealingHP == 0 && effect == ""
-	case contract.CategoryInert:
-		return item.AttackBonus == 0 && item.DefenseBonus == 0 && item.HealingHP == 0 && effect == ""
-	default:
-		return false
-	}
 }
 
 // encoding/json otherwise accepts duplicate fields, null scalar values and

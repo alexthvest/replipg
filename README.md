@@ -72,7 +72,7 @@ Add the bot to a Telegram group or supergroup and use:
 | Command | Purpose |
 | --- | --- |
 | `/character` | Create or view your persistent character and health. |
-| `/inventory` | Browse your items, manage equipment, and use consumables. |
+| `/inventory` | Browse your items and equip or remove weapons and armor. Consumables are reserved for battle actions. |
 | `/settings` | View the group's language settings. Group administrators can change the language. |
 
 Groups default to English. Personal menus are visible only to the player who opened them. Use the Share button to publish a read-only snapshot in the group. Player interactions take place in groups and supergroups; private-chat gameplay is not supported.
@@ -104,3 +104,20 @@ For individual Go commands, use the repository environment, for example:
 ```sh
 devenv shell -- go test ./...
 ```
+
+To inspect item definitions and exercise inventory mutations in a dedicated test deployment, set `REPLIPG_DEV_INVENTORY=true` and `REPLIPG_OWNER_TELEGRAM_USER_ID` to your positive numeric Telegram user ID, then restart. The owner value must contain decimal digits only and fit a signed 64-bit integer; missing, zero, negative, whitespace-containing, or overflowing values fail before storage or Telegram startup. The default is disabled; no owner is required then. Character and runtime development flags remain independent.
+
+Invoke these commands through Telegram's ephemeral command menu in a group or supergroup, using the configured owner's human account. Ordinary typed messages, private chats, expired interactions, bots, and messages sent as a chat are rejected. All results are personal, with no public or private-chat fallback.
+
+| Command | Prerequisite and expected result | State changes |
+| --- | --- | --- |
+| `/dev_item coin` | No character or inventory required. Shows translated name, `coin`, and inert category. | None, including group language settings. |
+| `/dev_item stick` | Shows stable ID, translated weapon category, and +1 attack bonus. | None. |
+| `/dev_item cloth_armor` | Shows stable ID, translated armor category, and +1 defense bonus. | None. |
+| `/dev_item healing_potion` | Shows stable ID, translated consumable category, and 10 HP healing. | None. |
+| `/dev_inventory_grant <item-id> <positive whole quantity>` | First open `/inventory` as the owner. Success reports that the inventory reward was granted. | Adds items only to the owner's existing character; replaying the same update cannot grant twice. |
+| `/dev_inventory_heal healing_potion` | Owner has opened `/inventory`, owns a potion, is active, and has missing HP. With character probes enabled, `/dev_character_damage 20` prepares missing HP. Success reports healing. | Atomically spends one potion and heals up to 10 HP; full health or incapacitation spends nothing. |
+
+The item probe uses the group's saved English or Russian language, defaulting to English without creating settings. Missing, extra, or malformed item arguments return localized usage; unknown IDs return localized unknown-item guidance without echoing input. No callbacks or sharing controls are created. Restarting retains inventories and receipts; disabling the flag removes all three development routes and menu entries while `/inventory` remains available to every player.
+
+Verify access with a second account, including a group administrator: all three development commands must produce no output and no feature-state changes. Usernames and administrator roles do not grant access. Automated tests exercise the real executable against fake Telegram and temporary SQLite storage, including zero-state item inspection, owner/non-owner behavior and disabled probes. Real Telegram success and access-control observations remain pending until performed in a test group.

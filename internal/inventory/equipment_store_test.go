@@ -7,16 +7,17 @@ import (
 	"testing"
 
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/persistence"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
-func seedEquipmentStore(t *testing.T, db *persistence.DB, catalog Catalog) Catalog {
+func seedEquipmentStore(t *testing.T, db *persistence.DB, catalog fixtureCatalog) fixtureCatalog {
 	t.Helper()
-	for _, item := range []ItemDefinition{
-		{ID: "sword", Category: contract.CategoryWeapon, AttackBonus: 7},
-		{ID: "plate", Category: contract.CategoryArmor, DefenseBonus: 9},
-		{ID: "unowned_weapon", Category: contract.CategoryWeapon},
+	for _, item := range []itemcontract.Definition{
+		{ID: "sword", Category: itemcontract.CategoryWeapon, AttackBonus: 7},
+		{ID: "plate", Category: itemcontract.CategoryArmor, DefenseBonus: 9},
+		{ID: "unowned_weapon", Category: itemcontract.CategoryWeapon},
 	} {
 		catalog.items = append(catalog.items, item)
 		catalog.byID[item.ID] = item
@@ -62,7 +63,7 @@ func TestEquipmentStoreRoundTrip(t *testing.T) {
 	})
 	for _, step := range []struct {
 		name          string
-		weapon, armor contract.ItemID
+		weapon, armor itemcontract.ItemID
 		modifiers     contract.Modifiers
 	}{
 		{name: "empty"},
@@ -123,7 +124,7 @@ func TestEquipmentStoreRoundTrip(t *testing.T) {
 
 func TestEquipmentStoreRejectsInvalidAssignments(t *testing.T) {
 	for _, replacing := range []bool{false, true} {
-		for _, item := range []contract.ItemID{"unowned_weapon", "missing", "cloth_armor", "coin", "healing_potion"} {
+		for _, item := range []itemcontract.ItemID{"unowned_weapon", "missing", "cloth_armor", "coin", "healing_potion"} {
 			t.Run(string(item)+map[bool]string{false: "/insert", true: "/replace"}[replacing], func(t *testing.T) {
 				db, catalog, _, _ := inventoryFixture(t)
 				catalog = seedEquipmentStore(t, db, catalog)
@@ -147,7 +148,8 @@ func TestEquipmentStoreRejectsInvalidAssignments(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					want := contract.ItemID("")
+
+					want := itemcontract.ItemID("")
 					if replacing {
 						want = "stick"
 					}
@@ -198,7 +200,7 @@ func TestEquipmentStoreCallerRollbackAndStorageErrors(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	for _, item := range []contract.ItemID{"stick", ""} {
+	for _, item := range []itemcontract.ItemID{"stick", ""} {
 		err := writeEquipment(ctx, db, storeCharacterID, contract.SlotWeapon, item)
 		if !errors.Is(err, contract.ErrStorage) || !errors.Is(err, context.Canceled) {
 			t.Fatalf("storage cause lost: %v", err)

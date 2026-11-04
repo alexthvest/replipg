@@ -12,6 +12,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -78,7 +79,7 @@ func TestGrantCanonicalReplayAndPendingStarter(t *testing.T) {
 	})
 }
 
-func assertGrantQuantity(t *testing.T, snapshot contract.Snapshot, id contract.ItemID, want int64) {
+func assertGrantQuantity(t *testing.T, snapshot contract.Snapshot, id itemcontract.ItemID, want int64) {
 	t.Helper()
 	for _, item := range snapshot.Items {
 		if item.ItemID == id {

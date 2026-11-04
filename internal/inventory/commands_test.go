@@ -7,7 +7,6 @@ import (
 	"time"
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
-
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )

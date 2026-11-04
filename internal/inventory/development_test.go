@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
+	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -15,7 +17,7 @@ func TestDevelopmentInventorySelfGrantAndHealing(t *testing.T) {
 	characters := inventoryCharacters(t, clock.Now)
 	service := inventoryService(t, catalog, characters, clock.Now)
 	identity := interaction.Identity{Update: 100, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}
-	handler := developmentHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
+	handler := developmentHandler{service: service, owner: 42, now: clock.Now, presentation: englishPresentation(t)}
 	var id charactercontract.ID
 
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -139,7 +141,7 @@ func TestDevelopmentInventorySelfGrantAndHealing(t *testing.T) {
 		return err
 	})
 	registry := interaction.NewRegistry()
-	if err := RegisterDevelopment(registry, service, clock.Now, englishPresentation(t)); err != nil {
+	if err := RegisterDevelopment(registry, service, 42, clock.Now, englishPresentation(t)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -147,7 +149,7 @@ func TestDevelopmentInventorySelfGrantAndHealing(t *testing.T) {
 func TestDevelopmentInventoryAuthorization(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
-	handler := developmentHandler{service: service, now: clock.Now, presentation: englishPresentation(t)}
+	handler := developmentHandler{service: service, owner: 42, now: clock.Now, presentation: englishPresentation(t)}
 	for _, name := range []interaction.CommandName{"dev_inventory_grant", "dev_inventory_heal"} {
 		command := interaction.Command{Identity: interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}, Name: name, Arguments: "coin 2", SentAt: clock.Now()}
 		inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -165,5 +167,63 @@ func TestDevelopmentInventoryAuthorization(t *testing.T) {
 
 	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM characters`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("unauthorized create")
+	}
+}
+
+func TestDevelopmentInventoryRejectsNonOwnerBeforeLocale(t *testing.T) {
+	db, catalog, clock, _ := inventoryFixture(t)
+	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
+	p := englishPresentation(t)
+	p.Resolve = func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
+		t.Fatal("non-owner resolved locale")
+		return localization.English, nil
+	}
+	handler := developmentHandler{service: service, owner: 42, now: clock.Now, presentation: p}
+	for _, name := range []interaction.CommandName{"dev_inventory_grant", "dev_inventory_heal"} {
+		inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
+			result, err := handler.Handle(ctx, inventoryScope{tx}, interaction.Command{Identity: interaction.Identity{Update: 1, User: 99, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}, Name: name, Arguments: "coin 1", SentAt: clock.Now(), EphemeralMessageID: 1})
+
+			if len(result.ImmediateResponses) != 0 {
+				t.Fatal("non-owner response")
+			}
+
+			return err
+		})
+	}
+}
+
+func TestDevelopmentRegistrationRequiresPositiveOwner(t *testing.T) {
+	_, catalog, clock, _ := inventoryFixture(t)
+	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
+	for _, owner := range []runtimecontract.UserID{0, -1} {
+		if err := RegisterDevelopment(interaction.NewRegistry(), service, owner, clock.Now, englishPresentation(t)); err == nil {
+			t.Fatal("invalid owner accepted")
+		}
+	}
+}
+
+func TestDevelopmentInventoryRejectsUnsafeContextsBeforeLocale(t *testing.T) {
+	now := time.Unix(100, 0)
+	p := englishPresentation(t)
+	p.Resolve = func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
+		t.Fatal("rejected context resolved locale")
+		return localization.English, nil
+	}
+	h := developmentHandler{owner: 42, now: func() time.Time { return now }, presentation: p}
+	for _, name := range []interaction.CommandName{"dev_inventory_grant", "dev_inventory_heal"} {
+		command := interaction.Command{Identity: interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindSupergroup}, Name: name, Arguments: "coin 1", EphemeralMessageID: 1, SentAt: now}
+		for _, mutate := range []func(*interaction.Command){func(c *interaction.Command) { c.User = 7 }, func(c *interaction.Command) { c.ActorIsBot = true }, func(c *interaction.Command) { c.SenderIsChat = true }, func(c *interaction.Command) { c.Chat = 1 }, func(c *interaction.Command) { c.ChatKind = "private" }, func(c *interaction.Command) { c.EphemeralMessageID = 0 }, func(c *interaction.Command) { c.SentAt = now.Add(-15 * time.Second) }} {
+			c := command
+			mutate(&c)
+			result, err := h.Handle(context.Background(), nil, &c)
+			if err != nil || len(result.ImmediateResponses) != 0 {
+				t.Fatalf("unsafe context acted: %+v %v", result, err)
+			}
+		}
+	}
+	for _, event := range []interaction.Event{nil, (*interaction.Command)(nil), interaction.GroupMessage{}} {
+		if result, err := h.Handle(context.Background(), nil, event); err != nil || len(result.ImmediateResponses) != 0 {
+			t.Fatal("invalid event acted")
+		}
 	}
 }

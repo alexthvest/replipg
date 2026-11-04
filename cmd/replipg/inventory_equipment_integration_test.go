@@ -15,7 +15,7 @@ import (
 // production flag, reward route or version-controlled tuning is changed.
 func buildEquipmentBinary(t *testing.T, ctx context.Context) string {
 	t.Helper()
-	source, err := filepath.Abs("../../internal/inventory/items.json")
+	source, err := filepath.Abs("../../internal/item/items.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,9 +33,26 @@ func buildEquipmentBinary(t *testing.T, ctx context.Context) string {
 	if err = json.Unmarshal(raw, &catalog); err != nil {
 		t.Fatal(err)
 	}
+
+	starterSource, err := filepath.Abs("../../internal/inventory/starter.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	starterRaw, err := os.ReadFile(starterSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := json.Unmarshal(starterRaw, &catalog); err != nil {
+		t.Fatal(err)
+	}
+
 	catalog.Items = append(catalog.Items, map[string]any{"id": "sword", "category": "weapon", "attack_bonus": 3})
 	catalog.Starter = append(catalog.Starter, map[string]any{"item_id": "sword", "quantity": 2})
-	raw, err = json.Marshal(catalog)
+	raw, err = json.Marshal(struct {
+		Items []map[string]any `json:"items"`
+	}{catalog.Items})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +64,20 @@ func buildEquipmentBinary(t *testing.T, ctx context.Context) string {
 	}
 
 	replacements := localizedItemOverlay(t, source, replacement, map[string][2]string{"sword": {"Sword", "Equipment replacement fixture."}})
+	starterRaw, err = json.Marshal(struct {
+		Starter []map[string]any `json:"starter"`
+	}{catalog.Starter})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	starterReplacement := filepath.Join(t.TempDir(), "starter.json")
+	if err := os.WriteFile(starterReplacement, starterRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	replacements[starterSource] = starterReplacement
+
 	overlay, err := json.Marshal(map[string]any{"Replace": replacements})
 	if err != nil {
 		t.Fatal(err)

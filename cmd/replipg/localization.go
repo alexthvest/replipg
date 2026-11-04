@@ -10,6 +10,7 @@ import (
 	"github.com/alexthvest/replipg/internal/config"
 	"github.com/alexthvest/replipg/internal/devsmoke"
 	"github.com/alexthvest/replipg/internal/inventory"
+	"github.com/alexthvest/replipg/internal/item"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 	"github.com/alexthvest/replipg/internal/settings"
@@ -25,6 +26,16 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	if err != nil {
 		return app.Options{}, err
 	}
+
+	var owner runtimecontract.UserID
+
+	if inventoryDevelopment {
+		owner, err = inventoryDevelopmentOwner(lookup)
+		if err != nil {
+			return app.Options{}, err
+		}
+	}
+
 	development := false
 	if lookup != nil {
 		if value, present := lookup(envDevCharacter); present {
@@ -46,14 +57,22 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	if err != nil {
 		return app.Options{}, err
 	}
-	items, err := inventory.LoadCatalog()
+
+	items, err := item.LoadCatalog()
 	if err != nil {
 		return app.Options{}, err
 	}
-	supplies, err := inventory.NewService(items, characters, time.Now)
+
+	starter, err := inventory.LoadStarter(items)
 	if err != nil {
 		return app.Options{}, err
 	}
+
+	supplies, err := inventory.NewService(items, starter, characters, time.Now)
+	if err != nil {
+		return app.Options{}, err
+	}
+
 	catalog, err := localization.Load()
 	if err != nil {
 		return app.Options{}, err
@@ -79,6 +98,7 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	}
 	specs = append(specs, settings.CommandSpec{Name: "inventory", Description: localization.Key("command.inventory"), Ephemeral: true})
 	if inventoryDevelopment {
+		specs = append(specs, settings.CommandSpec{Name: "dev_item", Description: "command.dev_item", Ephemeral: true})
 		specs = append(specs, settings.CommandSpec{Name: "dev_inventory_grant", Description: localization.Key("command.dev_inventory_grant"), Ephemeral: true}, settings.CommandSpec{Name: "dev_inventory_heal", Description: localization.Key("command.dev_inventory_heal"), Ephemeral: true})
 	}
 	specs = append(specs, settings.CommandSpec{Name: "settings", Description: localization.Key("command.settings"), Ephemeral: true})
@@ -143,7 +163,11 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			}
 
 			if inventoryDevelopment {
-				if err := inventory.RegisterDevelopment(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
+				if err := inventory.RegisterDevelopment(r.Registry, supplies, owner, time.Now, inventoryPresentation); err != nil {
+					return err
+				}
+
+				if err := r.Registry.RegisterCommand("dev_item", itemDevelopmentHandler{owner: owner, items: items, catalog: catalog, resolve: store.ResolveReadOnly, now: time.Now}); err != nil {
 					return err
 				}
 			}

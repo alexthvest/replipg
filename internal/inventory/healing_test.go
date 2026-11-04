@@ -8,6 +8,7 @@ import (
 
 	charactercontract "github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -15,7 +16,7 @@ func TestHealingBoundsAndRejections(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		damage int64
-		item   contract.ItemID
+		item   itemcontract.ItemID
 		want   error
 		health int64
 	}{
@@ -227,7 +228,8 @@ func TestHealingLastCopyReplayRestartAndConflict(t *testing.T) {
 		if _, err := service.ConsumeHealing(ctx, tx, conflicting); !errors.Is(err, contract.ErrOperationConflict) {
 			t.Fatalf("conflict %v", err)
 		}
-		for _, item := range []contract.ItemID{"coin", "stick", "unknown"} {
+
+		for _, item := range []itemcontract.ItemID{"coin", "stick", "unknown"} {
 			conflicting = request
 			conflicting.ItemID = item
 			if _, err := service.ConsumeHealing(ctx, tx, conflicting); !errors.Is(err, contract.ErrOperationConflict) {
@@ -395,7 +397,7 @@ func TestHealingEffectAndAbsentTarget(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
 	effect, err := service.Effect("healing_potion")
-	if err != nil || effect.HealingHP != 10 || effect.Kind != contract.EffectHealSelfFixedHP {
+	if err != nil || effect.HealingHP != 10 || effect.Kind != itemcontract.EffectHealSelfFixedHP {
 		t.Fatalf("effect %+v %v", effect, err)
 	}
 
