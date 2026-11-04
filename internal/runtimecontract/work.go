@@ -42,15 +42,19 @@ func (p RetryPolicy) Validate() error {
 	if p.MaxAttempts < 1 {
 		return validationError("retry_policy.max_attempts", ReasonOutOfRange)
 	}
+
 	if p.InitialDelay <= 0 {
 		return validationError("retry_policy.initial_delay", ReasonOutOfRange)
 	}
+
 	if p.MaxDelay <= 0 {
 		return validationError("retry_policy.max_delay", ReasonOutOfRange)
 	}
+
 	if p.MaxDelay < p.InitialDelay {
 		return validationError("retry_policy.max_delay", ReasonInconsistent)
 	}
+
 	return nil
 }
 
@@ -67,9 +71,11 @@ func NewVersionedPayload(version uint16, data []byte) (VersionedPayload, error) 
 	if version == 0 {
 		return VersionedPayload{}, validationError("payload.version", ReasonOutOfRange)
 	}
+
 	if len(data) == 0 {
 		return VersionedPayload{}, validationError("payload.data", ReasonRequired)
 	}
+
 	return VersionedPayload{version: version, data: append([]byte(nil), data...)}, nil
 }
 
@@ -84,9 +90,11 @@ func (p VersionedPayload) Validate() error {
 	if p.version == 0 {
 		return validationError("payload.version", ReasonOutOfRange)
 	}
+
 	if len(p.data) == 0 {
 		return validationError("payload.data", ReasonRequired)
 	}
+
 	return nil
 }
 
@@ -96,6 +104,7 @@ func (p VersionedPayload) ValidateVersion(supported ...uint16) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
+
 	for _, version := range supported {
 		if version != 0 && p.version == version {
 			return nil
@@ -117,9 +126,11 @@ func (r DeliveryRequest) Validate() error {
 	if r.Kind == "" {
 		return validationError("delivery.kind", ReasonRequired)
 	}
+
 	if err := r.Payload.Validate(); err != nil {
 		return err
 	}
+
 	return r.Retry.Validate()
 }
 
@@ -137,15 +148,19 @@ func (r JobRequest) Validate() error {
 	if r.ID == "" {
 		return validationError("job.id", ReasonRequired)
 	}
+
 	if r.Type == "" {
 		return validationError("job.type", ReasonRequired)
 	}
+
 	if r.DueAt.IsZero() {
 		return validationError("job.due_at", ReasonRequired)
 	}
+
 	if err := r.Payload.Validate(); err != nil {
 		return err
 	}
+
 	return r.Retry.Validate()
 }
 

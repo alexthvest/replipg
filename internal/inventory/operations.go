@@ -34,16 +34,20 @@ func canonicalGrant(req contract.GrantRequest) (string, error) {
 		if totals[line.ItemID] > math.MaxInt64-line.Quantity {
 			return "", &contract.DomainError{Kind: contract.ErrorExhausted, Field: "quantity"}
 		}
+
 		totals[line.ItemID] += line.Quantity
 	}
+
 	type line struct {
 		ItemID   contract.ItemID `json:"item_id"`
 		Quantity int64           `json:"quantity"`
 	}
+
 	lines := make([]line, 0, len(totals))
 	for id, quantity := range totals {
 		lines = append(lines, line{id, quantity})
 	}
+
 	sort.Slice(lines, func(i, j int) bool { return lines[i].ItemID < lines[j].ItemID })
 	return canonicalJSON(struct {
 		Version int    `json:"version"`
@@ -55,6 +59,7 @@ func canonicalEquipment(req contract.EquipmentChange) (string, error) {
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
+
 	return canonicalJSON(struct {
 		Version          int             `json:"version"`
 		Slot             contract.Slot   `json:"slot"`
@@ -67,12 +72,15 @@ func canonicalConsume(req contract.ConsumeRequest, effect contract.EffectDefinit
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
+
 	if err := effect.Validate(); err != nil {
 		return "", err
 	}
+
 	if req.ItemID != effect.ItemID {
 		return "", &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "effect_item"}
 	}
+
 	return canonicalJSON(struct {
 		Version    int                 `json:"version"`
 		ItemID     contract.ItemID     `json:"item_id"`
@@ -87,6 +95,7 @@ func canonicalJSON(value any) (string, error) {
 	if err != nil {
 		return "", contract.NewStorageError(err)
 	}
+
 	return string(encoded), nil
 }
 
@@ -94,12 +103,15 @@ func validateOperation(record operationRecord) error {
 	if err := record.OperationID.Validate(); err != nil {
 		return err
 	}
+
 	if err := record.CharacterID.Validate(); err != nil {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "character_id"}
 	}
+
 	if record.CanonicalRequest == "" {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "canonical_request"}
 	}
+
 	switch record.Kind {
 	case "consume":
 		if !record.EffectKind.Valid() || record.HealingHP <= 0 {
@@ -120,17 +132,21 @@ func checkOperation(ctx context.Context, tx runtimecontract.DBTX, want operation
 	if err := validateOperation(want); err != nil {
 		return operationRecord{}, false, err
 	}
+
 	if tx == nil {
 		return operationRecord{}, false, &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "transaction"}
 	}
+
 	stored := operationRecord{OperationID: want.OperationID}
 	found := false
 	err := queryInventoryRows(ctx, tx, `SELECT character_id,kind,canonical_request,applied_revision,effect_kind,healing_hp FROM inventory_operations WHERE operation_id=?`, []any{want.OperationID}, func(rows *sql.Rows) error {
 		if found {
 			return errors.New("inventory operation identity invariant failed")
 		}
+
 		var kind sql.NullString
 		var healing sql.NullInt64
+
 		if err := rows.Scan(&stored.CharacterID, &stored.Kind, &stored.CanonicalRequest, &stored.AppliedRevision, &kind, &healing); err != nil {
 			return err
 		}
@@ -141,12 +157,15 @@ func checkOperation(ctx context.Context, tx runtimecontract.DBTX, want operation
 	if err != nil {
 		return operationRecord{}, false, err
 	}
+
 	if !found {
 		return operationRecord{}, false, nil
 	}
+
 	if stored.CharacterID != want.CharacterID || stored.Kind != want.Kind || stored.CanonicalRequest != want.CanonicalRequest || stored.EffectKind != want.EffectKind || stored.HealingHP != want.HealingHP {
 		return operationRecord{}, false, &contract.DomainError{Kind: contract.ErrorOperationConflict}
 	}
+
 	return stored, true, nil
 }
 
@@ -155,10 +174,13 @@ func recordOperation(ctx context.Context, tx runtimecontract.DBTX, record operat
 	if err := validateOperation(record); err != nil {
 		return err
 	}
+
 	if tx == nil || record.AppliedRevision < 1 {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "transaction_or_revision"}
 	}
+
 	var effect, healing any
+
 	if record.Kind == "consume" {
 		effect, healing = record.EffectKind, record.HealingHP
 	}
@@ -166,6 +188,7 @@ func recordOperation(ctx context.Context, tx runtimecontract.DBTX, record operat
 	if err != nil {
 		return contract.NewStorageError(err)
 	}
+
 	return nil
 }
 
@@ -175,14 +198,17 @@ func withInventoryOperation(ctx context.Context, tx runtimecontract.DBTX, action
 	if tx == nil || action == nil {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "transaction_or_action"}
 	}
+
 	if _, err := tx.ExecContext(ctx, `SAVEPOINT inventory_operation`); err != nil {
 		return contract.NewStorageError(err)
 	}
+
 	actionErr := action()
 	if actionErr != nil {
 		var domain *contract.DomainError
 		var characterDomain *charactercontract.DomainError
 		var storage runtimecontract.StorageFailure
+
 		if !errors.As(actionErr, &domain) && !errors.As(actionErr, &characterDomain) && !errors.As(actionErr, &storage) && !expectedInventoryFailure(actionErr) {
 			actionErr = contract.NewStorageError(actionErr)
 		}
@@ -195,6 +221,7 @@ func withInventoryOperation(ctx context.Context, tx runtimecontract.DBTX, action
 	if _, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT inventory_operation`); err != nil {
 		return contract.NewStorageError(errors.Join(actionErr, err))
 	}
+
 	return actionErr
 }
 
@@ -210,6 +237,7 @@ func expectedInventoryFailure(err error) bool {
 func starterOperationID(id charactercontract.ID) contract.OperationID {
 	return contract.OperationID("inventory:starter:" + string(id))
 }
+
 func healingOperationID(id contract.OperationID) charactercontract.OperationID {
 	digest := sha256.Sum256([]byte(id))
 	return charactercontract.OperationID("inventory:heal:" + hex.EncodeToString(digest[:]))

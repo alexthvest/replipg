@@ -18,6 +18,7 @@ func (id ID) Validate() error {
 	if id == "" {
 		return &DomainError{Kind: ErrorInvalidInput, Field: "character_id"}
 	}
+
 	return nil
 }
 
@@ -30,6 +31,7 @@ func (id OperationID) Validate() error {
 	if len(id) == 0 || len(id) > 128 {
 		return &DomainError{Kind: ErrorInvalidInput, Field: "operation_id"}
 	}
+
 	return nil
 }
 
@@ -81,15 +83,19 @@ func (c HealthChange) Validate() error {
 	if err := c.OperationID.Validate(); err != nil {
 		return err
 	}
+
 	if err := c.CharacterID.Validate(); err != nil {
 		return err
 	}
+
 	if !c.Kind.Valid() {
 		return &DomainError{Kind: ErrorInvalidInput, Field: "kind"}
 	}
+
 	if c.Amount < 0 {
 		return &DomainError{Kind: ErrorInvalidInput, Field: "amount"}
 	}
+
 	return nil
 }
 

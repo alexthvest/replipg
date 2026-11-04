@@ -19,9 +19,11 @@ type MembershipResult struct {
 	Status    MembershipStatus
 	CheckedAt time.Time
 }
+
 type GroupMembershipReader interface {
 	VerifyGroupMember(context.Context, ChatID, UserID) (MembershipResult, error)
 }
+
 type GroupMenuWriter interface {
 	ReplaceGroupMenu(context.Context, ChatID, []CommandDeclaration) error
 }

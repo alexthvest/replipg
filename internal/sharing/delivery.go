@@ -62,6 +62,7 @@ func EncodePublic(p PublicPayload) (runtimecontract.VersionedPayload, error) {
 	if _, err := p.response(); err != nil {
 		return runtimecontract.VersionedPayload{}, err
 	}
+
 	return encodePayload(p)
 }
 
@@ -70,24 +71,29 @@ func EncodeFeedback(p FeedbackPayload) (runtimecontract.VersionedPayload, error)
 	if _, err := p.response(); err != nil {
 		return runtimecontract.VersionedPayload{}, err
 	}
+
 	return encodePayload(p)
 }
 
 // DecodePublic validates durable work without resolving locale or reading live state.
 func DecodePublic(payload runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) {
 	var p PublicPayload
+
 	if err := decodePayload(payload, &p); err != nil {
 		return nil, err
 	}
+
 	return p.response()
 }
 
 // DecodeFeedback reconstructs concrete callback authorization with its fixed expiry.
 func DecodeFeedback(payload runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) {
 	var p FeedbackPayload
+
 	if err := decodePayload(payload, &p); err != nil {
 		return nil, err
 	}
+
 	return p.response()
 }
 
@@ -95,10 +101,12 @@ func (p PublicPayload) response() (runtimecontract.ResponseRequest, error) {
 	if p.ActionUpdateID <= 0 || len(p.Content.Buttons) != 0 {
 		return nil, errors.New("sharing: invalid public payload")
 	}
+
 	response := runtimecontract.PublicResponse{Destination: p.Destination, Content: p.Content}
 	if err := runtimecontract.ValidateResponse(response); err != nil {
 		return nil, err
 	}
+
 	return response, nil
 }
 
@@ -106,6 +114,7 @@ func (p FeedbackPayload) response() (runtimecontract.ResponseRequest, error) {
 	if p.ActionUpdateID <= 0 || p.ValidUntilMS <= 0 || len(p.Content.Buttons) != 0 {
 		return nil, errors.New("sharing: invalid feedback payload")
 	}
+
 	response := runtimecontract.EphemeralResponse{
 		Destination: p.Destination, TargetUserID: p.TargetUserID, Content: p.Content,
 		Authorization: runtimecontract.CallbackAuthorization{CallbackQueryID: p.CallbackQueryID, OriginatedFromEphemeral: true, ValidUntil: time.UnixMilli(p.ValidUntilMS)},
@@ -113,6 +122,7 @@ func (p FeedbackPayload) response() (runtimecontract.ResponseRequest, error) {
 	if err := runtimecontract.ValidateResponse(response); err != nil {
 		return nil, err
 	}
+
 	return response, nil
 }
 
@@ -121,6 +131,7 @@ func encodePayload(value any) (runtimecontract.VersionedPayload, error) {
 	if err != nil {
 		return runtimecontract.VersionedPayload{}, errors.New("sharing: invalid delivery payload")
 	}
+
 	return runtimecontract.NewVersionedPayload(PayloadVersion, data)
 }
 
@@ -128,14 +139,17 @@ func decodePayload(payload runtimecontract.VersionedPayload, target any) error {
 	if err := payload.ValidateVersion(PayloadVersion); err != nil {
 		return err
 	}
+
 	decoder := json.NewDecoder(bytes.NewReader(payload.Data()))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return errors.New("sharing: invalid delivery payload")
 	}
+
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return errors.New("sharing: trailing delivery payload")
 	}
+
 	return nil
 }
 
@@ -145,6 +159,7 @@ func NewPublicRequest(p PublicPayload) (runtimecontract.DeliveryRequest, error) 
 	if err != nil {
 		return runtimecontract.DeliveryRequest{}, err
 	}
+
 	return deliveryRequest(PublicKind, payload), nil
 }
 
@@ -154,6 +169,7 @@ func NewFeedbackRequest(p FeedbackPayload) (runtimecontract.DeliveryRequest, err
 	if err != nil {
 		return runtimecontract.DeliveryRequest{}, err
 	}
+
 	return deliveryRequest(FeedbackKind, payload), nil
 }
 

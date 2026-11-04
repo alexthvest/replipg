@@ -33,15 +33,19 @@ func TestDomainErrorsSafeAndInspectable(t *testing.T) {
 			domain := &contract.DomainError{Kind: tt.kind, Field: "private command token"}
 			wrapped := fmt.Errorf("operation: %w", domain)
 			var got *contract.DomainError
+
 			if !errors.Is(wrapped, tt.sentinel) || !errors.As(wrapped, &got) || got != domain {
 				t.Fatal("lost domain classification")
 			}
+
 			if domain.Error() != tt.sentinel.Error() || strings.Contains(domain.Error(), domain.Field) {
 				t.Fatal("unsafe domain text")
 			}
 		})
 	}
+
 	unknown := &contract.DomainError{Kind: "secret token", Field: "private content"}
+
 	if unknown.Error() != "inventory operation failed" || errors.Is(unknown, contract.ErrInvalidInput) {
 		t.Fatal("unknown category not sanitized")
 	}
@@ -57,14 +61,18 @@ func TestStorageFailurePreservesCauseAndSafeText(t *testing.T) {
 		err := contract.NewStorageError(cause)
 		var storage *contract.StorageError
 		var marker runtimecontract.StorageFailure
+
 		if !errors.Is(err, contract.ErrStorage) || !errors.Is(err, cause) || !errors.As(err, &storage) || !errors.As(err, &marker) {
 			t.Fatal("lost cause or runtime classification")
 		}
+
 		if err.Error() != "inventory storage operation failed" || fmt.Sprint(err) != err.Error() {
 			t.Fatal("unsafe error text")
 		}
+
 		if cause == driver {
 			var got *driverFailure
+
 			if !errors.As(err, &got) || got != driver {
 				t.Fatal("lost driver type")
 			}

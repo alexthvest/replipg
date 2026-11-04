@@ -20,9 +20,11 @@ import (
 type shareScope struct{ tx runtimecontract.DBTX }
 
 func (s shareScope) DBTX() runtimecontract.DBTX { return s.tx }
+
 func (shareScope) EnqueueDelivery(context.Context, runtimecontract.DeliveryRequest) (runtimecontract.DeliveryID, error) {
 	panic("use injected ledger")
 }
+
 func (shareScope) Schedule(context.Context, runtimecontract.JobRequest) (runtimecontract.JobID, error) {
 	panic("no jobs")
 }
@@ -37,19 +39,24 @@ func (l *callbackLedger) Enqueue(ctx context.Context, tx runtimecontract.DBTX, r
 	if l.fail {
 		return "", errors.New("injected enqueue failure")
 	}
+
 	result, err := tx.ExecContext(ctx, `INSERT INTO callback_deliveries(kind,payload) VALUES(?,?)`, r.Kind, r.Payload.Data())
 	if err != nil {
 		return "", err
 	}
+
 	id, err := result.LastInsertId()
 	return runtimecontract.DeliveryID(fmt.Sprintf("callback-%d", id)), err
 }
+
 func (l *callbackLedger) Inspect(_ context.Context, _ runtimecontract.DBTX, id runtimecontract.DeliveryID) (Evidence, error) {
 	if e, ok := l.evidence[id]; ok {
 		return e, nil
 	}
+
 	return Evidence{State: Pending}, nil
 }
+
 func (*callbackLedger) Purge(context.Context, runtimecontract.DBTX, runtimecontract.DeliveryKind, runtimecontract.DeliveryID, time.Time) (bool, error) {
 	return false, nil
 }
@@ -73,14 +80,17 @@ func newCallbackFixture(t *testing.T, body string) *callbackFixture {
 		return localization.Russian, nil
 	}
 	var err error
+
 	f.projector, err = NewProjector(f.db, f.ledger, f.service.catalog, resolve, func() time.Time { return f.now })
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	f.reg = interaction.NewRegistry()
 	if err = Register(f.reg, f.service, f.ledger, f.projector.Refresh, resolve); err != nil {
 		t.Fatal(err)
 	}
+
 	f.reg.Seal()
 	v := decorationView()
 	if body != "" {
@@ -90,108 +100,137 @@ func newCallbackFixture(t *testing.T, body string) *callbackFixture {
 		if _, err := tx.ExecContext(ctx, `CREATE TABLE callback_deliveries(id INTEGER PRIMARY KEY,kind TEXT,payload BLOB)`); err != nil {
 			return err
 		}
+
 		_, err := f.service.Decorate(ctx, tx, v)
 		return err
 	})
 	f.cb = interaction.Callback{Identity: interaction.Identity{Update: 1, User: v.Owner, Chat: v.Destination.ChatID, ChatKind: v.Destination.Kind}, QueryID: "query", EphemeralMessageID: 7, Data: sharePrefix + strings.Repeat("a", 32), Source: &interaction.CallbackSource{Body: cloneContent(v.Body), CallbackData: []string{sharePrefix + strings.Repeat("a", 32)}, EphemeralMessageID: 7}}
 	return f
 }
+
 func (f *callbackFixture) dispatch(cb interaction.Callback) (result interaction.HandlerResult, err error) {
 	handler, ok := f.reg.Resolve(cb)
 	if !ok {
 		return result, errors.New("route not resolved")
 	}
+
 	err = f.db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 		var e error
+
 		result, e = handler.Handle(ctx, shareScope{tx}, cb)
 		return e
 	})
 	return
 }
+
 func (f *callbackFixture) count(t *testing.T, kind runtimecontract.DeliveryKind) int {
 	t.Helper()
 	var n int
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		return tx.QueryRowContext(ctx, `SELECT count(*) FROM callback_deliveries WHERE kind=?`, kind).Scan(&n)
 	})
 	return n
 }
+
 func feedbackText(t *testing.T, r interaction.HandlerResult) string {
 	t.Helper()
+
 	if len(r.ImmediateResponses) != 1 {
 		t.Fatalf("expected personal guidance, got %+v", r)
 	}
+
 	e, ok := r.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 	if !ok {
 		t.Fatal("guidance must be ephemeral")
 	}
+
 	if err := runtimecontract.ValidateResponse(e); err != nil {
 		t.Fatal(err)
 	}
+
 	return e.Content.Text
 }
+
 func TestShareAcceptanceExactSnapshotAndReplay(t *testing.T) {
 	f := newCallbackFixture(t, "")
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
 	}
+
 	if got := f.count(t, PublicKind); got != 1 {
 		t.Fatalf("public requests=%d want=1", got)
 	}
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		var data []byte
+
 		if err := tx.QueryRowContext(ctx, `SELECT payload FROM callback_deliveries WHERE kind=?`, PublicKind).Scan(&data); err != nil {
 			return err
 		}
+
 		p, err := runtimecontract.NewVersionedPayload(1, data)
 		if err != nil {
 			return err
 		}
+
 		r, err := DecodePublic(p)
 		if err != nil {
 			return err
 		}
+
 		got := r.(runtimecontract.PublicResponse)
 		attribution, _ := Attribution(f.service.catalog, localization.English, 42)
+
 		if got.Content.Text != f.cb.Source.Body.Text+"\n\n"+attribution || !reflect.DeepEqual(got.Content.Entities, f.cb.Source.Body.Entities) || len(got.Content.Buttons) != 0 || got.Destination.ChatID != -1 {
 			t.Fatalf("snapshot changed: %+v", got)
 		}
+
 		a, err := readAction(ctx, tx, 1)
 		if err == nil && (!a.CallbackDeadline.Equal(f.now.Add(15*time.Second)) || a.CallbackQueryID != "query") {
 			t.Fatal("callback authorization changed")
 		}
+
 		return err
 	})
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
 	}
+
 	if f.count(t, PublicKind) != 1 {
 		t.Fatal("replay published")
 	}
+
 	// Completion and a much later replay must retain the accepted identity.
 	f.ledger.evidence["callback-1"] = Evidence{State: Completed, TerminalAt: f.now, UpdatedAt: f.now}
 	f.now = f.now.Add(time.Minute)
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
 	}
+
 	if f.count(t, PublicKind) != 1 {
 		t.Fatal("terminal replay published")
 	}
 }
+
 func TestShareConcurrentPending(t *testing.T) {
 	f := newCallbackFixture(t, "")
 	var wg sync.WaitGroup
+
 	errs := make(chan error, 8)
 	for i := range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			cb := f.cb
 			cb.Update = runtimecontract.UpdateID(i + 1)
 			_, err := f.dispatch(cb)
 			errs <- err
 		}()
 	}
+
 	wg.Wait()
 	close(errs)
 	for err := range errs {
@@ -199,10 +238,12 @@ func TestShareConcurrentPending(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	if f.count(t, PublicKind) != 1 {
 		t.Fatal("concurrent callbacks published more than once")
 	}
 }
+
 func TestShareRefreshCooldownAndRetry(t *testing.T) {
 	for _, state := range []DeliveryState{Completed, Rejected, Unknown} {
 		t.Run(string(state), func(t *testing.T) {
@@ -210,6 +251,7 @@ func TestShareRefreshCooldownAndRetry(t *testing.T) {
 			if _, err := f.dispatch(f.cb); err != nil {
 				t.Fatal(err)
 			}
+
 			terminal := f.now
 			f.ledger.evidence["callback-1"] = Evidence{State: state, TerminalAt: terminal, UpdatedAt: terminal}
 			f.now = terminal.Add(30*time.Second - time.Millisecond)
@@ -219,15 +261,19 @@ func TestShareRefreshCooldownAndRetry(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if state == Rejected {
 				if f.count(t, PublicKind) != 2 {
 					t.Fatal("definite rejection started cooldown")
 				}
+
 				return
 			}
+
 			if f.count(t, PublicKind) != 1 {
 				t.Fatal("early retry published")
 			}
+
 			text := feedbackText(t, r)
 			key := localization.SharingCooldown
 			args := localization.Args{"seconds": localization.Integer(1)}
@@ -236,20 +282,25 @@ func TestShareRefreshCooldownAndRetry(t *testing.T) {
 				args = nil
 			}
 			want, _ := f.service.catalog.Text(localization.Russian, key, args)
+
 			if text != want {
 				t.Fatalf("guidance=%q want=%q", text, want)
 			}
+
 			f.now = terminal.Add(30 * time.Second)
 			cb.Update = 3
 			r, err = f.dispatch(cb)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if f.count(t, PublicKind) != 2 {
 				t.Fatal("exact 30s boundary blocked")
 			}
+
 			if state == Unknown {
 				want, _ = f.service.catalog.Text(localization.Russian, localization.SharingUnknownRetry, nil)
+
 				if feedbackText(t, r) != want {
 					t.Fatal("missing uncertainty retry warning")
 				}
@@ -257,6 +308,7 @@ func TestShareRefreshCooldownAndRetry(t *testing.T) {
 		})
 	}
 }
+
 func TestShareRejectsInvalidAndUnavailableSources(t *testing.T) {
 	for _, name := range []string{"owner", "group", "bot", "token", "keyboard", "body", "receiver", "binding", "missing", "expired", "oversize"} {
 		t.Run(name, func(t *testing.T) {
@@ -289,6 +341,7 @@ func TestShareRejectsInvalidAndUnavailableSources(t *testing.T) {
 					if err != nil {
 						return err
 					}
+
 					v.BoundMessageID = 8
 					return updateView(ctx, tx, v)
 				})
@@ -305,13 +358,16 @@ func TestShareRejectsInvalidAndUnavailableSources(t *testing.T) {
 			case "oversize":
 				owned = true
 			}
+
 			r, err := f.dispatch(f.cb)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if f.count(t, PublicKind) != 0 {
 				t.Fatal("unsafe publication")
 			}
+
 			if owned {
 				feedbackText(t, r)
 			} else if len(r.ImmediateResponses) != 0 {
@@ -320,30 +376,36 @@ func TestShareRejectsInvalidAndUnavailableSources(t *testing.T) {
 		})
 	}
 }
+
 func TestShareAcceptanceRollback(t *testing.T) {
 	f := newCallbackFixture(t, "")
 	f.ledger.fail = true
 	if _, err := f.dispatch(f.cb); err == nil {
 		t.Fatal("enqueue failure ignored")
 	}
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		v, err := readView(ctx, tx, strings.Repeat("a", 32))
 		if err != nil {
 			return err
 		}
+
 		if v.BoundMessageID != 0 {
 			t.Fatal("binding survived rollback")
 		}
+
 		_, err = readAction(ctx, tx, 1)
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatal("action survived rollback", err)
 		}
+
 		return nil
 	})
 	f.ledger.fail = false
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
 	}
+
 	if f.count(t, PublicKind) != 1 {
 		t.Fatal("rollback prevented retry")
 	}
@@ -358,23 +420,28 @@ func TestShareAcceptanceRollbackAfterEnqueue(t *testing.T) {
 	if _, err := f.dispatch(f.cb); err == nil {
 		t.Fatal("action persistence failure ignored")
 	}
+
 	if f.count(t, PublicKind) != 0 {
 		t.Fatal("outbound intent survived action rollback")
 	}
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		v, err := readView(ctx, tx, strings.Repeat("a", 32))
 		if err != nil {
 			return err
 		}
+
 		if v.BoundMessageID != 0 {
 			t.Fatal("source binding survived failed acceptance")
 		}
+
 		_, err = tx.ExecContext(ctx, `DROP TRIGGER reject_share_action`)
 		return err
 	})
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
 	}
+
 	if f.count(t, PublicKind) != 1 {
 		t.Fatal("retry after rollback failed")
 	}
@@ -396,23 +463,28 @@ func TestShareInheritedDeadlineAndCharacterWithoutExpiry(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if f.count(t, PublicKind) != 1 {
 				t.Fatal("usable source rejected")
 			}
+
 			feedbackText(t, result)
 			auth := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse).Authorization.(runtimecontract.CallbackAuthorization)
 			want := f.now.Add(15 * time.Second)
 			if inventory {
 				want = f.now.Add(3 * time.Second)
 			}
+
 			if !auth.ValidUntil.Equal(want) {
 				t.Fatal("immediate deadline renewed", auth.ValidUntil, want)
 			}
+
 			mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 				a, err := readAction(ctx, tx, 1)
 				if err == nil && !a.CallbackDeadline.Equal(want) {
 					t.Fatal("stored deadline renewed")
 				}
+
 				return err
 			})
 		})
@@ -424,16 +496,20 @@ func TestShareUnknownHoldDoesNotSlideAndPendingGuidance(t *testing.T) {
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
 	}
+
 	cb := f.cb
 	cb.Update = 2
 	result, err := f.dispatch(cb)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	want, _ := f.service.catalog.Text(localization.Russian, localization.SharingPending, nil)
+
 	if feedbackText(t, result) != want || f.count(t, PublicKind) != 1 {
 		t.Fatal("pending action admitted another publication")
 	}
+
 	f.ledger.evidence["callback-1"] = Evidence{State: Unknown, UpdatedAt: f.now}
 	for i := range 3 {
 		f.now = f.now.Add(5 * time.Second)
@@ -442,13 +518,16 @@ func TestShareUnknownHoldDoesNotSlideAndPendingGuidance(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		v, err := readView(ctx, tx, strings.Repeat("a", 32))
 		if err == nil && !v.UnknownUntil.Equal(time.Unix(130, 0)) {
 			t.Fatal("uncertainty hold slid on repeated press", v.UnknownUntil)
 		}
+
 		return err
 	})
+
 	if f.count(t, PublicKind) != 1 {
 		t.Fatal("uncertain delivery resent")
 	}
@@ -484,6 +563,7 @@ func TestShareKnownLatestOutcomeClearsHistoricalUncertaintyGuidance(t *testing.T
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
 	}
+
 	f.ledger.evidence["callback-1"] = Evidence{State: Unknown, UpdatedAt: f.now}
 	f.now = f.now.Add(30 * time.Second)
 	cb := f.cb
@@ -491,7 +571,9 @@ func TestShareKnownLatestOutcomeClearsHistoricalUncertaintyGuidance(t *testing.T
 	if _, err := f.dispatch(cb); err != nil {
 		t.Fatal(err)
 	}
+
 	var latestID runtimecontract.DeliveryID
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		a, err := readAction(ctx, tx, 2)
 		latestID = a.PublicDeliveryID
@@ -504,10 +586,12 @@ func TestShareKnownLatestOutcomeClearsHistoricalUncertaintyGuidance(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	want, _ := f.service.catalog.Text(localization.Russian, localization.SharingPending, nil)
 	if got := feedbackText(t, result); got != want {
 		t.Fatalf("historical uncertainty guidance=%q want=%q", got, want)
 	}
+
 	if f.count(t, PublicKind) != 3 {
 		t.Fatal("known successful outcome prevented later share")
 	}

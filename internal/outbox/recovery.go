@@ -14,10 +14,12 @@ func (s *Store) Recover(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	transactor, ok := s.db.(runtimecontract.Transactor)
 	if !ok || isNilDBTX(s.db) {
 		return ErrTransactionRequired
 	}
+
 	err := transactor.WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		_, err := tx.ExecContext(ctx, `UPDATE outbound_deliveries SET
    state='reconciliation_required', next_attempt_at=NULL,
@@ -27,5 +29,6 @@ func (s *Store) Recover(ctx context.Context) error {
 	if err != nil {
 		return storageError(ctx, err)
 	}
+
 	return nil
 }

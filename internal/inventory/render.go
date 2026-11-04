@@ -14,6 +14,7 @@ type inventoryPage struct {
 	Page    int
 	HasNext bool
 }
+
 type viewControls struct {
 	Items                                []string
 	Previous, Next, Back, Equip, Unequip string
@@ -21,6 +22,7 @@ type viewControls struct {
 
 func cleanOwnerLabel(label string) (string, bool) {
 	var clean []rune
+
 	for _, r := range label {
 		if !unicode.IsControl(r) && !unicode.Is(unicode.Cf, r) && r != unicode.ReplacementChar {
 			clean = append(clean, r)
@@ -29,8 +31,10 @@ func cleanOwnerLabel(label string) (string, bool) {
 			}
 		}
 	}
+
 	if strings.TrimSpace(string(clean)) == "" {
 		return "", true
 	}
+
 	return string(clean), false
 }

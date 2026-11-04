@@ -26,18 +26,22 @@ func (l *projectorLedger) Enqueue(_ context.Context, _ runtimecontract.DBTX, r r
 	if l.enqueueErr != nil {
 		return "", l.enqueueErr
 	}
+
 	l.requests = append(l.requests, r)
 	return runtimecontract.DeliveryID(fmt.Sprintf("feedback-%d", len(l.requests))), nil
 }
+
 func (l *projectorLedger) Inspect(_ context.Context, _ runtimecontract.DBTX, id runtimecontract.DeliveryID) (Evidence, error) {
 	l.inspected = append(l.inspected, id)
 	if l.inspectErr != nil {
 		return Evidence{}, l.inspectErr
 	}
+
 	e, ok := l.evidence[id]
 	if !ok {
 		return Evidence{State: Pending}, nil
 	}
+
 	return e, nil
 }
 
@@ -51,6 +55,7 @@ func (l *projectorLedger) Purge(_ context.Context, _ runtimecontract.DBTX, kind 
 	l.purges = append(l.purges, purgeCall{kind, id, cutoff})
 	return !l.purgeFalse[id], l.purgeErr
 }
+
 func projectorFixture(t *testing.T, now *time.Time, l *projectorLedger) (*persistence.DB, *Projector, viewRecord, actionRecord) {
 	t.Helper()
 	db := sharingTestDB(t)
@@ -60,33 +65,40 @@ func projectorFixture(t *testing.T, now *time.Time, l *projectorLedger) (*persis
 		if err := insertView(ctx, tx, v); err != nil {
 			return err
 		}
+
 		return insertAction(ctx, tx, a)
 	})
 	c, err := localization.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	p, err := NewProjector(db, l, c, func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return localization.Russian, nil
 	}, func() time.Time { return *now })
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return db, p, v, a
 }
+
 func projectorRead(t *testing.T, db *persistence.DB, token string) (v viewRecord, a actionRecord) {
 	t.Helper()
 	mustTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		var err error
+
 		v, err = readView(ctx, tx, token)
 		if err != nil {
 			return err
 		}
+
 		a, err = readAction(ctx, tx, 1)
 		return err
 	})
 	return
 }
+
 func TestProjectorTerminalEvidence(t *testing.T) {
 	for _, tc := range []struct {
 		state DeliveryState
@@ -103,16 +115,21 @@ func TestProjectorTerminalEvidence(t *testing.T) {
 			if err != nil || !worked {
 				t.Fatalf("RunOnce=%v,%v", worked, err)
 			}
+
 			got, action := projectorRead(t, db, v.Token)
+
 			if action.PublicState != tc.want || !action.PublicOutcomeAt.Equal(terminal) || action.FeedbackState != "queued" {
 				t.Fatalf("projection=%+v", action)
 			}
+
 			if tc.state == Completed {
 				if !got.LastSuccessAt.Equal(terminal) {
 					t.Fatal("cooldown uses projection time")
 				}
+
 				for _, delta := range []time.Duration{30*time.Second - time.Millisecond, 30 * time.Second} {
 					eligible := !terminal.Add(delta).Before(got.LastSuccessAt.Add(30 * time.Second))
+
 					if eligible != (delta == 30*time.Second) {
 						t.Fatal("cooldown boundary")
 					}
@@ -120,36 +137,46 @@ func TestProjectorTerminalEvidence(t *testing.T) {
 			} else if !got.LastSuccessAt.IsZero() {
 				t.Fatal("failure started success cooldown")
 			}
+
 			if tc.state == Unknown && !got.UnknownUntil.Equal(terminal.Add(30*time.Second)) {
 				t.Fatal("unknown deadline")
 			}
+
 			if len(l.requests) != 1 || l.requests[0].Kind != FeedbackKind {
 				t.Fatal("expected one private feedback")
 			}
+
 			response, err := DecodeFeedback(l.requests[0].Payload)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			feedback := response.(runtimecontract.EphemeralResponse)
 			c, _ := localization.Load()
 			text, _ := c.Text(localization.Russian, tc.key, nil)
+
 			if feedback.Content.Text != text {
 				t.Fatal("feedback did not use current locale")
 			}
+
 			auth := feedback.Authorization.(runtimecontract.CallbackAuthorization)
+
 			if !auth.ValidUntil.Equal(a.CallbackDeadline) {
 				t.Fatal("deadline renewed")
 			}
+
 			now = now.Add(time.Hour)
 			l.evidence[a.PublicDeliveryID] = Evidence{State: Completed, TerminalAt: now, UpdatedAt: now}
 			mustTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error { return p.Refresh(ctx, tx, v.Token) })
 			after, _ := projectorRead(t, db, v.Token)
+
 			if len(l.requests) != 1 || !after.UnknownUntil.Equal(got.UnknownUntil) || !after.LastSuccessAt.Equal(got.LastSuccessAt) {
 				t.Fatal("terminal evidence reprojected or feedback repeated")
 			}
 		})
 	}
 }
+
 func TestProjectorRefreshBypassesDueTimeAndExpiredFeedback(t *testing.T) {
 	for _, offset := range []time.Duration{-time.Millisecond, 0, time.Second} {
 		t.Run(offset.String(), func(t *testing.T) {
@@ -162,26 +189,32 @@ func TestProjectorRefreshBypassesDueTimeAndExpiredFeedback(t *testing.T) {
 				if err != nil {
 					return err
 				}
+
 				work.NextCheckAt = now.Add(time.Hour)
 				if err = updateAction(ctx, tx, work); err != nil {
 					return err
 				}
+
 				return p.Refresh(ctx, tx, v.Token)
 			})
 			_, work := projectorRead(t, db, v.Token)
+
 			if work.PublicState != "succeeded" {
 				t.Fatal("refresh ignored future scheduled action")
 			}
+
 			want := "skipped"
 			if offset < 0 {
 				want = "queued"
 			}
+
 			if work.FeedbackState != want || work.CallbackQueryID != "" || !work.CallbackDeadline.IsZero() {
 				t.Fatalf("feedback=%+v", work)
 			}
 		})
 	}
 }
+
 func TestProjectorRollbackOnFeedbackError(t *testing.T) {
 	for _, failure := range []string{"enqueue", "locale", "inspect"} {
 		t.Run(failure, func(t *testing.T) {
@@ -200,14 +233,18 @@ func TestProjectorRollbackOnFeedbackError(t *testing.T) {
 					return "", sentinel
 				}
 			}
+
 			worked, err := p.RunOnce(context.Background())
 			if err == nil || worked {
 				t.Fatalf("RunOnce=%v,%v", worked, err)
 			}
+
 			got, work := projectorRead(t, db, v.Token)
+
 			if work.PublicState != "pending" || !got.LastSuccessAt.IsZero() {
 				t.Fatal("projection survived rollback")
 			}
+
 			l.enqueueErr = nil
 			l.inspectErr = nil
 			p.resolve = func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
@@ -216,13 +253,16 @@ func TestProjectorRollbackOnFeedbackError(t *testing.T) {
 			if _, err = p.RunOnce(context.Background()); err != nil {
 				t.Fatal(err)
 			}
+
 			_, work = projectorRead(t, db, v.Token)
+
 			if work.PublicState != "succeeded" {
 				t.Fatal("projection retry failed")
 			}
 		})
 	}
 }
+
 func TestProjectorFairBoundedPendingWork(t *testing.T) {
 	now := time.Unix(110, 0)
 	l := &projectorLedger{evidence: map[runtimecontract.DeliveryID]Evidence{}}
@@ -234,10 +274,12 @@ func TestProjectorFairBoundedPendingWork(t *testing.T) {
 			if err := insertView(ctx, tx, v); err != nil {
 				return err
 			}
+
 			a := fixtureAction(runtimecontract.UpdateID(i), v.Token)
 			if err := insertAction(ctx, tx, a); err != nil {
 				return err
 			}
+
 			if i == 105 {
 				l.evidence[a.PublicDeliveryID] = Evidence{State: Rejected, TerminalAt: now}
 			}
@@ -249,22 +291,27 @@ func TestProjectorFairBoundedPendingWork(t *testing.T) {
 		if err != nil || !worked {
 			t.Fatal(worked, err)
 		}
+
 		if len(l.inspected) != want {
 			t.Fatalf("inspections=%d want=%d", len(l.inspected), want)
 		}
 	}
+
 	mustTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		a, err := readAction(ctx, tx, 1)
 		if err != nil {
 			return err
 		}
+
 		if a.PublicState != "pending" || !a.NextCheckAt.Equal(now.Add(time.Second)) {
 			t.Fatal("pending reservation or scheduling lost")
 		}
+
 		a, err = readAction(ctx, tx, 105)
 		if err == nil && a.PublicState != "failed" {
 			t.Fatal("pending work starved terminal work")
 		}
+
 		return err
 	})
 	worked, err := p.RunOnce(context.Background())

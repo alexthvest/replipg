@@ -13,6 +13,7 @@ import (
 )
 
 var errCharacterIdentity = errors.New("character identity invariant failed")
+
 var errStarterInvariant = errors.New("starter entitlement invariant failed")
 
 type characterPort interface {
@@ -72,34 +73,43 @@ func (s *Service) Open(ctx context.Context, tx runtimecontract.DBTX, user runtim
 	if tx == nil || user <= 0 {
 		return contract.OpenResult{}, contract.ErrInvalidInput
 	}
+
 	var result contract.OpenResult
+
 	err := withInventoryOperation(ctx, tx, func() error {
 		ch, created, err := s.characters.Ensure(ctx, tx, user)
 		if err != nil {
 			return err
 		}
+
 		if ch.ID.Validate() != nil || ch.UserID != user {
 			return contract.NewStorageError(errCharacterIdentity)
 		}
+
 		if err := ensureInventoryRoot(ctx, tx, ch.ID); err != nil {
 			return err
 		}
+
 		current, starter, err := readInventory(ctx, tx, s.catalog, ch.ID)
 		if err != nil {
 			return err
 		}
+
 		result.CharacterCreated = created
 		if !starter {
 			grant, err := s.grant(ctx, tx, contract.GrantRequest{OperationID: starterOperationID(ch.ID), CharacterID: ch.ID, Items: s.catalog.Starter()}, "starter")
 			if err != nil {
 				return err
 			}
+
 			if !grant.Applied {
 				return contract.NewStorageError(errStarterInvariant)
 			}
+
 			if err := markStarterGranted(ctx, tx, ch.ID); err != nil {
 				return err
 			}
+
 			current = grant.Current
 			result.StarterGranted = true
 		}
@@ -109,6 +119,7 @@ func (s *Service) Open(ctx context.Context, tx runtimecontract.DBTX, user runtim
 	if err != nil {
 		return contract.OpenResult{}, err
 	}
+
 	return result, nil
 }
 
@@ -117,6 +128,7 @@ func (s *Service) Inspect(ctx context.Context, tx runtimecontract.DBTX, id chara
 	if tx == nil || id.Validate() != nil {
 		return contract.Snapshot{}, contract.ErrInvalidInput
 	}
+
 	current, _, err := readInventory(ctx, tx, s.catalog, id)
 	return current, err
 }
@@ -126,6 +138,7 @@ func (s *Service) Modifiers(ctx context.Context, tx runtimecontract.DBTX, id cha
 	if tx == nil || id.Validate() != nil {
 		return contract.Modifiers{}, contract.ErrInvalidInput
 	}
+
 	current, _, err := readInventoryMetadata(ctx, tx, s.catalog, id)
 	return current.Modifiers, err
 }

@@ -29,22 +29,29 @@ func TestRequiredLoopExitRemovesReadiness(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			for _, d := range []health.Dependency{health.Storage, health.Telegram, health.Intake, health.Outbox, health.Scheduler} {
 				_ = r.state.SetDependency(d, true)
 			}
+
 			r.lifecycle(context.Background(), health.Ready)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
 			var owned sync.WaitGroup
+
 			results := make(chan error, 1)
 			r.startRequired(ctx, &owned, results, "intake", func() error { return exit })
 			owned.Wait()
+
 			if r.state.Snapshot().Ready {
 				t.Fatal("required loop exited while readiness remained true")
 			}
+
 			select {
 			case err := <-results:
 				var failure *StartupError
+
 				if !errors.As(err, &failure) || failure.Stage != "intake" || failure.CorrelationID == "" {
 					t.Fatalf("unsafe failure: %v", err)
 				}
@@ -67,6 +74,7 @@ func (waitingHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 	if _, err := scope.DBTX().ExecContext(ctx, `INSERT INTO feature_writes(value) VALUES(1)`); err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	<-ctx.Done()
 	return interaction.HandlerResult{}, ctx.Err()
 }
@@ -74,29 +82,36 @@ func (waitingHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 func TestHandlerTimeoutRollsBackWithoutCompletingCursor(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+
 	cfg := testConfig(t)
 	db, err := persistence.Open(ctx, persistence.Options{StorageDir: cfg.StorageDir, StorageFilesystem: cfg.StorageFilesystem, BusyTimeout: cfg.BusyTimeout})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
+
 	migrations, err := persistence.RuntimeMigrations()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err = db.Migrate(ctx, migrations); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err = db.ExecContext(ctx, `CREATE TABLE feature_writes(value INTEGER)`); err != nil {
 		t.Fatal(err)
 	}
+
 	registry := interaction.NewRegistry()
 	if err = registry.RegisterCommand("wait", waitingHandler{}); err != nil {
 		t.Fatal(err)
 	}
+
 	if err = registry.RegisterCommand("fail", failedHandler{}); err != nil {
 		t.Fatal(err)
 	}
+
 	registry.Seal()
 	router := interaction.NewRouter(registry, db, db, nil, nil, interaction.RouterOptions{Diagnostics: observability.NewJSONSink(io.Discard)})
 	bounded := boundedRouter{UpdateRouter: router, timeout: 20 * time.Millisecond}
@@ -105,23 +120,29 @@ func TestHandlerTimeoutRollsBackWithoutCompletingCursor(t *testing.T) {
 	if ctx.Err() != nil {
 		t.Fatal("configured handler timeout did not interrupt dispatch")
 	}
+
 	if err == nil || outcome.Status != "" {
 		t.Fatalf("interruption became terminal: %+v %v", outcome, err)
 	}
+
 	cursor, err := db.CompletedUpdate(ctx)
 	if err != nil || cursor != 0 {
 		t.Fatalf("cursor advanced: %v %v", cursor, err)
 	}
+
 	var count int
+
 	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM feature_writes`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("feature writes survived interruption: %d %v", count, err)
 	}
+
 	event.Update = 2
 	event.Name = "fail"
 	outcome, err = bounded.Dispatch(ctx, event)
 	if err != nil || outcome.Status != persistence.UpdateHandlerFailed {
 		t.Fatalf("ordinary feature failure lost its terminal outcome: %+v %v", outcome, err)
 	}
+
 	cursor, err = db.CompletedUpdate(ctx)
 	if err != nil || cursor != 2 {
 		t.Fatalf("terminal feature failure did not complete cursor: %v %v", cursor, err)
@@ -139,10 +160,12 @@ func (w *recordFailureRunner) RunOnce(ctx context.Context) (bool, error) {
 	if w.calls == 1 {
 		return true, w.failure
 	}
+
 	close(w.continued)
 	<-ctx.Done()
 	return false, ctx.Err()
 }
+
 func (*recordFailureRunner) WaitNext(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 
 func TestRecordFailuresKeepRequiredWorkersReady(t *testing.T) {
@@ -152,12 +175,15 @@ func TestRecordFailuresKeepRequiredWorkersReady(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			for _, d := range []health.Dependency{health.Storage, health.Telegram, health.Intake, health.Outbox, health.Scheduler} {
 				_ = r.state.SetDependency(d, true)
 			}
+
 			r.lifecycle(context.Background(), health.Ready)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
 			w := &recordFailureRunner{failure: outbox.ErrDeliveryNotCompleted, continued: make(chan struct{})}
 			run := func() error { return r.runOutbox(ctx, w) }
 			if scheduled {
@@ -166,15 +192,18 @@ func TestRecordFailuresKeepRequiredWorkersReady(t *testing.T) {
 			}
 			results := make(chan error, 1)
 			var owned sync.WaitGroup
+
 			r.startRequired(ctx, &owned, results, "worker", run)
 			select {
 			case <-w.continued:
 			case <-time.After(time.Second):
 				t.Fatal("record failure stopped required worker")
 			}
+
 			if !r.state.Snapshot().Ready {
 				t.Fatal("record failure removed readiness")
 			}
+
 			cancel()
 			owned.Wait()
 			select {
@@ -202,29 +231,38 @@ func TestCriticalIntakeAndHealthExitStopRuntime(t *testing.T) {
 						return
 					case <-release:
 					}
+
 					w.WriteHeader(http.StatusConflict)
 					_, _ = io.WriteString(w, `{"ok":false,"error_code":409,"description":"private conflict"}`)
 				}
 			}))
 			defer server.Close()
+
 			var releaseOnce sync.Once
+
 			defer releaseOnce.Do(func() { close(release) })
+
 			var listener net.Listener
 			var database *persistence.DB
+
 			r, err := New(testConfig(t), Options{Diagnostics: observability.NewJSONSink(io.Discard), TelegramBaseURL: server.URL, HTTPClient: server.Client(), Listen: func(string, string) (net.Listener, error) {
 				var listenErr error
+
 				listener, listenErr = net.Listen("tcp", "127.0.0.1:0")
 				return listener, listenErr
 			}, Open: func(ctx context.Context, options persistence.Options) (*persistence.DB, error) {
 				var openErr error
+
 				database, openErr = persistence.Open(ctx, options)
 				return database, openErr
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+
 			done := make(chan error, 1)
 			go func() { done <- r.Run(ctx) }()
 			select {
@@ -232,6 +270,7 @@ func TestCriticalIntakeAndHealthExitStopRuntime(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal("runtime did not become ready")
 			}
+
 			switch stage {
 			case "intake":
 				releaseOnce.Do(func() { close(release) })
@@ -244,21 +283,26 @@ func TestCriticalIntakeAndHealthExitStopRuntime(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+
 			select {
 			case err = <-done:
 				var failure *StartupError
+
 				if !errors.As(err, &failure) {
 					t.Fatalf("critical exit did not return safe failure: %v", err)
 				}
+
 				if stage == "storage" && (failure.Stage == "outbox_worker" || failure.Stage == "scheduler_worker") {
 					break
 				}
+
 				if failure.Stage != stage {
 					t.Fatalf("critical exit did not retain safe stage: %v", err)
 				}
 			case <-ctx.Done():
 				t.Fatal("critical worker exit did not stop owned runtime")
 			}
+
 			if snapshot := r.state.Snapshot(); snapshot.Ready || snapshot.Lifecycle != health.Stopped {
 				t.Fatalf("unsafe state: %+v", snapshot)
 			}

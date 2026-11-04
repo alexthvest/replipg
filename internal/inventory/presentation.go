@@ -21,6 +21,7 @@ func (p Presentation) decorate(ctx context.Context, tx runtimecontract.DBTX, now
 	if p.Sharing == nil {
 		return body, nil
 	}
+
 	// Controls persist their deadline in UTC milliseconds; inherit that exact value.
 	usableUntil := time.UnixMilli(now.UTC().Add(controlLifetime).UnixMilli()).UTC()
 	return p.Sharing.Decorate(ctx, tx, sharingcontract.View{
@@ -35,5 +36,6 @@ func (p Presentation) validate() error {
 	if p.Catalog == nil || p.Resolve == nil {
 		return errors.New("inventory: missing presentation dependency")
 	}
+
 	return nil
 }

@@ -13,6 +13,7 @@ func (c *Client) SetGroupCommands(ctx context.Context, declarations []runtimecon
 	if runtimecontract.ValidateCommandDeclarations(declarations) != nil {
 		return &APIError{Kind: ErrorValidation}
 	}
+
 	commands := make([]models.BotCommand, len(declarations))
 	for i, declaration := range declarations {
 		commands[i] = models.BotCommand{Command: declaration.Name, Description: declaration.Description, IsEphemeral: declaration.Ephemeral}
@@ -22,9 +23,11 @@ func (c *Client) SetGroupCommands(ctx context.Context, declarations []runtimecon
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			return &APIError{Kind: ErrorIndeterminate}
 		}
+
 		return nil
 	})
 }

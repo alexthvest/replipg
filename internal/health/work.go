@@ -45,22 +45,29 @@ func (s *WorkStatus) Snapshot(ctx context.Context) (WorkCounts, error) {
 	if err := ctx.Err(); err != nil {
 		return WorkCounts{}, err
 	}
+
 	if s == nil || s.db == nil {
 		return WorkCounts{}, ErrWorkStatusUnavailable
 	}
+
 	rows, err := s.db.QueryContext(ctx, `SELECT 'delivery',state,count(*) FROM outbound_deliveries GROUP BY state UNION ALL SELECT 'job',state,count(*) FROM scheduled_jobs GROUP BY state`)
 	if err != nil {
 		return WorkCounts{}, statusError(ctx)
 	}
 	defer func() { _ = rows.Close() }()
+
 	var result WorkCounts
+
 	for rows.Next() {
 		var kind, state string
 		var count int64
+
 		if err := rows.Scan(&kind, &state, &count); err != nil || count < 0 {
 			return WorkCounts{}, statusError(ctx)
 		}
+
 		var target *int64
+
 		switch kind {
 		case "delivery":
 			switch state {
@@ -93,22 +100,29 @@ func (s *WorkStatus) Snapshot(ctx context.Context) (WorkCounts, error) {
 				target = &result.Jobs.PermanentFailure
 			}
 		}
+
 		if target == nil {
 			return WorkCounts{}, ErrWorkStatusUnavailable
 		}
+
 		*target = count
 	}
+
 	if err := rows.Err(); err != nil {
 		return WorkCounts{}, statusError(ctx)
 	}
+
 	if err := rows.Close(); err != nil {
 		return WorkCounts{}, statusError(ctx)
 	}
+
 	return result, nil
 }
+
 func statusError(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	return ErrWorkStatusUnavailable
 }

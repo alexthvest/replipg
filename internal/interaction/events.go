@@ -37,8 +37,10 @@ type Identity struct {
 }
 
 func (i Identity) UpdateID() runtimecontract.UpdateID { return i.Update }
-func (i Identity) ChatID() runtimecontract.ChatID     { return i.Chat }
-func (i Identity) UserID() runtimecontract.UserID     { return i.User }
+
+func (i Identity) ChatID() runtimecontract.ChatID { return i.Chat }
+
+func (i Identity) UserID() runtimecontract.UserID { return i.User }
 
 // EventKind identifies an interaction variant without gameplay meaning.
 type EventKind string

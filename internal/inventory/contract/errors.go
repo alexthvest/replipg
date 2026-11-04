@@ -79,6 +79,7 @@ func (e *DomainError) Error() string {
 	if category := e.category(); category != nil {
 		return category.Error()
 	}
+
 	return "inventory operation failed"
 }
 

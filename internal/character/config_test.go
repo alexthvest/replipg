@@ -17,18 +17,22 @@ func TestConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	development, err := LoadConfig(true)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, cfg := range []Config{production, development} {
 		if cfg.MaxHealth() != 100 || cfg.Attack() != 10 || cfg.Defense() != 5 || cfg.RecoveryPercent() != "25" {
 			t.Fatalf("unexpected tuning: %+v", cfg)
 		}
 	}
+
 	if production.IncapacitationDuration() != 5*time.Minute || development.IncapacitationDuration() != 5*time.Second {
 		t.Fatal("incorrect mode duration")
 	}
+
 	again, err := LoadConfig(false)
 	if err != nil || again != production {
 		t.Fatalf("defaults changed: %v", err)
@@ -43,6 +47,7 @@ func configFixture(t *testing.T, field string, value any) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return data
 }
 
@@ -63,9 +68,11 @@ func TestConfigRejectsInvalidSettings(t *testing.T) {
 			if err == nil {
 				t.Fatalf("accepted invalid setting: %+v", cfg)
 			}
+
 			if !strings.Contains(err.Error(), tt.field) || strings.Contains(err.Error(), "sensitive-fixture") {
 				t.Fatalf("unsafe or unspecific error: %v", err)
 			}
+
 			if cfg != (Config{}) {
 				t.Fatal("returned partial configuration")
 			}
@@ -79,22 +86,27 @@ func TestConfigExactDecimalAndIntegerBounds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if cfg.RecoveryPercent() != percent {
 			t.Fatalf("lost decimal precision: %q", cfg.RecoveryPercent())
 		}
 	}
+
 	for _, field := range []string{"max_health", "attack", "defense"} {
 		cfg, err := ParseConfig(configFixture(t, field, int64(math.MaxInt64)))
 		if err != nil {
 			t.Fatalf("int64 maximum %s: %v", field, err)
 		}
+
 		if cfg.MaxHealth() <= 0 {
 			t.Fatal("invalid maximum health")
 		}
+
 		if _, err := ParseConfig(configFixture(t, field, uint64(math.MaxInt64)+1)); err == nil {
 			t.Fatalf("accepted overflowing %s", field)
 		}
 	}
+
 	for _, field := range []string{"attack", "defense"} {
 		if _, err := ParseConfig(configFixture(t, field, 0)); err != nil {
 			t.Fatal(err)
@@ -111,17 +123,21 @@ func TestConfigStrictDocument(t *testing.T) {
 			t.Fatalf("exposed unknown input: %v", err)
 		}
 	}
+
 	fields := []string{"max_health", "attack", "defense", "incapacitation_duration", "recovery_percent"}
 	for _, field := range fields {
 		var values map[string]json.RawMessage
+
 		if err := json.Unmarshal([]byte(valid), &values); err != nil {
 			t.Fatal(err)
 		}
+
 		delete(values, field)
 		data, err := json.Marshal(values)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if _, err := ParseConfig(data); err == nil || !strings.Contains(err.Error(), field) {
 			t.Fatalf("missing %s: %v", field, err)
 		}
@@ -134,6 +150,7 @@ func TestConfigFailuresRetainInvalidConfigurationCategory(t *testing.T) {
 		if !errors.Is(fmt.Errorf("startup tuning: %w", err), contract.ErrInvalidConfig) {
 			t.Fatalf("configuration category lost: %v", err)
 		}
+
 		if strings.Contains(err.Error(), "sensitive-fixture") {
 			t.Fatalf("configuration error exposed input: %v", err)
 		}

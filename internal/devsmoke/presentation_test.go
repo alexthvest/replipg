@@ -16,6 +16,7 @@ func englishPresentation(t *testing.T) Presentation {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return localization.English, nil
 	}}
@@ -28,6 +29,7 @@ func TestRegistrationRequiresPresentation(t *testing.T) {
 		if err := Register(registry, time.Now, p); err == nil {
 			t.Fatal("missing presentation dependency accepted")
 		}
+
 		if err := Register(registry, time.Now, valid); err != nil {
 			t.Fatalf("failed validation reserved routes: %v", err)
 		}

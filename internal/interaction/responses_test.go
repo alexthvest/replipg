@@ -33,10 +33,12 @@ func TestDispatchReturnsImmediateResponsesOnlyAfterCommit(t *testing.T) {
 		if _, err := f.effects(ctx, scope, event); err != nil {
 			return HandlerResult{}, err
 		}
+
 		return HandlerResult{ImmediateResponses: returned}, nil
 	})); err != nil {
 		t.Fatal(err)
 	}
+
 	f.registry.Seal()
 	r := f.router()
 	inspected := false
@@ -58,17 +60,21 @@ func TestDispatchReturnsImmediateResponsesOnlyAfterCommit(t *testing.T) {
 	if err != nil || result.Status != persistence.UpdateCompleted || !inspected {
 		t.Fatalf("dispatch = %+v %v inspected=%v", result, err, inspected)
 	}
+
 	if !reflect.DeepEqual(result.ImmediateResponses, expected) {
 		t.Fatalf("responses = %#v, want %#v", result.ImmediateResponses, expected)
 	}
+
 	assertDispatchCounts(t, observer, 1)
 	replay, err := r.Dispatch(context.Background(), event)
 	if err != nil || replay.Status != persistence.UpdateCompleted || len(replay.ImmediateResponses) != 0 || calls != 1 {
 		t.Fatalf("duplicate = %+v %v calls=%d", replay, err, calls)
 	}
+
 	if err := f.db.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	reopened := openDispatchDB(t, dir)
 	assertDispatchCounts(t, reopened, 1)
 }
@@ -138,13 +144,16 @@ func TestDispatchRejectsInvalidImmediateResponses(t *testing.T) {
 				if calls > 1 {
 					return HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{publicDispatchResponse()}}, nil
 				}
+
 				if _, err := f.effects(ctx, scope, event); err != nil {
 					return HandlerResult{}, err
 				}
+
 				return HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{publicDispatchResponse(), tc.response(f.now)}}, nil
 			})); err != nil {
 				t.Fatal(err)
 			}
+
 			f.registry.Seal()
 			r := f.router()
 			sink := &diagnosticCapture{}
@@ -152,35 +161,45 @@ func TestDispatchRejectsInvalidImmediateResponses(t *testing.T) {
 			event := Command{Identity: testIdentity(), Name: "feature_action"}
 			result, err := r.Dispatch(context.Background(), event)
 			var validation *runtimecontract.ValidationError
+
 			if !errors.As(err, &validation) || validation.Field != tc.field || validation.Reason != tc.reason {
 				t.Fatalf("validation = %v, want %s/%s", err, tc.field, tc.reason)
 			}
+
 			if result.Status != persistence.UpdateHandlerFailed || len(result.ImmediateResponses) != 0 {
 				t.Fatalf("invalid result = %+v", result)
 			}
+
 			for _, table := range []string{"dispatch_feature", "outbound_deliveries", "scheduled_jobs"} {
 				var n int
+
 				if err := f.db.QueryRowContext(context.Background(), "SELECT count(*) FROM "+table).Scan(&n); err != nil {
 					t.Fatal(err)
 				}
+
 				if n != 0 {
 					t.Fatalf("%s residue = %d", table, n)
 				}
 			}
+
 			terminal, found, err := f.db.TerminalOutcome(context.Background(), 42)
 			if err != nil || !found || terminal.Status != persistence.UpdateHandlerFailed || terminal.FailureCode != "invalid_response" {
 				t.Fatalf("terminal = %+v %v %v", terminal, found, err)
 			}
+
 			if cursor, err := f.db.CompletedUpdate(context.Background()); err != nil || cursor != 42 {
 				t.Fatalf("cursor=%d %v", cursor, err)
 			}
+
 			if len(sink.events) != 1 || sink.events[0].CorrelationID != result.CorrelationID {
 				t.Fatalf("diagnostics = %+v", sink.events)
 			}
+
 			replay, err := r.Dispatch(context.Background(), event)
 			if err != nil || replay.Status != persistence.UpdateHandlerFailed || len(replay.ImmediateResponses) != 0 || calls != 1 || len(sink.events) != 1 {
 				t.Fatalf("duplicate = %+v %v calls=%d", replay, err, calls)
 			}
+
 			event.Update = 43
 			next, err := r.Dispatch(context.Background(), event)
 			if err != nil || next.Status != persistence.UpdateCompleted || len(next.ImmediateResponses) != 1 {
@@ -196,15 +215,18 @@ func TestDispatchDiscardsImmediateResponsesOnFailure(t *testing.T) {
 			f := newDispatchFixture(t, t.TempDir())
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
 			if scenario == "cursor" || scenario == "record invalid failure" {
 				if _, err := f.db.ExecContext(ctx, `CREATE TRIGGER reject_response_cursor BEFORE INSERT ON runtime_cursors BEGIN SELECT RAISE(ABORT,'injected'); END`); err != nil {
 					t.Fatal(err)
 				}
 			}
+
 			if err := f.registry.RegisterCommand("feature_action", dispatchHandlerFunc(func(ctx context.Context, scope runtimecontract.WorkScope, event Event) (HandlerResult, error) {
 				if _, err := f.effects(ctx, scope, event); err != nil {
 					return HandlerResult{}, err
 				}
+
 				result := HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{publicDispatchResponse()}}
 				switch scenario {
 				case "handler":
@@ -221,11 +243,14 @@ func TestDispatchDiscardsImmediateResponsesOnFailure(t *testing.T) {
 			})); err != nil {
 				t.Fatal(err)
 			}
+
 			f.registry.Seal()
 			result, err := f.router().Dispatch(ctx, Command{Identity: testIdentity(), Name: "feature_action"})
+
 			if len(result.ImmediateResponses) != 0 {
 				t.Fatalf("responses escaped rollback: %+v", result)
 			}
+
 			if scenario == "handler" {
 				if err != nil || result.Status != persistence.UpdateHandlerFailed {
 					t.Fatalf("handler failure = %+v %v", result, err)
@@ -234,6 +259,7 @@ func TestDispatchDiscardsImmediateResponsesOnFailure(t *testing.T) {
 				if err == nil || !reflect.DeepEqual(result, DispatchOutcome{}) {
 					t.Fatalf("failure = %+v %v", result, err)
 				}
+
 				assertDispatchCounts(t, f.db, 0)
 			}
 		})

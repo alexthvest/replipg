@@ -56,6 +56,7 @@ func (s *Store) RegisterReconciler(kind runtimecontract.DeliveryKind, version ui
 	if kind == "" || version == 0 || reconciler == nil {
 		return ErrInvalidResolution
 	}
+
 	value := reflect.ValueOf(reconciler)
 	switch value.Kind() {
 	case reflect.Pointer, reflect.Func, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan:
@@ -63,15 +64,19 @@ func (s *Store) RegisterReconciler(kind runtimecontract.DeliveryKind, version ui
 			return ErrInvalidResolution
 		}
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.sealed {
 		return ErrRegistrySealed
 	}
+
 	key := schemaKey{kind, version}
 	if _, ok := s.reconcilers[key]; ok {
 		return ErrRegistrationConflict
 	}
+
 	s.reconcilers[key] = reconciler
 	return nil
 }
@@ -83,34 +88,42 @@ func (s *Store) Reconcile(ctx context.Context, id runtimecontract.DeliveryID, bo
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
+
 	if bound <= 0 {
 		return false, ErrInvalidResolution
 	}
+
 	s.mu.RLock()
 	sealed := s.sealed
 	s.mu.RUnlock()
 	if !sealed {
 		return false, ErrRegistrationsOpen
 	}
+
 	d, err := s.reconciliationDelivery(ctx, s.db, id)
 	if err != nil {
 		return false, err
 	}
+
 	s.mu.RLock()
 	handler := s.reconcilers[schemaKey{d.Kind, d.Payload.Version()}]
 	s.mu.RUnlock()
 	if handler == nil {
 		return false, nil
 	}
+
 	bounded, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
+
 	resolution, err := invokeReconciler(bounded, handler, d)
 	if bounded.Err() != nil {
 		return true, bounded.Err()
 	}
+
 	if err != nil {
 		return true, ErrReconciliation
 	}
+
 	return true, s.resolve(ctx, id, resolution, &d)
 }
 
@@ -121,6 +134,7 @@ func invokeReconciler(ctx context.Context, handler Reconciler, d Delivery) (r Re
 			err = ErrReconciliation
 		}
 	}()
+
 	return handler.Reconcile(ctx, d)
 }
 
@@ -134,6 +148,7 @@ func (s *Store) resolve(ctx context.Context, id runtimecontract.DeliveryID, r Re
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	state, reason, outcome := StateCompleted, "reconciliation_confirmed", observability.OutcomeCompleted
 	switch r.Decision {
 	case ReconciliationConfirm:
@@ -144,27 +159,34 @@ func (s *Store) resolve(ctx context.Context, id runtimecontract.DeliveryID, r Re
 	default:
 		return ErrInvalidResolution
 	}
+
 	event, err := observability.NewDiagnostic(observability.CategoryReconciliation, r.CorrelationID, observability.OperationReconcile, outcome, observability.SafeFields{State: string(state)})
 	if err != nil {
 		return ErrInvalidResolution
 	}
+
 	transactor, ok := s.db.(runtimecontract.Transactor)
 	if !ok || isNilDBTX(s.db) {
 		return ErrTransactionRequired
 	}
+
 	err = transactor.WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		d, err := s.reconciliationDelivery(ctx, tx, id)
 		if err != nil {
 			return err
 		}
+
 		if fence != nil && (d.Attempts != fence.Attempts || d.updatedAt != fence.updatedAt) {
 			return ErrInvalidResolution
 		}
+
 		if r.Decision == ReconciliationRetry && d.Attempts >= d.MaxAttempts {
 			return ErrRetryExhausted
 		}
+
 		now := s.now().UTC().UnixMilli()
 		var next, terminal any
+
 		if state == StatePending {
 			next = now
 		} else {
@@ -174,13 +196,16 @@ func (s *Store) resolve(ctx context.Context, id runtimecontract.DeliveryID, r Re
 		if err != nil {
 			return err
 		}
+
 		count, err := result.RowsAffected()
 		if err != nil {
 			return err
 		}
+
 		if count != 1 {
 			return ErrInvalidResolution
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -191,6 +216,7 @@ func (s *Store) resolve(ctx context.Context, id runtimecontract.DeliveryID, r Re
 		}
 		return storageError(ctx, err)
 	}
+
 	s.diagnostics.Emit(ctx, event)
 	return nil
 }
@@ -199,26 +225,33 @@ func (s *Store) reconciliationDelivery(ctx context.Context, tx runtimecontract.D
 	if id == "" {
 		return Delivery{}, ErrInvalidResolution
 	}
+
 	var d Delivery
 	var state State
 	var version int
 	var content []byte
+
 	err := tx.QueryRowContext(ctx, `SELECT id,kind,content_version,content,attempt_count,max_attempts,updated_at,state FROM outbound_deliveries WHERE id=?`, id).Scan(&d.ID, &d.Kind, &version, &content, &d.Attempts, &d.MaxAttempts, &d.updatedAt, &state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Delivery{}, ErrNotFound
 	}
+
 	if err != nil {
 		return Delivery{}, storageError(ctx, err)
 	}
+
 	if state != StateReconciliationRequired {
 		return Delivery{}, ErrInvalidResolution
 	}
+
 	if version < 1 || version > 65535 {
 		return Delivery{}, ErrUnsupportedVersion
 	}
+
 	d.Payload, err = runtimecontract.NewVersionedPayload(uint16(version), content)
 	if err != nil {
 		return Delivery{}, ErrDecode
 	}
+
 	return d, nil
 }

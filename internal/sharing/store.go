@@ -18,11 +18,14 @@ var ErrStoreConflict = errors.New("sharing storage conflict")
 type storeError struct{ operation string }
 
 func (e storeError) Error() string { return "sharing storage: " + e.operation }
+
 func (storeError) StorageFailure() {}
+
 func storeFailure(op string, err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
+
 	return storeError{op}
 }
 
@@ -42,6 +45,7 @@ type viewRecord struct {
 	UnknownUntil       time.Time
 	Revision           int64
 }
+
 type actionRecord struct {
 	UpdateID           runtimecontract.UpdateID
 	ViewToken          string
@@ -63,6 +67,7 @@ type actionRecord struct {
 }
 
 const viewColumns = `token,owner_id,chat_id,chat_kind,view_kind,locale,fingerprint_version,retired,body_hash,bound_message_id,usable_until,created_at,last_success_at,unknown_until,revision`
+
 const actionColumns = `update_id,view_token,public_delivery_id,public_state,accepted_at,public_outcome_at,next_check_at,callback_query_id,callback_deadline,feedback_delivery_id,feedback_state,feedback_outcome_at,public_purge_after,feedback_purge_after,public_purged,feedback_purged,revision`
 
 type storeScanner interface{ Scan(...any) error }
@@ -71,31 +76,41 @@ func nullableTime(t time.Time) any {
 	if t.IsZero() {
 		return nil
 	}
+
 	return t.UTC().UnixMilli()
 }
+
 func nullableID(n int64) any {
 	if n == 0 {
 		return nil
 	}
+
 	return n
 }
+
 func nullableString(s string) any {
 	if s == "" {
 		return nil
 	}
+
 	return s
 }
+
 func storedTime(n sql.NullInt64) time.Time {
 	if !n.Valid {
 		return time.Time{}
 	}
+
 	return time.UnixMilli(n.Int64).UTC()
 }
+
 func scanView(row storeScanner) (viewRecord, error) {
 	var v viewRecord
 	var bound, until, last, unknown sql.NullInt64
 	var created int64
+
 	err := row.Scan(&v.Token, &v.Owner, &v.Destination.ChatID, &v.Destination.Kind, &v.Kind, &v.Locale, &v.FingerprintVersion, &v.Retired, &v.BodyHash, &bound, &until, &created, &last, &unknown, &v.Revision)
+
 	v.BoundMessageID = bound.Int64
 	v.UsableUntil = storedTime(until)
 	v.CreatedAt = time.UnixMilli(created).UTC()
@@ -103,12 +118,15 @@ func scanView(row storeScanner) (viewRecord, error) {
 	v.UnknownUntil = storedTime(unknown)
 	return v, err
 }
+
 func scanAction(row storeScanner) (actionRecord, error) {
 	var a actionRecord
 	var accepted int64
 	var outcome, next, deadline, feedbackOutcome, publicPurge, feedbackPurge sql.NullInt64
 	var callback, feedback sql.NullString
+
 	err := row.Scan(&a.UpdateID, &a.ViewToken, &a.PublicDeliveryID, &a.PublicState, &accepted, &outcome, &next, &callback, &deadline, &feedback, &a.FeedbackState, &feedbackOutcome, &publicPurge, &feedbackPurge, &a.PublicPurged, &a.FeedbackPurged, &a.Revision)
+
 	a.AcceptedAt = time.UnixMilli(accepted).UTC()
 	a.PublicOutcomeAt = storedTime(outcome)
 	a.NextCheckAt = storedTime(next)
@@ -120,6 +138,7 @@ func scanAction(row storeScanner) (actionRecord, error) {
 	a.FeedbackPurgeAfter = storedTime(feedbackPurge)
 	return a, err
 }
+
 func readView(ctx context.Context, tx runtimecontract.DBTX, token string) (viewRecord, error) {
 	v, err := scanView(tx.QueryRowContext(ctx, `SELECT `+viewColumns+` FROM sharing_views WHERE token=?`, token))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -127,11 +146,13 @@ func readView(ctx context.Context, tx runtimecontract.DBTX, token string) (viewR
 	}
 	return v, err
 }
+
 func insertView(ctx context.Context, tx runtimecontract.DBTX, v viewRecord) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO sharing_views(`+viewColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`, v.Token, v.Owner, v.Destination.ChatID, v.Destination.Kind, v.Kind, string(v.Locale), v.FingerprintVersion, v.Retired, v.BodyHash, nullableID(v.BoundMessageID), nullableTime(v.UsableUntil), v.CreatedAt.UTC().UnixMilli(), nullableTime(v.LastSuccessAt), nullableTime(v.UnknownUntil))
 	if err != nil {
 		return storeFailure("insert view", err)
 	}
+
 	return nil
 }
 
@@ -147,12 +168,15 @@ func retireExpiredViews(ctx context.Context, tx runtimecontract.DBTX, now time.T
 	if limit < 1 || limit > 100 {
 		limit = 100
 	}
+
 	_, err := tx.ExecContext(ctx, `UPDATE sharing_views SET retired=1,body_hash=NULL,revision=revision+1 WHERE token IN (SELECT v.token FROM sharing_views v WHERE v.retired=0 AND v.view_kind IN ('inventory_page','item_details') AND v.usable_until<=? AND NOT EXISTS (SELECT 1 FROM sharing_actions a WHERE a.view_token=v.token AND (a.public_state='pending' OR a.feedback_state IN ('waiting','queued'))) ORDER BY v.usable_until,v.token LIMIT ?)`, now.UTC().UnixMilli(), limit)
 	if err != nil {
 		return storeFailure("retire views", err)
 	}
+
 	return nil
 }
+
 func readAction(ctx context.Context, tx runtimecontract.DBTX, id runtimecontract.UpdateID) (actionRecord, error) {
 	a, err := scanAction(tx.QueryRowContext(ctx, `SELECT `+actionColumns+` FROM sharing_actions WHERE update_id=?`, id))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -160,11 +184,13 @@ func readAction(ctx context.Context, tx runtimecontract.DBTX, id runtimecontract
 	}
 	return a, err
 }
+
 func insertAction(ctx context.Context, tx runtimecontract.DBTX, a actionRecord) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO sharing_actions(update_id,view_token,public_delivery_id,accepted_at,next_check_at,callback_query_id,callback_deadline) VALUES(?,?,?,?,?,?,?)`, a.UpdateID, a.ViewToken, a.PublicDeliveryID, a.AcceptedAt.UTC().UnixMilli(), nullableTime(a.NextCheckAt), nullableString(a.CallbackQueryID), nullableTime(a.CallbackDeadline))
 	if err != nil {
 		return storeFailure("insert action", err)
 	}
+
 	return nil
 }
 
@@ -191,17 +217,21 @@ func updateAction(ctx context.Context, tx runtimecontract.DBTX, a actionRecord) 
 		a.FeedbackState, nullableString(a.CallbackQueryID), nullableTime(a.CallbackDeadline), a.PublicPurged, a.FeedbackPurged)
 	return changedStoreRow(r, err, "update action")
 }
+
 func changedStoreRow(r sql.Result, err error, op string) error {
 	if err != nil {
 		return storeFailure(op, err)
 	}
+
 	n, err := r.RowsAffected()
 	if err != nil {
 		return storeFailure(op, err)
 	}
+
 	if n != 1 {
 		return ErrStoreConflict
 	}
+
 	return nil
 }
 
@@ -218,27 +248,34 @@ func dueActions(ctx context.Context, tx runtimecontract.DBTX, now time.Time, lim
 	}
 	return queryActions(ctx, tx, `SELECT `+actionColumns+` FROM sharing_actions WHERE next_check_at<=? ORDER BY next_check_at,update_id LIMIT ?`, now.UTC().UnixMilli(), limit)
 }
+
 func queryActions(ctx context.Context, tx runtimecontract.DBTX, q string, args ...any) ([]actionRecord, error) {
 	rows, err := tx.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, storeFailure("list actions", err)
 	}
+
 	var result []actionRecord
+
 	for rows.Next() {
 		a, err := scanAction(rows)
 		if err != nil {
 			_ = rows.Close()
 			return nil, storeFailure("scan action", err)
 		}
+
 		result = append(result, a)
 	}
+
 	iteration := rows.Err()
 	closed := rows.Close()
 	if iteration != nil {
 		return nil, storeFailure("iterate actions", iteration)
 	}
+
 	if closed != nil {
 		return nil, storeFailure("close actions", closed)
 	}
+
 	return result, nil
 }

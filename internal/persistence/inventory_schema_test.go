@@ -21,6 +21,7 @@ func TestInventorySchemaConstraints(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	for _, sql := range []string{
 		`INSERT INTO inventory_catalog VALUES('bad','inert',1,0,0)`,
 		`INSERT INTO inventory_catalog VALUES('bad','weapon',0,1,0)`,
@@ -49,26 +50,33 @@ func TestInventoryMigrationFromVersionTwoAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(ctx, old); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := db.ExecContext(ctx, `INSERT INTO characters VALUES('0123456789abcdef0123456789abcdef',42,100,80,10,5,NULL,NULL,1)`); err != nil {
 		t.Fatal(err)
 	}
+
 	before := schemaRowsJSON(t, db, "characters")
 	if err := db.Migrate(ctx, runtimeMigrationsForTest(t)); err != nil {
 		t.Fatal(err)
 	}
+
 	assertLedgerVersions(t, db, []int{1, 2, 3, 4, 5})
 	assertRowCount(t, db, "inventories", "1=1", 0)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	db = openTestDB(t, dir, testBusyTimeout)
 	if got := schemaRowsJSON(t, db, "characters"); got != before {
 		t.Fatal("upgrade modified character")
 	}
+
 	var compatibility *SchemaCompatibilityError
+
 	if err := db.Migrate(ctx, old); !errors.As(err, &compatibility) || compatibility.Reason != SchemaCompatibilityFuture {
 		t.Fatalf("old schema accepted: %v", err)
 	}
@@ -81,16 +89,21 @@ func TestInventoryMigrationFailureRollsBackOnlyNewSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(ctx, old); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := db.ExecContext(ctx, `CREATE TABLE inventory_operations(sentinel TEXT); INSERT INTO inventory_operations VALUES('preserved')`); err != nil {
 		t.Fatal(err)
 	}
+
 	var migration *MigrationError
+
 	if err := db.Migrate(ctx, runtimeMigrationsForTest(t)); !errors.As(err, &migration) || migration.Version != 3 || migration.Stage != MigrationStageApply {
 		t.Fatalf("migration failure=%v", err)
 	}
+
 	assertLedgerVersions(t, db, []int{1, 2})
 	assertTableExists(t, db, "inventories", false)
 	assertRowCount(t, db, "inventory_operations", "sentinel='preserved'", 1)
@@ -102,6 +115,7 @@ func TestInventoryReceiptAndControlConstraints(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO characters VALUES('0123456789abcdef0123456789abcdef',42,100,100,10,5,NULL,NULL,1); INSERT INTO inventory_catalog VALUES('stick','weapon',1,0,0)`); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, sql := range []string{
 		`INSERT INTO inventory_operations VALUES('op','0123456789abcdef0123456789abcdef','consume','{}',1,NULL,25)`,
 		`INSERT INTO inventory_operations VALUES('op','0123456789abcdef0123456789abcdef','consume','{}',1,'heal_self_fixed_hp',NULL)`,
@@ -113,9 +127,11 @@ func TestInventoryReceiptAndControlConstraints(t *testing.T) {
 	} {
 		assertStatementFails(t, db, sql)
 	}
+
 	if _, err := db.ExecContext(ctx, `INSERT INTO inventory_operations VALUES('op','0123456789abcdef0123456789abcdef','consume','{}',1,'heal_self_fixed_hp',25)`); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := db.ExecContext(ctx, `INSERT INTO inventory_operations VALUES('grant','0123456789abcdef0123456789abcdef','grant','{}',1,NULL,NULL); INSERT INTO inventory_controls VALUES('abcdefghijklmnopqrstuv',42,-1,'0123456789abcdef0123456789abcdef','page',NULL,NULL,0,1,1000)`); err != nil {
 		t.Fatal(err)
 	}

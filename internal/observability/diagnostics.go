@@ -146,6 +146,7 @@ func NewDiagnostic(category EventCategory, correlationID runtimecontract.Correla
 	if err := validateDiagnostic(event); err != nil {
 		return Diagnostic{}, err
 	}
+
 	if !event.Fields.RetryAt.IsZero() {
 		event.Fields.RetryAt = event.Fields.RetryAt.UTC()
 	}
@@ -156,9 +157,11 @@ func NewDiagnostic(category EventCategory, correlationID runtimecontract.Correla
 // operating system cryptographic random source.
 func GenerateCorrelationID() (runtimecontract.CorrelationID, error) {
 	var random [16]byte
+
 	if _, err := rand.Read(random[:]); err != nil {
 		return "", err
 	}
+
 	encoded := make([]byte, hex.EncodedLen(len(random)))
 	hex.Encode(encoded, random[:])
 	return runtimecontract.CorrelationID(encoded), nil
@@ -197,6 +200,7 @@ func (s *JSONSink) Emit(ctx context.Context, event Diagnostic) {
 	if s == nil || s.logger == nil || validateDiagnostic(event) != nil {
 		return
 	}
+
 	attrs := []slog.Attr{
 		slog.String("category", string(event.Category)),
 		slog.String("correlation_id", string(event.CorrelationID)),
@@ -228,24 +232,31 @@ func validateDiagnostic(event Diagnostic) error {
 	if !validCategory(event.Category) {
 		return validationError("category", ReasonInvalid)
 	}
+
 	if !validCorrelationID(event.CorrelationID) {
 		return validationError("correlation_id", ReasonInvalid)
 	}
+
 	if event.Operation == "" {
 		return validationError("operation", ReasonRequired)
 	}
+
 	if !validOperation(event.Operation) {
 		return validationError("operation", ReasonInvalid)
 	}
+
 	if event.Outcome == "" {
 		return validationError("outcome", ReasonRequired)
 	}
+
 	if !validOutcome(event.Outcome) {
 		return validationError("outcome", ReasonInvalid)
 	}
+
 	if event.Fields.Duration < 0 {
 		return validationError("duration", ReasonOutOfRange)
 	}
+
 	if !event.Fields.RetryAt.IsZero() {
 		year := event.Fields.RetryAt.Year()
 		if year < 1 || year > 9999 {
@@ -255,6 +266,7 @@ func validateDiagnostic(event Diagnostic) error {
 	if event.Fields.State != "" && !validState(event.Fields.State) {
 		return validationError("state", ReasonInvalid)
 	}
+
 	return validateIdentifiers(event.Category, event.Fields)
 }
 
@@ -273,10 +285,12 @@ func validCorrelationID(id runtimecontract.CorrelationID) bool {
 	if len(id) != 32 {
 		return false
 	}
+
 	for _, char := range id {
 		if ('0' <= char && char <= '9') || ('a' <= char && char <= 'f') {
 			continue
 		}
+
 		return false
 	}
 	return true
@@ -343,9 +357,11 @@ func validateIdentifiers(category EventCategory, fields SafeFields) error {
 	if fields.ChatID != 0 && category != CategoryDelivery {
 		return validationError("chat_id", ReasonInvalid)
 	}
+
 	if fields.UserID != 0 && category != CategoryDelivery {
 		return validationError("user_id", ReasonInvalid)
 	}
+
 	return nil
 }
 

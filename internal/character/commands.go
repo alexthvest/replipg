@@ -23,9 +23,11 @@ func Register(registry *interaction.Registry, service inspector, now func() time
 	if err := presentation.validate(); err != nil {
 		return err
 	}
+
 	if registry == nil || service == nil || reflect.ValueOf(service).Kind() == reflect.Pointer && reflect.ValueOf(service).IsNil() || now == nil {
 		return contract.ErrInvalidInput
 	}
+
 	handler := commandHandler{service: service, now: now, presentation: presentation}
 	return registry.RegisterCommand("character", handler)
 }
@@ -41,29 +43,36 @@ func (h commandHandler) Handle(ctx context.Context, scope runtimecontract.WorkSc
 	if !ok {
 		return interaction.HandlerResult{}, nil
 	}
+
 	if command.Name != "character" {
 		return interaction.HandlerResult{}, nil
 	}
+
 	locale, err := h.presentation.Resolve(ctx, scope.DBTX(), command.Chat)
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	translate := func(key localization.Key) (string, error) { return h.presentation.Catalog.Text(locale, key, nil) }
 	if strings.TrimSpace(command.Arguments) != "" {
 		text, err := translate("usage.character")
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		return personalResponse(command, text), nil
 	}
+
 	snapshot, created, err := h.service.Ensure(ctx, scope.DBTX(), command.User)
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	text, err := renderLocalizedSummary(h.presentation.Catalog, locale, snapshot, created)
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	result := personalResponse(command, text)
 	if h.presentation.Sharing != nil {
 		response := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
@@ -74,13 +83,16 @@ func (h commandHandler) Handle(ctx context.Context, scope runtimecontract.WorkSc
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		result.ImmediateResponses[0] = response
 	}
 	if err := runtimecontract.ValidateResponse(result.ImmediateResponses[0]); err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	return result, nil
 }
+
 func personalCommand(event interaction.Event, now time.Time) (interaction.Command, bool) {
 	command, ok := event.(interaction.Command)
 	if pointer, isPointer := event.(*interaction.Command); isPointer && pointer != nil {
@@ -90,14 +102,18 @@ func personalCommand(event interaction.Event, now time.Time) (interaction.Comman
 	if !ok || command.Update <= 0 || command.User <= 0 || command.Chat >= 0 || command.ActorIsBot || command.SenderIsChat || command.EphemeralMessageID <= 0 || int64(int(command.EphemeralMessageID)) != int64(command.EphemeralMessageID) || command.SentAt.IsZero() {
 		return interaction.Command{}, false
 	}
+
 	if command.ChatKind != runtimecontract.ChatKindGroup && command.ChatKind != runtimecontract.ChatKindSupergroup {
 		return interaction.Command{}, false
 	}
+
 	if !now.Before(command.SentAt.Add(15 * time.Second)) {
 		return interaction.Command{}, false
 	}
+
 	return command, true
 }
+
 func personalResponse(command interaction.Command, text string) interaction.HandlerResult {
 	return interaction.HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{runtimecontract.EphemeralResponse{
 		Destination: runtimecontract.GroupDestination{ChatID: command.Chat, Kind: command.ChatKind}, TargetUserID: command.User,

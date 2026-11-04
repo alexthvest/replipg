@@ -4,10 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/alexthvest/replipg/internal/localization"
-
 	"github.com/alexthvest/replipg/internal/app"
 	"github.com/alexthvest/replipg/internal/character"
+	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -20,10 +19,12 @@ func characterModeOptions(tuning character.Config, clock func() time.Time, devel
 	if err != nil {
 		return app.Options{}, err
 	}
+
 	catalog, err := localization.Load()
 	if err != nil {
 		return app.Options{}, err
 	}
+
 	presentation := character.Presentation{Catalog: catalog, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return localization.English, nil
 	}}
@@ -39,9 +40,11 @@ func characterServiceOptions(service *character.Service, development bool, prese
 		if err := character.Register(registrations.Registry, service, time.Now, presentation); err != nil {
 			return err
 		}
+
 		if development {
 			return character.RegisterDevelopment(registrations.Registry, service, time.Now, presentation)
 		}
+
 		return nil
 	}}
 }

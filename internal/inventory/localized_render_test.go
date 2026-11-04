@@ -20,17 +20,21 @@ func TestLocalizedInventoryPresentation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	c, err := localization.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	ids := []string{}
 	for _, item := range catalog.Items() {
 		ids = append(ids, string(item.ID))
 	}
+
 	if err := c.ValidateItems(ids, ValidateItemText); err != nil {
 		t.Fatal(err)
 	}
+
 	before := catalog.Items()
 	p := Presentation{Catalog: c}
 	s := contract.Snapshot{Items: []contract.OwnedItem{{ItemID: "coin", Quantity: 10}, {ItemID: "stick", Quantity: 1}, {ItemID: "cloth_armor", Quantity: 1}, {ItemID: "healing_potion", Quantity: 3}}, Weapon: "stick", Modifiers: contract.Modifiers{Attack: 1}}
@@ -40,6 +44,7 @@ func TestLocalizedInventoryPresentation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		assertRenderedResponse(t, page)
 		want := "Inventory • alice"
 		next := "Next"
@@ -47,30 +52,36 @@ func TestLocalizedInventoryPresentation(t *testing.T) {
 			want = "Инвентарь • alice"
 			next = "Далее"
 		}
+
 		if !strings.Contains(page.Text, want) || page.Buttons[1][0].Text != next {
 			t.Fatal(page)
 		}
+
 		for _, item := range s.Items {
 			detail, err := renderDetailLocalized(catalog, s, item.ItemID, "", controls, p, l)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			assertRenderedResponse(t, detail)
 			translation, err := c.Item(l, string(item.ItemID))
 			if err != nil || !strings.Contains(detail.Text, translation.Name) || !strings.Contains(detail.Text, translation.Description) {
 				t.Fatal("translated item absent")
 			}
+
 			if item.ItemID == "cloth_armor" {
 				name := "Leather armor"
 				if l == localization.Russian {
 					name = "Кожаная броня"
 				}
+
 				if !strings.Contains(detail.Text, name) {
 					t.Fatal(detail.Text)
 				}
 			}
 		}
 	}
+
 	after := catalog.Items()
 	for i := range before {
 		if before[i] != after[i] {
@@ -78,6 +89,7 @@ func TestLocalizedInventoryPresentation(t *testing.T) {
 		}
 	}
 }
+
 func TestInventoryOldControlUsesCurrentLocale(t *testing.T) {
 	db, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
@@ -85,6 +97,7 @@ func TestInventoryOldControlUsesCurrentLocale(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	locale := localization.English
 	calls := 0
 	p := Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
@@ -94,14 +107,17 @@ func TestInventoryOldControlUsesCurrentLocale(t *testing.T) {
 	h := inventoryHandler{service: service, now: clock.Now, presentation: p}
 	cmd := interaction.Command{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup}, Name: "inventory", EphemeralMessageID: 1, SentAt: clock.Now()}
 	var token string
+
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := service.Prepare(ctx, tx); err != nil {
 			return err
 		}
+
 		result, err := h.Handle(ctx, inventoryScope{tx}, cmd)
 		if err != nil {
 			return err
 		}
+
 		token = result.ImmediateResponses[0].(runtimecontract.EphemeralResponse).Content.Buttons[0][0].CallbackData
 		return nil
 	})
@@ -113,12 +129,16 @@ func TestInventoryOldControlUsesCurrentLocale(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		response := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 		if !strings.Contains(response.Content.Text, "Кожаная броня") || !strings.Contains(response.Content.Text, "Категория:") || response.Content.Buttons[len(response.Content.Buttons)-1][0].Text != "Назад" || response.EditMessageID != 1 {
 			t.Fatal("old controls did not render current locale", response.Content)
 		}
+
 		return nil
 	})
+
 	if calls != 2 {
 		t.Fatal("locale must resolve once per accepted interaction")
 	}
@@ -129,6 +149,7 @@ func TestLocalizedOwnerPreservesSanitizedPlayerName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, tc := range []struct{ input, want string }{{"you", "you"}, {"\x00you", "you"}, {"\u200byou", "you"}, {"\n", "вы"}, {"", "вы"}, {"Имя_42", "Имя_42"}} {
 		r := localizedRenderer{catalog: c, locale: localization.Russian}
 		got := r.owner(tc.input)
@@ -145,6 +166,7 @@ func TestLocalizedInventoryDevelopmentMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	p := Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return localization.Russian, nil
 	}}
@@ -154,6 +176,7 @@ func TestLocalizedInventoryDevelopmentMessages(t *testing.T) {
 		if err := service.Prepare(ctx, tx); err != nil {
 			return err
 		}
+
 		_, err := service.Open(ctx, tx, 42)
 		return err
 	})
@@ -164,10 +187,13 @@ func TestLocalizedInventoryDevelopmentMessages(t *testing.T) {
 			if err != nil {
 				return err
 			}
+
 			text := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse).Content.Text
+
 			if !strings.Contains(text, tc.want) {
 				t.Fatal(text)
 			}
+
 			return nil
 		})
 		cmd.Update++
@@ -181,6 +207,7 @@ func TestRejectedInventoryControlDoesNotResolveLocale(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	calls := 0
 	p := Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		calls++
@@ -190,11 +217,14 @@ func TestRejectedInventoryControlDoesNotResolveLocale(t *testing.T) {
 	event := interaction.Callback{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup}, QueryID: "query", Data: "inv:aaaaaaaaaaaaaaaaaaaaaa", EphemeralMessageID: 1}
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		result, err := h.Handle(ctx, inventoryScope{tx}, event)
+
 		if len(result.ImmediateResponses) != 0 {
 			t.Fatal("unknown control responded")
 		}
+
 		return err
 	})
+
 	if calls != 0 {
 		t.Fatal("unknown control created locale state")
 	}
@@ -205,36 +235,44 @@ func TestLocalizedMaximumPageAndDetailBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	resources := map[string][]byte{}
 	for _, locale := range []string{"en", "ru"} {
 		data, err := os.ReadFile("../localization/locales/" + locale + ".json")
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		values := map[string]string{}
 		if err := json.Unmarshal(data, &values); err != nil {
 			t.Fatal(err)
 		}
+
 		for _, item := range catalog.Items() {
 			values["items."+string(item.ID)+".name"] = strings.Repeat("😀", 80)
 			values["items."+string(item.ID)+".description"] = strings.Repeat("😀", 400)
 		}
+
 		resources[locale], err = json.Marshal(values)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	c, err := localization.Parse(resources["en"], resources["ru"])
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	ids := []string{}
 	for _, item := range catalog.Items() {
 		ids = append(ids, string(item.ID))
 	}
+
 	if err := c.ValidateItems(ids, ValidateItemText); err != nil {
 		t.Fatal(err)
 	}
+
 	snapshot := contract.Snapshot{Weapon: "stick", Armor: "cloth_armor", Modifiers: contract.Modifiers{Attack: math.MaxInt64, Defense: math.MaxInt64}}
 	controls := viewControls{Previous: "inv:pppppppppppppppppppppp", Next: "inv:nnnnnnnnnnnnnnnnnnnnnn", Back: "inv:bbbbbbbbbbbbbbbbbbbbbb", Unequip: "inv:uuuuuuuuuuuuuuuuuuuuuu"}
 	for i := 0; i < 8; i++ {
@@ -250,13 +288,16 @@ func TestLocalizedMaximumPageAndDetailBudgets(t *testing.T) {
 		}
 		catalog.byID[id] = item
 	}
+
 	for _, locale := range []localization.Locale{localization.English, localization.Russian} {
 		p := Presentation{Catalog: c}
 		content, err := renderPageLocalized(catalog, inventoryPage{Current: snapshot}, strings.Repeat("😀", 64), controls, p, locale)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		assertRenderedResponse(t, content)
+
 		if len(content.Buttons) != 2 || len(content.Buttons[0]) != 8 || !strings.Contains(content.Text, "9223372036854775807") {
 			t.Fatal("maximum page lost rows, controls or integer values")
 		}
@@ -265,7 +306,9 @@ func TestLocalizedMaximumPageAndDetailBudgets(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			assertRenderedResponse(t, detail)
+
 			if !strings.Contains(detail.Text, strings.Repeat("😀", 400)) {
 				t.Fatal("maximum description was altered")
 			}
@@ -280,6 +323,7 @@ func TestPreparedInventoryResponseKeepsAcceptedLanguageSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	locale := localization.English
 	p := Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return locale, nil
@@ -287,29 +331,36 @@ func TestPreparedInventoryResponseKeepsAcceptedLanguageSnapshot(t *testing.T) {
 	h := inventoryHandler{service: service, now: clock.Now, presentation: p}
 	cmd := interaction.Command{Identity: interaction.Identity{Update: 1, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup, ActorUsername: "Player_Name"}, Name: "inventory", EphemeralMessageID: 1, SentAt: clock.Now()}
 	var token string
+
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := service.Prepare(ctx, tx); err != nil {
 			return err
 		}
+
 		result, err := h.Handle(ctx, inventoryScope{tx}, cmd)
 		if err != nil {
 			return err
 		}
+
 		page := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 		if !strings.Contains(page.Content.Text, "Coin (10)") {
 			t.Fatal(page.Content.Text)
 		}
+
 		token = page.Content.Buttons[0][0].CallbackData
 		return nil
 	})
 	callback := interaction.Callback{Identity: cmd.Identity, QueryID: "query", Data: token, EphemeralMessageID: 1}
 	callback.Update = 2
 	var accepted runtimecontract.EphemeralResponse
+
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		result, err := h.Handle(ctx, inventoryScope{tx}, callback)
 		if err != nil {
 			return err
 		}
+
 		accepted = result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
 		return nil
 	})
@@ -317,9 +368,11 @@ func TestPreparedInventoryResponseKeepsAcceptedLanguageSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !strings.Contains(accepted.Content.Text, "Leather armor • Player_Name") || !strings.Contains(accepted.Content.Text, "Owned: 1") || !strings.Contains(accepted.Content.Text, "Defense bonus: +1") || accepted.Content.Buttons[0][0].Text != "Equip" || accepted.Content.Buttons[1][0].Text != "Back" {
 		t.Fatal("English accepted content incomplete", accepted.Content)
 	}
+
 	locale = localization.Russian
 	callback.Update++
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -327,16 +380,20 @@ func TestPreparedInventoryResponseKeepsAcceptedLanguageSnapshot(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		next := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 		if !strings.Contains(next.Content.Text, "Кожаная броня • Player_Name") || !strings.Contains(next.Content.Text, "В наличии: 1") || next.Content.Buttons[0][0].Text != "Экипировать" {
 			t.Fatal("new interaction did not use selected language", next.Content)
 		}
+
 		return nil
 	})
 	after, err := json.Marshal(accepted)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if string(before) != string(after) {
 		t.Fatal("previously prepared response text, values, buttons or authorization changed with locale")
 	}

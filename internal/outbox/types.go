@@ -47,13 +47,15 @@ type DeliveryStatus struct {
 // ConflictError identifies a generated ID collision without including caller data.
 type ConflictError struct{}
 
-func (*ConflictError) Error() string        { return ErrConflict.Error() }
+func (*ConflictError) Error() string { return ErrConflict.Error() }
+
 func (*ConflictError) Is(target error) bool { return target == ErrConflict }
 
 // UnsupportedVersionError reports an unregistered delivery schema without its kind.
 type UnsupportedVersionError struct{ Version uint16 }
 
-func (*UnsupportedVersionError) Error() string        { return ErrUnsupportedVersion.Error() }
+func (*UnsupportedVersionError) Error() string { return ErrUnsupportedVersion.Error() }
+
 func (*UnsupportedVersionError) Is(target error) bool { return target == ErrUnsupportedVersion }
 
 // Decoder is a feature-owned pure serialization mapping, not a gameplay handler.

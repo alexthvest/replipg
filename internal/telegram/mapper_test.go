@@ -46,6 +46,7 @@ func TestDecodeUpdateFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if got.UpdateID != 42 || got.Status != tt.status || !reflect.DeepEqual(got.Event, tt.event) || got.CallbackQueryID != tt.query {
 				t.Fatalf("got %#v event %#v; want %s %#v query %q", got, got.Event, tt.status, tt.event, tt.query)
 			}
@@ -73,14 +74,18 @@ func TestDecodeUpdateCommandEntities(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			got, err := DecodeUpdate(raw)
 			if err != nil || got.Status != tt.status {
 				t.Fatalf("got %#v %v", got, err)
 			}
+
 			command, ok := got.Event.(interaction.Command)
+
 			if ok != tt.command {
 				t.Fatalf("event %#v", got.Event)
 			}
+
 			if ok && (command.Name != "help" || command.Arguments != "😀") {
 				t.Fatalf("command %#v", command)
 			}
@@ -111,6 +116,7 @@ func TestDecodeUpdateActorUsername(t *testing.T) {
 			for _, kind := range []string{"command", "callback"} {
 				t.Run(kind, func(t *testing.T) {
 					var raw string
+
 					if kind == "command" {
 						raw = fmt.Sprintf(`{"update_id":42,"message":{"ephemeral_message_id":8,"from":%s,"chat":{"id":-100,"type":"supergroup"},"text":"/inventory","entities":[{"type":"bot_command","offset":0,"length":10}]}}`, tc.from)
 					} else {
@@ -120,7 +126,9 @@ func TestDecodeUpdateActorUsername(t *testing.T) {
 					if err != nil || got.Status != DecodeMapped {
 						t.Fatalf("decode status %q, error %v", got.Status, err)
 					}
+
 					var identity interaction.Identity
+
 					switch event := got.Event.(type) {
 					case interaction.Command:
 						identity = event.Identity
@@ -129,7 +137,9 @@ func TestDecodeUpdateActorUsername(t *testing.T) {
 					default:
 						t.Fatalf("unexpected event type %T", got.Event)
 					}
+
 					want := interaction.Identity{Update: 42, Chat: -100, User: 7, ChatKind: runtimecontract.ChatKindSupergroup, ActorUsername: tc.want}
+
 					if identity != want {
 						t.Fatal("actor username or numeric identity changed")
 					}
@@ -156,13 +166,17 @@ func TestCommandSourceAuthorization(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			command, ok := got.Event.(interaction.Command)
+
 			if !ok {
 				t.Fatalf("event %T", got.Event)
 			}
+
 			if command.ActorIsBot != tc.bot || command.SenderIsChat != tc.chat {
 				t.Fatalf("metadata %+v", command)
 			}
+
 			if tc.unix == 0 {
 				if !command.SentAt.IsZero() {
 					t.Fatal("invented timestamp")
@@ -179,7 +193,9 @@ func TestCallbackPreservesBotActorIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	callback, ok := update.Event.(interaction.Callback)
+
 	if !ok || !callback.ActorIsBot {
 		t.Fatalf("bot actor identity lost: %+v", update)
 	}

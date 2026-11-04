@@ -12,12 +12,14 @@ import (
 func activeRuleSnapshot() contract.Snapshot {
 	return contract.Snapshot{ID: "character", UserID: 1, MaxHealth: 100, Health: 70, Attack: 10, Defense: 5, State: contract.StateActive, Revision: 1}
 }
+
 func ruleConfig(t *testing.T) Config {
 	t.Helper()
 	cfg, err := LoadConfig(false)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return cfg
 }
 
@@ -41,6 +43,7 @@ func TestHealthRulesBoundedArithmetic(t *testing.T) {
 			}
 		})
 	}
+
 	snapshot := activeRuleSnapshot()
 	snapshot.MaxHealth = math.MaxInt64
 	snapshot.Health = math.MaxInt64 - 1
@@ -48,6 +51,7 @@ func TestHealthRulesBoundedArithmetic(t *testing.T) {
 	if err != nil || got.Health != math.MaxInt64 {
 		t.Fatalf("overflowed healing: %+v %v", got, err)
 	}
+
 	snapshot.Health = snapshot.MaxHealth
 	snapshot.Revision = math.MaxInt64
 	got, _, changed, err := applyHealthRule(snapshot, 0, contract.HealthHeal, math.MaxInt64, now, cfg)
@@ -71,6 +75,7 @@ func TestDefeatSnapshotsExactRecoveryAndDeadline(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			snapshot := activeRuleSnapshot()
 			snapshot.MaxHealth = tt.max
 			snapshot.Health = tt.max
@@ -78,10 +83,13 @@ func TestDefeatSnapshotsExactRecoveryAndDeadline(t *testing.T) {
 			if err != nil || !changed || got.Health != 0 || got.State != contract.StateIncapacitated || hp != tt.want || got.Revision != 2 {
 				t.Fatalf("unexpected defeat: %+v hp=%d %v", got, hp, err)
 			}
+
 			expected := now.Add(5 * time.Minute).UTC().Truncate(time.Millisecond).Add(time.Millisecond)
+
 			if got.RecoverAt != expected || got.RecoverAt.Location() != time.UTC {
 				t.Fatalf("deadline %v want %v", got.RecoverAt, expected)
 			}
+
 			recovered, remaining, changed, err := normalizeRecovery(got, hp, expected)
 			if err != nil || !changed || recovered.Health != tt.want || recovered.State != contract.StateActive || remaining != 0 || !recovered.RecoverAt.IsZero() || recovered.Revision != 3 {
 				t.Fatalf("recovery %+v %v", recovered, err)
@@ -97,28 +105,34 @@ func TestRecoveryBoundariesAndNoPassiveRegeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if defeated.RecoverAt != now.Add(5*time.Minute) {
 		t.Fatal("exact milliseconds should not round an extra millisecond")
 	}
+
 	before := defeated.RecoverAt.Add(-time.Nanosecond)
 	got, remaining, changed, err := normalizeRecovery(defeated, hp, before)
 	if err != nil || changed || got != defeated || remaining != hp {
 		t.Fatal("recovered before deadline")
 	}
+
 	for _, kind := range []contract.HealthKind{contract.HealthDamage, contract.HealthHeal} {
 		_, _, _, err = applyHealthRule(defeated, hp, kind, 0, before, cfg)
 		if !errors.Is(err, contract.ErrIncapacitated) {
 			t.Fatalf("bypassed incapacitation: %v", err)
 		}
 	}
+
 	got, remaining, changed, err = normalizeRecovery(defeated, hp, defeated.RecoverAt.Add(time.Hour))
 	if err != nil || !changed || got.Health != 25 || remaining != 0 {
 		t.Fatalf("expired recovery: %+v %v", got, err)
 	}
+
 	damaged, _, _, err := applyHealthRule(got, 0, contract.HealthDamage, 10, defeated.RecoverAt, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	again, _, changed, err := normalizeRecovery(damaged, 0, defeated.RecoverAt.Add(24*time.Hour))
 	if err != nil || changed || again != damaged {
 		t.Fatal("repeated recovery or passive regeneration")
@@ -151,11 +165,13 @@ func TestRuleFailuresLeaveInputUnchanged(t *testing.T) {
 			}
 		})
 	}
+
 	snapshot.Revision = math.MaxInt64
 	got, _, changed, err := applyHealthRule(snapshot, 0, contract.HealthDamage, 1, now, cfg)
 	if !errors.Is(err, contract.ErrExhausted) || got != snapshot || changed {
 		t.Fatal("revision overflow changed state")
 	}
+
 	defeated := snapshot
 	defeated.Health = 0
 	defeated.State = contract.StateIncapacitated
@@ -171,19 +187,23 @@ func TestRulesTinyDurationAndStorageTimeBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, now := range []time.Time{time.UnixMilli(-1).Add(time.Nanosecond), time.UnixMilli(0), time.UnixMilli(math.MaxInt64 - 1), time.UnixMilli(math.MinInt64)} {
 		got, _, _, err := applyHealthRule(activeRuleSnapshot(), 0, contract.HealthDamage, 100, now, cfg)
 		if err != nil {
 			t.Fatalf("representable deadline from %v: %v", now, err)
 		}
+
 		if !got.RecoverAt.Equal(time.UnixMilli(now.UnixMilli() + 1)) {
 			t.Fatalf("deadline rounded incorrectly: %v from %v", got.RecoverAt, now)
 		}
 	}
+
 	_, _, _, err = applyHealthRule(activeRuleSnapshot(), 0, contract.HealthDamage, 100, time.UnixMilli(math.MaxInt64), cfg)
 	if !errors.Is(err, contract.ErrExhausted) {
 		t.Fatalf("ceil overflow accepted: %v", err)
 	}
+
 	for _, now := range []time.Time{time.UnixMilli(math.MinInt64).Add(-time.Nanosecond), time.UnixMilli(math.MaxInt64).Add(time.Millisecond)} {
 		_, _, _, err = normalizeRecovery(activeRuleSnapshot(), 0, now)
 		if !errors.Is(err, contract.ErrExhausted) {

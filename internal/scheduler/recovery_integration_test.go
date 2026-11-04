@@ -23,9 +23,11 @@ type scheduledScope struct {
 }
 
 func (s scheduledScope) DBTX() runtimecontract.DBTX { return s.tx }
+
 func (s scheduledScope) Schedule(ctx context.Context, r runtimecontract.JobRequest) (runtimecontract.JobID, error) {
 	return s.jobs.Schedule(ctx, s.tx, r)
 }
+
 func (s scheduledScope) EnqueueDelivery(ctx context.Context, r runtimecontract.DeliveryRequest) (runtimecontract.DeliveryID, error) {
 	return s.deliveries.Enqueue(ctx, s.tx, r)
 }
@@ -57,10 +59,12 @@ func newScheduledRecovery(t *testing.T, handler scheduledHandler) *scheduledReco
 			}
 		}
 	})
+
 	h.restart()
 	h.exec(`CREATE TABLE scheduled_feature (job_id TEXT PRIMARY KEY, value TEXT NOT NULL)`)
 	return h
 }
+
 func (h *scheduledRecovery) restart() {
 	h.t.Helper()
 	if h.db != nil {
@@ -69,6 +73,7 @@ func (h *scheduledRecovery) restart() {
 		}
 	}
 	var err error
+
 	h.db, err = persistence.Open(context.Background(), persistence.Options{StorageDir: h.dir, StorageFilesystem: config.FilesystemLocal, BusyTimeout: time.Second})
 	if err != nil {
 		h.t.Fatal(err)
@@ -100,6 +105,7 @@ func (h *scheduledRecovery) restart() {
 	}
 	h.worker = h.newWorker("restarted")
 }
+
 func (h *scheduledRecovery) newWorker(owner string) *scheduler.Worker {
 	h.t.Helper()
 	w, err := scheduler.NewWorker(h.jobs, scheduler.WorkerOptions{Owner: owner, Lease: time.Minute, NewWorkScope: func(tx runtimecontract.DBTX) runtimecontract.WorkScope {
@@ -110,14 +116,17 @@ func (h *scheduledRecovery) newWorker(owner string) *scheduler.Worker {
 	}
 	return w
 }
+
 func scheduledRequest(t *testing.T, id runtimecontract.JobID, due time.Time) runtimecontract.JobRequest {
 	t.Helper()
 	p, err := runtimecontract.NewVersionedPayload(1, []byte("feature-payload"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return runtimecontract.JobRequest{ID: id, Type: "scheduled-feature", Payload: p, DueAt: due, Retry: runtimecontract.RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: 10 * time.Second}}
 }
+
 func (h *scheduledRecovery) schedule(id runtimecontract.JobID, due time.Time) {
 	h.t.Helper()
 	err := h.db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -128,6 +137,7 @@ func (h *scheduledRecovery) schedule(id runtimecontract.JobID, due time.Time) {
 		h.t.Fatal(err)
 	}
 }
+
 func (h *scheduledRecovery) status(id runtimecontract.JobID, state scheduler.State, attempts int) scheduler.JobStatus {
 	h.t.Helper()
 	s, err := h.jobs.Status(context.Background(), id)
@@ -136,12 +146,14 @@ func (h *scheduledRecovery) status(id runtimecontract.JobID, state scheduler.Sta
 	}
 	return s
 }
+
 func (h *scheduledRecovery) exec(query string) {
 	h.t.Helper()
 	if _, err := h.db.ExecContext(context.Background(), query); err != nil {
 		h.t.Fatal(err)
 	}
 }
+
 func (h *scheduledRecovery) run(want bool, wantErr error) {
 	h.t.Helper()
 	got, err := h.worker.RunOnce(context.Background())
@@ -149,23 +161,28 @@ func (h *scheduledRecovery) run(want bool, wantErr error) {
 		h.t.Fatalf("RunOnce=%v %v; want %v %v", got, err, want, wantErr)
 	}
 }
+
 func (h *scheduledRecovery) counts(want int) {
 	h.t.Helper()
 	for _, query := range []string{`SELECT count(*) FROM scheduled_feature`, `SELECT count(*) FROM outbound_deliveries`, `SELECT count(*) FROM scheduled_jobs WHERE id LIKE 'child-%'`} {
 		var n int
+
 		if err := h.db.QueryRowContext(context.Background(), query).Scan(&n); err != nil || n != want {
 			h.t.Fatalf("%s = %d %v; want %d", query, n, err, want)
 		}
 	}
 }
+
 func scheduledEffects(t *testing.T, ctx context.Context, scope runtimecontract.WorkScope, j scheduler.Job, now time.Time) {
 	t.Helper()
 	if _, err := scope.DBTX().ExecContext(ctx, `INSERT INTO scheduled_feature VALUES (?,?)`, j.Request.ID, "feature-value"); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := scope.EnqueueDelivery(ctx, runtimecontract.DeliveryRequest{Kind: "scheduled-effect", Payload: j.Request.Payload, Retry: j.Request.Retry}); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := scope.Schedule(ctx, scheduledRequest(t, "child-"+j.Request.ID, now.Add(24*time.Hour))); err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +191,7 @@ func scheduledEffects(t *testing.T, ctx context.Context, scope runtimecontract.W
 func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 	calls := make(map[runtimecontract.JobID]int)
 	var h *scheduledRecovery
+
 	h = newScheduledRecovery(t, func(ctx context.Context, scope runtimecontract.WorkScope, j scheduler.Job) scheduler.JobOutcome {
 		calls[j.Request.ID]++
 		scheduledEffects(t, ctx, scope, j, h.clock.Now())
@@ -196,22 +214,26 @@ func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 			h.run(false, scheduler.ErrJobNotCompleted)
 		}
 	}
+
 	h.schedule("expired", h.clock.Now())
 	old, err := h.worker.ClaimDue(ctx)
 	if err != nil || old == nil {
 		t.Fatalf("old claim=%v %v", old, err)
 	}
+
 	h.schedule("overdue", h.clock.Now())
 	h.schedule("cancelled", h.clock.Now())
 	if err := h.jobs.Cancel(ctx, "cancelled"); err != nil {
 		t.Fatal(err)
 	}
+
 	exact := h.clock.Now().Add(2 * time.Minute)
 	h.schedule("exact", exact)
 	h.schedule("cancelled-exact", exact)
 	if err := h.jobs.Cancel(ctx, "cancelled-exact"); err != nil {
 		t.Fatal(err)
 	}
+
 	h.clock.Advance(time.Minute)
 	h.restart()
 	h.status("completed", scheduler.StateCompleted, 1)
@@ -219,12 +241,15 @@ func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 	h.status("cancelled", scheduler.StateCancelled, 0)
 	h.status("expired", scheduler.StatePending, 1)
 	retry := h.status("retry", scheduler.StateRetrying, 1)
+
 	if retry.NextAttemptAt == nil || !retry.NextAttemptAt.Equal(exact) {
 		t.Fatalf("retry schedule changed: %+v", retry)
 	}
+
 	if err := h.worker.ExecuteClaim(ctx, old); !errors.Is(err, scheduler.ErrClaimLost) {
 		t.Fatalf("old claim after recovery=%v", err)
 	}
+
 	h.run(true, nil)
 	h.run(true, nil)
 	h.clock.Advance(time.Minute - time.Nanosecond)
@@ -235,6 +260,7 @@ func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 		claim  *scheduler.Claim
 		err    error
 	}
+
 	raceClaims := func() []result {
 		results := make(chan result, 12)
 		start := make(chan struct{})
@@ -242,6 +268,7 @@ func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 			w := h.newWorker(string(rune('a' + i)))
 			go func() { <-start; c, e := w.ClaimDue(ctx); results <- result{w, c, e} }()
 		}
+
 		close(start)
 		winners := []result{}
 		for range 12 {
@@ -249,6 +276,7 @@ func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 			if r.err != nil {
 				t.Error(r.err)
 			}
+
 			if r.claim != nil {
 				winners = append(winners, r)
 			}
@@ -259,19 +287,24 @@ func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 	if winners := raceClaims(); len(winners) != 0 {
 		t.Fatalf("early concurrent claim winners=%d", len(winners))
 	}
+
 	h.clock.Advance(time.Nanosecond)
 	winners := raceClaims()
+
 	if len(winners) != 2 {
 		t.Fatalf("exact-boundary winners=%d; want 2", len(winners))
 	}
+
 	for _, r := range winners {
 		if err := r.worker.ExecuteClaim(ctx, r.claim); err != nil {
 			t.Fatal(err)
 		}
+
 		if err := r.worker.ExecuteClaim(ctx, r.claim); !errors.Is(err, scheduler.ErrClaimLost) {
 			t.Fatalf("repeated claim=%v", err)
 		}
 	}
+
 	h.counts(5)
 	h.restart()
 	h.run(false, nil)
@@ -282,9 +315,11 @@ func TestScheduledRecoveryIntegrationReopenAndExactDueClaims(t *testing.T) {
 		}
 		h.status(id, scheduler.StateCompleted, attempts)
 	}
+
 	if calls["cancelled-exact"] != 0 || calls["overdue"] != 1 || calls["cancelled"] != 0 || calls["expired"] != 1 || calls["retry"] != 2 || calls["exact"] != 1 || calls["completed"] != 1 || calls["permanent"] != 1 {
 		t.Fatalf("unexpected executions: %v", calls)
 	}
+
 	h.counts(5)
 }
 
@@ -305,6 +340,7 @@ func TestScheduledRecoveryIntegrationOutcomeAtomicity(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var h *scheduledRecovery
+
 			h = newScheduledRecovery(t, func(ctx context.Context, scope runtimecontract.WorkScope, j scheduler.Job) scheduler.JobOutcome {
 				scheduledEffects(t, ctx, scope, j, h.clock.Now())
 				if tc.panic {
@@ -325,23 +361,30 @@ func TestScheduledRecoveryIntegrationOutcomeAtomicity(t *testing.T) {
 				h.run(false, scheduler.ErrJobNotCompleted)
 			}
 			s := h.status("parent", tc.state, 1)
+
 			if s.ReasonCode != tc.reason {
 				t.Fatalf("reason=%q; want %q", s.ReasonCode, tc.reason)
 			}
+
 			var cleared bool
+
 			if err := h.db.QueryRowContext(context.Background(), `SELECT claim_owner IS NULL AND claim_correlation_id IS NULL AND lease_until IS NULL FROM scheduled_jobs WHERE id='parent'`).Scan(&cleared); err != nil || !cleared {
 				t.Fatalf("outcome retained claim: cleared=%v error=%v", cleared, err)
 			}
+
 			h.counts(want)
 			h.restart()
 			h.status("parent", tc.state, 1)
 			h.counts(want)
 			h.run(false, nil)
+
 			if tc.kind == scheduler.JobCompleted {
 				var state, content string
+
 				if err := h.db.QueryRowContext(context.Background(), `SELECT state,content FROM outbound_deliveries`).Scan(&state, &content); err != nil || state != "pending" || content != "feature-payload" {
 					t.Fatalf("durable delivery=%q %q %v", state, content, err)
 				}
+
 				h.status("child-parent", scheduler.StatePending, 0)
 			}
 		})
@@ -350,6 +393,7 @@ func TestScheduledRecoveryIntegrationOutcomeAtomicity(t *testing.T) {
 
 func TestScheduledRecoveryIntegrationCompletionFailureRollsBackAllStores(t *testing.T) {
 	var h *scheduledRecovery
+
 	h = newScheduledRecovery(t, func(ctx context.Context, scope runtimecontract.WorkScope, j scheduler.Job) scheduler.JobOutcome {
 		scheduledEffects(t, ctx, scope, j, h.clock.Now())
 		return scheduler.JobOutcome{Kind: scheduler.JobCompleted}
@@ -361,6 +405,7 @@ func TestScheduledRecoveryIntegrationCompletionFailureRollsBackAllStores(t *test
 		t.Fatalf("completion failure=%v %v", ran, err)
 	} else {
 		var storage *scheduler.StoreError
+
 		if !errors.As(err, &storage) || storage.Operation != "execute" {
 			t.Fatalf("completion failure category=%v", err)
 		}
@@ -383,8 +428,10 @@ func TestScheduledRecoveryIntegrationCompletionFailureRollsBackAllStores(t *test
 func TestScheduledRecoveryIntegrationContextCancellationRollsBackAllStores(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	calls := 0
 	var h *scheduledRecovery
+
 	h = newScheduledRecovery(t, func(ctx context.Context, scope runtimecontract.WorkScope, j scheduler.Job) scheduler.JobOutcome {
 		calls++
 		scheduledEffects(t, ctx, scope, j, h.clock.Now())
@@ -397,6 +444,7 @@ func TestScheduledRecoveryIntegrationContextCancellationRollsBackAllStores(t *te
 	if ran, err := h.worker.RunOnce(ctx); ran || !errors.Is(err, context.Canceled) {
 		t.Fatalf("interrupted execution=%v %v", ran, err)
 	}
+
 	h.status("parent", scheduler.StateClaimed, 1)
 	h.counts(0)
 	h.clock.Advance(time.Minute)
@@ -408,6 +456,7 @@ func TestScheduledRecoveryIntegrationContextCancellationRollsBackAllStores(t *te
 	h.run(false, nil)
 	h.status("parent", scheduler.StateCompleted, 2)
 	h.counts(1)
+
 	if calls != 2 {
 		t.Fatalf("executions=%d; want one interrupted and one recovered", calls)
 	}

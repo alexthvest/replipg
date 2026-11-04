@@ -73,12 +73,15 @@ func (r *Router) Dispatch(ctx context.Context, event Event) (DispatchOutcome, er
 	if event == nil || (reflect.ValueOf(event).Kind() == reflect.Pointer && reflect.ValueOf(event).IsNil()) {
 		return DispatchOutcome{}, ErrNoRoute
 	}
+
 	handler, ok := r.Resolve(event)
 	if !ok {
 		return r.RecordIgnored(ctx, event.UpdateID())
 	}
+
 	if preparing, ok := handler.(PreparingHandler); ok {
 		var err error
+
 		handler, err = prepareHandler(ctx, preparing, event)
 		if err != nil {
 			return DispatchOutcome{}, err
@@ -88,6 +91,7 @@ func (r *Router) Dispatch(ctx context.Context, event Event) (DispatchOutcome, er
 	if err != nil {
 		return DispatchOutcome{}, err
 	}
+
 	result := DispatchOutcome{}
 	recorded := false
 	err = r.transactions.WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -95,22 +99,27 @@ func (r *Router) Dispatch(ctx context.Context, event Event) (DispatchOutcome, er
 		if err != nil {
 			return err
 		}
+
 		if found {
 			result = prior
 			return nil
 		}
+
 		scope := &transactionScope{tx: tx, deliveries: r.deliveries, jobs: r.jobs}
 		if err := invokeHandler(ctx, handler, scope, event); err != nil {
 			return err
 		}
+
 		responses, err := validatedResponses(scope.responses, r.options.Now())
 		if err != nil {
 			return &handlerFailure{code: "invalid_response", cause: err}
 		}
+
 		outcome.CompletedAt = r.options.Now().UTC()
 		if err := r.cursors.RecordTerminal(ctx, tx, outcome); err != nil {
 			return err
 		}
+
 		result = dispatchOutcome(outcome)
 		result.ImmediateResponses = responses
 		recorded = true
@@ -122,17 +131,21 @@ func (r *Router) Dispatch(ctx context.Context, event Event) (DispatchOutcome, er
 		}
 		return result, nil
 	}
+
 	var failure *handlerFailure
 	var txErr *persistence.TransactionError
+
 	if !errors.As(err, &failure) || !errors.As(err, &txErr) || txErr.Stage != persistence.TransactionStageCallback || ctx.Err() != nil {
 		return DispatchOutcome{}, err
 	}
+
 	outcome.Status = persistence.UpdateHandlerFailed
 	outcome.FailureCode = failure.code
 	result, err = r.recordTerminal(ctx, outcome)
 	if err != nil {
 		return DispatchOutcome{}, err
 	}
+
 	return result, failure.cause
 }
 
@@ -142,6 +155,7 @@ func (r *Router) RecordIgnored(ctx context.Context, id runtimecontract.UpdateID)
 	if err != nil {
 		return DispatchOutcome{}, err
 	}
+
 	return r.recordTerminal(ctx, outcome)
 }
 
@@ -152,6 +166,7 @@ func (r *Router) RecordDecodeFailure(ctx context.Context, id runtimecontract.Upd
 	if err != nil {
 		return DispatchOutcome{}, err
 	}
+
 	return r.recordTerminal(ctx, outcome)
 }
 
@@ -159,14 +174,17 @@ func (r *Router) newOutcome(ctx context.Context, id runtimecontract.UpdateID, st
 	if err := ctx.Err(); err != nil {
 		return persistence.UpdateOutcome{}, err
 	}
+
 	correlation, err := r.options.NewCorrelationID()
 	if err != nil {
 		return persistence.UpdateOutcome{}, errors.New("interaction: correlation generation failed")
 	}
+
 	outcome := persistence.UpdateOutcome{UpdateID: id, Status: status, CorrelationID: correlation, FailureCode: code, CompletedAt: r.options.Now().UTC()}
 	if err := outcome.Validate(); err != nil {
 		return persistence.UpdateOutcome{}, err
 	}
+
 	return outcome, nil
 }
 
@@ -178,14 +196,17 @@ func (r *Router) recordTerminal(ctx context.Context, outcome persistence.UpdateO
 		if err != nil {
 			return err
 		}
+
 		if found {
 			result = prior
 			return nil
 		}
+
 		outcome.CompletedAt = r.options.Now().UTC()
 		if err := r.cursors.RecordTerminal(ctx, tx, outcome); err != nil {
 			return err
 		}
+
 		recorded = true
 		result = dispatchOutcome(outcome)
 		return nil
@@ -193,6 +214,7 @@ func (r *Router) recordTerminal(ctx context.Context, outcome persistence.UpdateO
 	if err != nil {
 		return DispatchOutcome{}, err
 	}
+
 	if recorded {
 		diagnosticOutcome := observability.OutcomeFailed
 		if outcome.Status == persistence.UpdateIgnored {
@@ -212,21 +234,27 @@ func dispatchOutcome(outcome persistence.UpdateOutcome) DispatchOutcome {
 func previousOutcome(ctx context.Context, tx runtimecontract.DBTX, outcome persistence.UpdateOutcome) (DispatchOutcome, bool, error) {
 	var status string
 	var correlation string
+
 	err := tx.QueryRowContext(ctx, `SELECT status,correlation_id FROM processed_updates WHERE update_id=?`, int64(outcome.UpdateID)).Scan(&status, &correlation)
 	if err == nil {
 		return DispatchOutcome{Status: persistence.UpdateStatus(status), CorrelationID: runtimecontract.CorrelationID(correlation)}, true, nil
 	}
+
 	if !errors.Is(err, sql.ErrNoRows) {
 		return DispatchOutcome{}, false, err
 	}
+
 	var cursor int64
+
 	err = tx.QueryRowContext(ctx, `SELECT last_completed_id FROM runtime_cursors WHERE source='telegram'`).Scan(&cursor)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return DispatchOutcome{}, false, err
 	}
+
 	if outcome.UpdateID <= runtimecontract.UpdateID(cursor) {
 		return DispatchOutcome{Status: persistence.UpdateIgnored, CorrelationID: outcome.CorrelationID}, true, nil
 	}
+
 	return DispatchOutcome{}, false, nil
 }
 
@@ -236,6 +264,7 @@ type handlerFailure struct {
 }
 
 func (e *handlerFailure) Error() string { return "interaction: " + e.code }
+
 func (e *handlerFailure) Unwrap() error { return e.cause }
 
 func invokeHandler(ctx context.Context, handler Handler, scope *transactionScope, event Event) (err error) {
@@ -250,20 +279,25 @@ func invokeHandler(ctx context.Context, handler Handler, scope *transactionScope
 			}
 		}
 	}()
+
 	result, err := handler.Handle(ctx, scope, event)
 	scope.responses = result.ImmediateResponses
 	if scope.failure != nil {
 		return scope.failure
 	}
+
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+
 	if err == nil {
 		return nil
 	}
+
 	if persistence.IsStorageFailure(err) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
+
 	return &handlerFailure{code: "handler_error"}
 }
 
@@ -280,11 +314,13 @@ type transactionScope struct {
 var _ runtimecontract.WorkScope = (*transactionScope)(nil)
 
 func (s *transactionScope) DBTX() runtimecontract.DBTX { return trackedDBTX{scope: s} }
+
 func (s *transactionScope) track(err error) {
 	if err != nil && s.failure == nil {
 		s.failure = err
 	}
 }
+
 func (s *transactionScope) EnqueueDelivery(ctx context.Context, req runtimecontract.DeliveryRequest) (runtimecontract.DeliveryID, error) {
 	id, err := s.deliveries.Enqueue(ctx, s.DBTX(), req)
 	if persistence.IsStorageFailure(err) {
@@ -292,6 +328,7 @@ func (s *transactionScope) EnqueueDelivery(ctx context.Context, req runtimecontr
 	}
 	return id, err
 }
+
 func (s *transactionScope) Schedule(ctx context.Context, req runtimecontract.JobRequest) (runtimecontract.JobID, error) {
 	id, err := s.jobs.Schedule(ctx, s.DBTX(), req)
 	if persistence.IsStorageFailure(err) {
@@ -307,11 +344,13 @@ func (tx trackedDBTX) ExecContext(ctx context.Context, query string, args ...any
 	tx.scope.track(err)
 	return result, err
 }
+
 func (tx trackedDBTX) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	rows, err := tx.scope.tx.QueryContext(ctx, query, args...)
 	tx.scope.track(err)
 	return rows, err
 }
+
 func (tx trackedDBTX) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return tx.scope.tx.QueryRowContext(ctx, query, args...)
 }
@@ -322,11 +361,13 @@ func validatedResponses(requests []runtimecontract.ResponseRequest, now time.Tim
 	if len(requests) == 0 {
 		return nil, nil
 	}
+
 	responses := make([]runtimecontract.ResponseRequest, len(requests))
 	for i, request := range requests {
 		if err := runtimecontract.ValidateResponseAt(request, now); err != nil {
 			return nil, err
 		}
+
 		switch response := request.(type) {
 		case runtimecontract.PublicResponse:
 			response.Content = cloneResponseContent(response.Content)
@@ -357,6 +398,7 @@ func cloneResponseContent(content runtimecontract.MessageContent) runtimecontrac
 		for i, row := range content.Buttons {
 			rows[i] = append([]runtimecontract.InlineButton{}, row...)
 		}
+
 		content.Buttons = rows
 	}
 	return content
@@ -384,18 +426,23 @@ func prepareHandler(ctx context.Context, preparing PreparingHandler, event Event
 			err = errors.New("interaction: preparation failed")
 		}
 	}()
+
 	handler, err = preparing.Prepare(ctx, event)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return nil, err
 	}
+
 	if err != nil {
 		return nil, errors.New("interaction: preparation failed")
 	}
+
 	if nilHandler(handler) {
 		return nil, errors.New("interaction: invalid prepared handler")
 	}
+
 	return handler, nil
 }

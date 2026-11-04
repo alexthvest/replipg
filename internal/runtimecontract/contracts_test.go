@@ -25,12 +25,15 @@ func TestIdentifierValuesRemainOpaqueAndLossless(t *testing.T) {
 	if int64(updateID) != -1<<62 {
 		t.Fatalf("UpdateID lost its signed 64-bit value: %d", updateID)
 	}
+
 	if int64(chatID) != 1<<62-1 {
 		t.Fatalf("ChatID lost its signed 64-bit value: %d", chatID)
 	}
+
 	if int64(userID) != -42 {
 		t.Fatalf("UserID lost its signed 64-bit value: %d", userID)
 	}
+
 	if string(deliveryID) != "delivery-01HZ" || string(jobID) != "job-01HZ" || string(correlationID) != "correlation-01HZ" {
 		t.Fatalf("opaque identifiers changed: delivery=%q job=%q correlation=%q", deliveryID, jobID, correlationID)
 	}
@@ -61,6 +64,7 @@ func TestResponseRequestsAcceptSupportedVisibilityAndContent(t *testing.T) {
 			}
 		})
 	}
+
 	ephemeral := EphemeralResponse{Destination: destination, TargetUserID: 42, Authorization: CallbackAuthorization{CallbackQueryID: "callback", ValidUntil: validUntil}, Content: content}
 	if err := ValidateResponseAt(ephemeral, validUntil.Add(-time.Nanosecond)); err != nil {
 		t.Fatalf("ValidateAt() before expiry error = %v", err)
@@ -114,6 +118,7 @@ func TestResponseValidationReturnsTypedContentFreeReasons(t *testing.T) {
 			assertValidationError(t, ValidateResponse(tt.req), tt.field, tt.reason)
 		})
 	}
+
 	t.Run("expired authorization", func(t *testing.T) {
 		req := EphemeralResponse{Destination: validDestination, TargetUserID: 1, Authorization: CallbackAuthorization{CallbackQueryID: "secret", ValidUntil: validUntil}, Content: validContent}
 		assertValidationError(t, ValidateResponseAt(req, validUntil), "authorization.valid_until", ReasonOutOfRange)
@@ -124,6 +129,7 @@ func TestTypedNilResponseRequestsReturnValidationError(t *testing.T) {
 	var public *PublicResponse
 	var ephemeral *EphemeralResponse
 	var acknowledgement *CallbackAcknowledgement
+
 	for name, request := range map[string]ResponseRequest{
 		"public":                   public,
 		"ephemeral":                ephemeral,
@@ -145,19 +151,24 @@ func TestDurableWorkValuesValidateAndProtectPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVersionedPayload() error = %v", err)
 	}
+
 	source[0] = 'X'
 	got := payload.Data()
 	got[0] = 'Y'
+
 	if string(payload.Data()) != `{"secret":"value"}` {
 		t.Fatal("payload aliases caller-owned bytes")
 	}
+
 	if err := payload.ValidateVersion(1, 2); err != nil {
 		t.Fatalf("ValidateVersion() error = %v", err)
 	}
+
 	retry := RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: time.Minute}
 	if err := (DeliveryRequest{Kind: "telegram.message", Payload: payload, Retry: retry}).Validate(); err != nil {
 		t.Fatalf("DeliveryRequest.Validate() error = %v", err)
 	}
+
 	job := JobRequest{ID: "job-stable", Type: "encounter.resolve", DueAt: time.Unix(1_800_000_000, 0), Payload: payload, Retry: retry}
 	if err := job.Validate(); err != nil {
 		t.Fatalf("JobRequest.Validate() error = %v", err)
@@ -169,6 +180,7 @@ func TestDurableWorkValidationReasons(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVersionedPayload() error = %v", err)
 	}
+
 	validRetry := RetryPolicy{MaxAttempts: 2, InitialDelay: time.Second, MaxDelay: time.Minute}
 	tests := []struct {
 		name   string
@@ -208,12 +220,15 @@ func TestDurableWorkValidationReasons(t *testing.T) {
 func assertValidationError(t *testing.T, err error, field string, reason ValidationReason) {
 	t.Helper()
 	var validation *ValidationError
+
 	if !errors.As(err, &validation) {
 		t.Fatalf("error = %T %v, want *ValidationError", err, err)
 	}
+
 	if validation.Field != field || validation.Reason != reason {
 		t.Fatalf("ValidationError = %#v, want field %q reason %q", validation, field, reason)
 	}
+
 	for _, secret := range []string{"private-secret", "secret-kind", "secret-url", "secret-label", "secret-data", "secret-payload", "secret-value"} {
 		if strings.Contains(err.Error(), secret) {
 			t.Fatalf("error %q exposes content %q", err, secret)
@@ -232,12 +247,15 @@ func TestDBTXExposesStandardDatabaseCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecContext() error = %v", err)
 	}
+
 	if gotResult != wantResult {
 		t.Fatalf("ExecContext() result = %#v, want %#v", gotResult, wantResult)
 	}
+
 	if _, err := capability.QueryContext(ctx, "SELECT many", 1); err != nil {
 		t.Fatalf("QueryContext() error = %v", err)
 	}
+
 	if got := capability.QueryRowContext(ctx, "SELECT one", 2); got != wantRow {
 		t.Fatalf("QueryRowContext() row = %p, want %p", got, wantRow)
 	}
@@ -247,11 +265,14 @@ func TestDBTXExposesStandardDatabaseCapabilities(t *testing.T) {
 		{ctx: ctx, query: "SELECT many", args: []any{1}},
 		{ctx: ctx, query: "SELECT one", args: []any{2}},
 	}
+
 	if len(db.calls) != len(wantCalls) {
 		t.Fatalf("recorded %d calls, want %d", len(db.calls), len(wantCalls))
 	}
+
 	for i, want := range wantCalls {
 		got := db.calls[i]
+
 		if got.ctx != want.ctx || got.query != want.query || len(got.args) != 1 || got.args[0] != want.args[0] {
 			t.Errorf("call %d = %#v, want %#v", i, got, want)
 		}
@@ -271,17 +292,21 @@ func TestWorkScopeExposesTransactionScopedDurableWork(t *testing.T) {
 	if got := capability.DBTX(); got != db {
 		t.Fatalf("DBTX() = %T, want original transaction capability", got)
 	}
+
 	deliveryID, err := capability.EnqueueDelivery(ctx, DeliveryRequest{})
 	if err != nil {
 		t.Fatalf("EnqueueDelivery() error = %v", err)
 	}
+
 	if deliveryID != scope.deliveryID || scope.deliveryContext != ctx {
 		t.Fatalf("EnqueueDelivery() = (%q, context %v), want (%q, original context)", deliveryID, scope.deliveryContext, scope.deliveryID)
 	}
+
 	jobID, err := capability.Schedule(ctx, JobRequest{})
 	if err != nil {
 		t.Fatalf("Schedule() error = %v", err)
 	}
+
 	if jobID != scope.jobID || scope.jobContext != ctx {
 		t.Fatalf("Schedule() = (%q, context %v), want (%q, original context)", jobID, scope.jobContext, scope.jobID)
 	}
@@ -295,6 +320,7 @@ type result struct {
 }
 
 func (r result) LastInsertId() (int64, error) { return r.lastInsertID, nil }
+
 func (r result) RowsAffected() (int64, error) { return r.rowsAffected, nil }
 
 type recordedCall struct {

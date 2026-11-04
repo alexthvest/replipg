@@ -32,33 +32,41 @@ func TestFakeTelegramRecordsRequestsAndReturnsProgrammedOutcomes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create request: %v", err)
 		}
+
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := fake.Client().Do(req)
 		if err != nil {
 			t.Fatalf("perform request: %v", err)
 		}
+
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatalf("read response: %v", err)
 		}
+
 		if err := resp.Body.Close(); err != nil {
 			t.Fatalf("close response: %v", err)
 		}
+
 		if resp.StatusCode != want.status || string(body) != want.body {
 			t.Fatalf("response = (%d, %q), want (%d, %q)", resp.StatusCode, body, want.status, want.body)
 		}
 	}
 
 	requests := fake.Requests()
+
 	if len(requests) != 3 {
 		t.Fatalf("recorded requests = %d, want 3", len(requests))
 	}
+
 	if requests[0].Method != http.MethodPost || requests[0].Path != "/bot-test/getUpdates" {
 		t.Fatalf("first request = %#v", requests[0])
 	}
+
 	if got := requests[0].Header.Get("Content-Type"); got != "application/json" {
 		t.Fatalf("content type = %q", got)
 	}
+
 	if got := string(requests[0].Body); got != `{"offset":42}` {
 		t.Fatalf("body = %q", got)
 	}
@@ -75,6 +83,7 @@ func TestFakeTelegramInterruptedResponseFollowsRequestCancellation(t *testing.T)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
+
 	result := make(chan error, 1)
 	go func() {
 		_, requestErr := fake.Client().Do(req)
@@ -83,9 +92,11 @@ func TestFakeTelegramInterruptedResponseFollowsRequestCancellation(t *testing.T)
 
 	waitCtx, stopWaiting := context.WithTimeout(context.Background(), time.Second)
 	defer stopWaiting()
+
 	if err := fake.WaitForRequests(waitCtx, 1); err != nil {
 		t.Fatalf("wait for recorded request: %v", err)
 	}
+
 	cancel()
 
 	if err := <-result; !errors.Is(err, context.Canceled) {
@@ -104,6 +115,7 @@ func TestFakeTelegramCanInterruptAConnection(t *testing.T) {
 		_ = resp.Body.Close()
 		t.Fatal("request unexpectedly succeeded after connection drop")
 	}
+
 	if got := len(fake.Requests()); got != 1 {
 		t.Fatalf("recorded requests = %d, want 1", got)
 	}
@@ -119,6 +131,7 @@ func TestFakeTelegramCopiesRecordedRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perform request: %v", err)
 	}
+
 	if err := resp.Body.Close(); err != nil {
 		t.Fatalf("close response: %v", err)
 	}

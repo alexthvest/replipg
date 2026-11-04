@@ -23,9 +23,11 @@ func NewService(cfg Config, clock func() time.Time) (*Service, error) {
 	if cfg.maxHealth <= 0 || cfg.attack < 0 || cfg.defense < 0 || cfg.incapacitationDuration <= 0 || !decimalPercent(cfg.recoveryPercent) {
 		return nil, &contract.DomainError{Kind: contract.ErrorInvalidConfig}
 	}
+
 	if clock == nil {
 		return nil, &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "clock"}
 	}
+
 	return &Service{config: cfg, clock: clock}, nil
 }
 
@@ -35,34 +37,43 @@ func (s *Service) Ensure(ctx context.Context, tx runtimecontract.DBTX, userID ru
 	if err := validateServiceInput(tx, userID); err != nil {
 		return contract.Snapshot{}, false, err
 	}
+
 	now := s.clock().UTC()
 	existing, found, err := readCharacterByUser(ctx, tx, userID)
 	if err != nil {
 		return contract.Snapshot{}, false, err
 	}
+
 	if found {
 		existing, err = normalizeRecord(ctx, tx, existing, now)
 		if err != nil {
 			return contract.Snapshot{}, false, err
 		}
+
 		return existing.snapshot, false, nil
 	}
+
 	var randomID [16]byte
+
 	if _, err := rand.Read(randomID[:]); err != nil {
 		return contract.Snapshot{}, false, contract.NewStorageError(err)
 	}
+
 	id := contract.ID(hex.EncodeToString(randomID[:]))
 	inserted, err := insertCharacter(ctx, tx, id, userID, s.config)
 	if err != nil {
 		return contract.Snapshot{}, false, err
 	}
+
 	stored, found, err := readCharacterByUser(ctx, tx, userID)
 	if err != nil {
 		return contract.Snapshot{}, false, err
 	}
+
 	if !found {
 		return contract.Snapshot{}, false, contract.NewStorageError(errors.New("inserted character missing"))
 	}
+
 	return stored.snapshot, inserted, nil
 }
 
@@ -72,6 +83,7 @@ func (s *Service) Lookup(ctx context.Context, tx runtimecontract.DBTX, userID ru
 	if err := validateServiceInput(tx, userID); err != nil {
 		return contract.Snapshot{}, false, err
 	}
+
 	return lookupCharacter(ctx, tx, userID, s.clock().UTC())
 }
 
@@ -81,13 +93,16 @@ func (s *Service) Eligibility(ctx context.Context, tx runtimecontract.DBTX, user
 	if err := validateServiceInput(tx, userID); err != nil {
 		return contract.Eligibility{}, err
 	}
+
 	snapshot, found, err := lookupCharacter(ctx, tx, userID, s.clock().UTC())
 	if err != nil {
 		return contract.Eligibility{}, err
 	}
+
 	if !found {
 		return contract.Eligibility{Kind: contract.EligibilityMissing}, nil
 	}
+
 	kind := contract.EligibilityActive
 	if snapshot.State == contract.StateIncapacitated {
 		kind = contract.EligibilityIncapacitated
@@ -103,38 +118,47 @@ func (s *Service) ApplyHealth(ctx context.Context, tx runtimecontract.DBTX, chan
 	if err := change.Validate(); err != nil {
 		return contract.MutationResult{}, err
 	}
+
 	if tx == nil {
 		return contract.MutationResult{}, &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "transaction"}
 	}
+
 	now := s.clock().UTC()
 	appliedRevision, replay, err := checkOperation(ctx, tx, change)
 	if err != nil {
 		return contract.MutationResult{}, err
 	}
+
 	record, found, err := readCharacterByID(ctx, tx, change.CharacterID)
 	if err != nil {
 		return contract.MutationResult{}, err
 	}
+
 	if !found {
 		return contract.MutationResult{}, &contract.DomainError{Kind: contract.ErrorNotFound}
 	}
+
 	if replay {
 		record, err = normalizeRecord(ctx, tx, record, now)
 		if err != nil {
 			return contract.MutationResult{}, err
 		}
+
 		return contract.MutationResult{Applied: false, AppliedRevision: appliedRevision, Current: record.snapshot}, nil
 	}
+
 	// Calculate both transitions before writing: a domain rejection must not
 	// partially normalize state even when a caller handles it and commits.
 	normalized, recoveryHealth, recovered, err := normalizeRecovery(record.snapshot, record.recoveryHealth, now)
 	if err != nil {
 		return contract.MutationResult{}, err
 	}
+
 	snapshot, recoveryHealth, changed, err := applyHealthRule(normalized, recoveryHealth, change.Kind, change.Amount, now, s.config)
 	if err != nil {
 		return contract.MutationResult{}, err
 	}
+
 	if recovered || changed {
 		if err := updateCharacter(ctx, tx, snapshot, recoveryHealth, record.snapshot.Revision); err != nil {
 			return contract.MutationResult{}, err
@@ -143,6 +167,7 @@ func (s *Service) ApplyHealth(ctx context.Context, tx runtimecontract.DBTX, chan
 	if err := recordOperation(ctx, tx, change, snapshot.Revision); err != nil {
 		return contract.MutationResult{}, err
 	}
+
 	return contract.MutationResult{Applied: true, AppliedRevision: snapshot.Revision, Current: snapshot}, nil
 }
 
@@ -151,10 +176,12 @@ func lookupCharacter(ctx context.Context, tx runtimecontract.DBTX, userID runtim
 	if err != nil || !found {
 		return contract.Snapshot{}, false, err
 	}
+
 	record, err = normalizeRecord(ctx, tx, record, now)
 	if err != nil {
 		return contract.Snapshot{}, false, err
 	}
+
 	return record.snapshot, true, nil
 }
 
@@ -163,6 +190,7 @@ func normalizeRecord(ctx context.Context, tx runtimecontract.DBTX, record charac
 	if err != nil {
 		return characterRecord{}, err
 	}
+
 	if changed {
 		if err := updateCharacter(ctx, tx, snapshot, recoveryHealth, record.snapshot.Revision); err != nil {
 			return characterRecord{}, err
@@ -175,8 +203,10 @@ func validateServiceInput(tx runtimecontract.DBTX, userID runtimecontract.UserID
 	if tx == nil {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "transaction"}
 	}
+
 	if userID <= 0 {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "user_id"}
 	}
+
 	return nil
 }

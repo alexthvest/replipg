@@ -19,40 +19,51 @@ func TestInventoryProductionPreparation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	db, err := persistence.Open(context.Background(), persistence.Options{StorageDir: t.TempDir(), StorageFilesystem: config.FilesystemLocal, BusyTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
+
 	migrations, err := persistence.RuntimeMigrations()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(context.Background(), migrations); err != nil {
 		t.Fatal(err)
 	}
+
 	if options.Prepare == nil {
 		t.Fatal("no catalog preparation")
 	}
+
 	if err := db.WithinTransaction(context.Background(), options.Prepare); err != nil {
 		t.Fatal(err)
 	}
+
 	var roots, definitions int
+
 	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM inventories`).Scan(&roots); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM inventory_catalog`).Scan(&definitions); err != nil {
 		t.Fatal(err)
 	}
+
 	if roots != 0 || definitions < 4 {
 		t.Fatal("preparation failed to reconcile or granted items")
 	}
+
 	if err := db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 		_, err := tx.ExecContext(ctx, `UPDATE inventory_catalog SET healing_hp=25 WHERE item_id='healing_potion'`)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.WithinTransaction(context.Background(), options.Prepare); !errors.Is(err, contract.ErrInvalidCatalog) {
 		t.Fatalf("incompatible saved catalog accepted %v", err)
 	}
@@ -66,15 +77,19 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 				if err == nil || strings.Contains(err.Error(), "private-value") {
 					t.Fatal("invalid flag accepted/leaked")
 				}
+
 				return
 			}
+
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			registry := interaction.NewRegistry()
 			if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
 				t.Fatal(err)
 			}
+
 			registry.Seal()
 			enabled := value == "true"
 			for _, name := range []interaction.CommandName{"dev_inventory_grant", "dev_inventory_heal"} {
@@ -82,13 +97,16 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 					t.Fatal("development route mismatch")
 				}
 			}
+
 			want := 3
 			if enabled {
 				want = 5
 			}
+
 			if len(options.Commands) != want {
 				t.Fatal("menu mismatch")
 			}
+
 			for _, declaration := range options.Commands {
 				if !declaration.Ephemeral {
 					t.Fatal("public probe declaration")
@@ -101,10 +119,12 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		registry := interaction.NewRegistry()
 		if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
 			t.Fatal(err)
 		}
+
 		want := 5
 		if flags[envDevInventory] == "true" {
 			want += 2
@@ -112,6 +132,7 @@ func TestInventoryStrictDevelopmentFlagAndIndependentModes(t *testing.T) {
 		if flags[envDevCharacter] == "true" {
 			want += 2
 		}
+
 		if len(options.Commands) != want {
 			t.Fatal("independent menu flags")
 		}

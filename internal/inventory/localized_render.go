@@ -19,6 +19,7 @@ func (r *localizedRenderer) text(k localization.Key, args localization.Args) str
 	if r.err != nil {
 		return ""
 	}
+
 	s, e := r.catalog.Text(r.locale, k, args)
 	r.err = e
 	return s
@@ -27,21 +28,25 @@ func (r *localizedRenderer) item(id contract.ItemID) localization.ItemText {
 	if r.err != nil {
 		return localization.ItemText{}
 	}
+
 	v, e := r.catalog.Item(r.locale, string(id))
 	r.err = e
 	return v
 }
+
 func (r *localizedRenderer) owner(label string) string {
 	clean, fallback := cleanOwnerLabel(label)
 	if fallback {
 		return r.text("inventory.owner", nil)
 	}
+
 	return clean
 }
 
 func renderPageLocalized(catalog Catalog, page inventoryPage, label string, controls viewControls, p Presentation, l localization.Locale) (runtimecontract.MessageContent, error) {
 	r := localizedRenderer{catalog: p.Catalog, locale: l}
 	var text strings.Builder
+
 	text.WriteString(r.text("inventory.title", localization.Args{"owner": localization.String(r.owner(label))}))
 	items := page.Current.Items
 	if len(items) > inventoryPageSize {
@@ -51,10 +56,12 @@ func renderPageLocalized(catalog Catalog, page inventoryPage, label string, cont
 		text.WriteString(r.text("inventory.empty", nil))
 	}
 	var buttons []runtimecontract.InlineButton
+
 	for index, owned := range items {
 		if _, ok := catalog.Lookup(owned.ItemID); !ok {
 			continue
 		}
+
 		item := r.item(owned.ItemID)
 		fmt.Fprintf(&text, "%d. %s (%d)", index+1, item.Name, owned.Quantity)
 		if page.Current.Weapon == owned.ItemID || page.Current.Armor == owned.ItemID {
@@ -65,6 +72,7 @@ func renderPageLocalized(catalog Catalog, page inventoryPage, label string, cont
 			buttons = append(buttons, runtimecontract.InlineButton{Text: fmt.Sprint(index + 1), CallbackData: controls.Items[index]})
 		}
 	}
+
 	text.WriteString("\n" + r.text("inventory.equipment", nil) + "\n")
 	for _, slot := range []struct {
 		key    localization.Key
@@ -77,6 +85,7 @@ func renderPageLocalized(catalog Catalog, page inventoryPage, label string, cont
 			fmt.Fprintf(&text, "%s: %s\n", label, r.text("inventory.slot_empty", nil))
 			continue
 		}
+
 		name := r.item(slot.id).Name
 		value := item.DefenseBonus
 		key := localization.Key("inventory.slot_defense")
@@ -86,12 +95,14 @@ func renderPageLocalized(catalog Catalog, page inventoryPage, label string, cont
 		}
 		text.WriteString(r.text(key, localization.Args{"label": localization.String(label), "item": localization.String(name), "value": localization.Integer(value)}))
 	}
+
 	text.WriteString(r.text("inventory.bonuses", localization.Args{"attack": localization.Integer(page.Current.Modifiers.Attack), "defense": localization.Integer(page.Current.Modifiers.Defense)}))
 	content := runtimecontract.MessageContent{Text: text.String()}
 	if len(buttons) > 0 {
 		content.Buttons = append(content.Buttons, buttons)
 	}
 	var nav []runtimecontract.InlineButton
+
 	for _, v := range []struct {
 		key   localization.Key
 		token string
@@ -100,6 +111,7 @@ func renderPageLocalized(catalog Catalog, page inventoryPage, label string, cont
 			nav = append(nav, runtimecontract.InlineButton{Text: r.text(v.key, nil), CallbackData: v.token})
 		}
 	}
+
 	if len(nav) > 0 {
 		content.Buttons = append(content.Buttons, nav)
 	}
@@ -110,21 +122,26 @@ func renderDetailLocalized(catalog Catalog, snapshot contract.Snapshot, id contr
 	if !ok {
 		return runtimecontract.MessageContent{}, contract.ErrNotFound
 	}
+
 	var quantity int64
+
 	for _, owned := range snapshot.Items {
 		if owned.ItemID == id {
 			quantity = owned.Quantity
 			break
 		}
 	}
+
 	if quantity <= 0 {
 		return runtimecontract.MessageContent{}, contract.ErrNotOwned
 	}
+
 	r := localizedRenderer{catalog: p.Catalog, locale: l}
 	translated := r.item(id)
 	category := r.text(localization.Key("category."+string(item.Category)), nil)
 	text := r.text("inventory.detail", localization.Args{"item": localization.String(translated.Name), "owner": localization.String(r.owner(label)), "description": localization.String(translated.Description), "category": localization.String(category), "quantity": localization.Integer(quantity)})
 	var actions []runtimecontract.InlineButton
+
 	switch item.Category {
 	case contract.CategoryConsumable:
 		text += r.text("inventory.healing", localization.Args{"value": localization.Integer(item.HealingHP)})
@@ -149,6 +166,7 @@ func renderDetailLocalized(catalog Catalog, snapshot contract.Snapshot, id contr
 			}
 		}
 	}
+
 	content := runtimecontract.MessageContent{Text: text}
 	if len(actions) > 0 {
 		content.Buttons = append(content.Buttons, actions)

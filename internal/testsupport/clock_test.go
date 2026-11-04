@@ -44,6 +44,7 @@ func TestManualClockSleepStopsPromptlyOnCancellation(t *testing.T) {
 
 	waitCtx, stopWaiting := context.WithTimeout(context.Background(), time.Second)
 	defer stopWaiting()
+
 	if err := clock.WaitForTimers(waitCtx, 1); err != nil {
 		t.Fatalf("wait for timer registration: %v", err)
 	}
@@ -52,6 +53,7 @@ func TestManualClockSleepStopsPromptlyOnCancellation(t *testing.T) {
 	if err := <-result; !errors.Is(err, context.Canceled) {
 		t.Fatalf("Sleep returned %v, want context.Canceled", err)
 	}
+
 	if got := clock.PendingTimers(); got != 0 {
 		t.Fatalf("pending timers = %d, want 0", got)
 	}
@@ -62,9 +64,11 @@ func TestManualClockStopPreventsDelivery(t *testing.T) {
 
 	clock := NewManualClock(time.Unix(0, 0))
 	timer := clock.NewTimer(time.Minute)
+
 	if !timer.Stop() {
 		t.Fatal("first Stop returned false")
 	}
+
 	if timer.Stop() {
 		t.Fatal("second Stop returned true")
 	}

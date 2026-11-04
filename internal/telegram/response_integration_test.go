@@ -32,6 +32,7 @@ func responseIntegrationPoller(t *testing.T, db *persistence.DB, cursors persist
 			t.Fatal(err)
 		}
 	}
+
 	registry.Seal()
 	clock := testsupport.NewManualClock(time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC))
 	sink := observability.NewJSONSink(logs)
@@ -40,17 +41,21 @@ func responseIntegrationPoller(t *testing.T, db *persistence.DB, cursors persist
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	processor, err := NewProcessor(router, NewDelivery(client, clock.Now), ProcessorOptions{Diagnostics: sink})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	poller, err := NewPoller(client, db, PollerOptions{TimeoutSeconds: 20, ProcessUpdate: processor.ProcessUpdate, Sleep: clock.Sleep})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := poller.Initialize(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+
 	return poller
 }
 
@@ -62,6 +67,7 @@ func (g responseTerminalGate) RecordTerminal(ctx context.Context, tx runtimecont
 	if outcome.UpdateID == 1 {
 		return g.cursorCommitGate.RecordTerminal(ctx, tx, outcome)
 	}
+
 	return g.CursorStore.RecordTerminal(ctx, tx, outcome)
 }
 
@@ -72,6 +78,7 @@ func assertResponseDiagnostics(t *testing.T, db *persistence.DB, logs string, wa
 			t.Fatalf("diagnostic exposed %q", secret)
 		}
 	}
+
 	got := map[string][]string{}
 	for _, line := range strings.Split(strings.TrimSpace(logs), "\n") {
 		var diagnostic struct {
@@ -80,12 +87,15 @@ func assertResponseDiagnostics(t *testing.T, db *persistence.DB, logs string, wa
 			Outcome     string                   `json:"outcome"`
 			UpdateID    runtimecontract.UpdateID `json:"update_id"`
 		}
+
 		if err := json.Unmarshal([]byte(line), &diagnostic); err != nil {
 			t.Fatal(err)
 		}
+
 		if diagnostic.Category != "callback_ack" && diagnostic.Category != "dispatch" && diagnostic.Category != "delivery" {
 			continue
 		}
+
 		// Dispatch identifies its own update. Only update 1 requests callback
 		// acknowledgement or delivery in these scenarios, so those content-free
 		// diagnostics must retain that update's durable correlation.
@@ -97,11 +107,14 @@ func assertResponseDiagnostics(t *testing.T, db *persistence.DB, logs string, wa
 		if err != nil || !found {
 			t.Fatalf("diagnostic has no matching terminal outcome for update %d: %s; error=%v", updateID, line, err)
 		}
+
 		if diagnostic.Correlation != string(terminal.CorrelationID) {
 			t.Fatalf("uncorrelated diagnostic: %s", line)
 		}
+
 		got[diagnostic.Category] = append(got[diagnostic.Category], diagnostic.Outcome)
 	}
+
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("diagnostic outcomes=%v, want %v", got, want)
 	}
@@ -119,14 +132,17 @@ func TestResponseIntegrationAcknowledgementAndHandlerFailureAreIndependent(t *te
 			}
 			fake := testsupport.NewFakeTelegram(response(identity), response(`{"ok":true,"result":true}`), responseIntegrationCallback(1), ack, cursorCommand(2), cursorStopResponse())
 			defer fake.Close()
+
 			entered, release := make(chan struct{}), make(chan struct{})
 			gate := responseTerminalGate{cursorCommitGate{CursorStore: db, entered: make(chan struct{}), release: make(chan struct{})}}
 			var logs bytes.Buffer
+
 			poller := responseIntegrationPoller(t, db, gate, fake.URL(), fake.Client(), func(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 				result, err := cursorEffects(ctx, scope, event)
 				if err != nil || event.UpdateID() != 1 {
 					return result, err
 				}
+
 				close(entered)
 				select {
 				case <-release:
@@ -137,17 +153,22 @@ func TestResponseIntegrationAcknowledgementAndHandlerFailureAreIndependent(t *te
 			}, &logs)
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
+
 			done := make(chan error, 1)
 			go func() { done <- poller.Run(ctx) }()
 			waitCursorGate(t, ctx, entered, done)
 			requests := fake.Requests()
+
 			if len(requests) != 4 || !strings.HasSuffix(requests[3].Path, "/answerCallbackQuery") {
 				t.Fatalf("callback not acknowledged before blocked handler: %d requests", len(requests))
 			}
+
 			fields := requestFields(t, requests[3])
+
 			if fields["callback_query_id"] != "private-query" || fields["text"] != "" || fields["show_alert"] == "true" {
 				t.Fatal("acknowledgement was visible or lost identity")
 			}
+
 			assertCursorState(t, observer, 0, 0, 0)
 			assertCursorRequests(t, fake, []int64{1})
 			close(release)
@@ -163,9 +184,11 @@ func TestResponseIntegrationAcknowledgementAndHandlerFailureAreIndependent(t *te
 			if err != nil || !found || outcome.Status != persistence.UpdateHandlerFailed || outcome.FailureCode != "handler_error" {
 				t.Fatalf("wrong failed terminal outcome: %+v %v", outcome, err)
 			}
+
 			if len(fake.Requests()) != 6 {
 				t.Fatal("failed handler emitted a response or fallback")
 			}
+
 			ackOutcome := "ok"
 			if failAck {
 				ackOutcome = "failed"
@@ -191,6 +214,7 @@ func TestResponseIntegrationCommitPrecedesSequentialDeliveryAndNextPoll(t *testi
 			}
 			fake := testsupport.NewFakeTelegram(response(identity), response(`{"ok":true,"result":true}`), responseIntegrationCallback(1), response(`{"ok":true,"result":true}`))
 			defer fake.Close()
+
 			fake.Enqueue(replies...)
 			fake.Enqueue(cursorCommand(2), cursorStopResponse())
 			entered, release := make(chan struct{}), make(chan struct{})
@@ -208,12 +232,15 @@ func TestResponseIntegrationCommitPrecedesSequentialDeliveryAndNextPoll(t *testi
 				fake.ServeHTTP(w, r)
 			}))
 			defer server.Close()
+
 			var logs bytes.Buffer
+
 			poller := responseIntegrationPoller(t, db, db, server.URL, server.Client(), func(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 				result, err := cursorEffects(ctx, scope, event)
 				if err != nil || event.UpdateID() != 1 {
 					return result, err
 				}
+
 				return interaction.HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{
 					publicRequest(),
 					runtimecontract.EphemeralResponse{Destination: publicRequest().Destination, TargetUserID: 8, Authorization: runtimecontract.AdministratorAuthorization{}, Content: runtimecontract.MessageContent{Text: "private-output"}},
@@ -222,38 +249,48 @@ func TestResponseIntegrationCommitPrecedesSequentialDeliveryAndNextPoll(t *testi
 			}, &logs)
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
+
 			done := make(chan error, 1)
 			go func() { done <- poller.Run(ctx) }()
 			waitCursorGate(t, ctx, entered, done)
 			// An independent connection sees the commit while the first send is blocked.
 			assertCursorState(t, observer, 1, 1, 1)
 			assertCursorRequests(t, fake, []int64{1})
+
 			if len(fake.Requests()) != 4 {
 				t.Fatal("later response or next poll overtook blocked first response")
 			}
+
 			close(release)
 			_ = assertKind(t, waitCursorDone(t, ctx, done), ErrorConflict)
 			assertCursorState(t, observer, 2, 2, 2)
 			assertCursorRequests(t, fake, []int64{1, 2, 3})
 			requests := fake.Requests()
+
 			if len(requests) != 9 {
 				t.Fatalf("response suppressed or fallback added: %d requests", len(requests))
 			}
+
 			for i, method := range []string{"getMe", "deleteWebhook", "getUpdates", "answerCallbackQuery", "sendMessage", "sendMessage", "sendMessage", "getUpdates", "getUpdates"} {
 				if !strings.HasSuffix(requests[i].Path, "/"+method) {
 					t.Fatalf("request %d violates response sequence", i)
 				}
 			}
+
 			for i := 0; i < 3; i++ {
 				fields := requestFields(t, requests[i+4])
+
 				if fields["chat_id"] != "-100" {
 					t.Fatal("response left the group")
 				}
+
 				if i == 1 {
 					var ephemeral map[string]any
+
 					if err := json.Unmarshal([]byte(fields["ephemeral_message_parameters"]), &ephemeral); err != nil {
 						t.Fatal(err)
 					}
+
 					if ephemeral["receiver_user_id"] != float64(8) || fields["text"] != "private-output" {
 						t.Fatalf("restricted target/content lost: %v", ephemeral)
 					}
@@ -261,6 +298,7 @@ func TestResponseIntegrationCommitPrecedesSequentialDeliveryAndNextPoll(t *testi
 					t.Fatal("public visibility/content changed")
 				}
 			}
+
 			deliveryOutcomes := []string{"ok", "ok", "ok"}
 			if failedIndex >= 0 {
 				deliveryOutcomes[failedIndex] = "failed"
@@ -281,17 +319,21 @@ func TestResponseIntegrationInvalidRequestsRollbackBeforeDelivery(t *testing.T) 
 			db := openCursorIntegrationDB(t, t.TempDir())
 			fake := testsupport.NewFakeTelegram(response(identity), response(`{"ok":true,"result":true}`), responseIntegrationCallback(1), response(`{"ok":true,"result":true}`), cursorCommand(2), cursorStopResponse())
 			defer fake.Close()
+
 			var logs bytes.Buffer
+
 			poller := responseIntegrationPoller(t, db, db, fake.URL(), fake.Client(), func(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 				result, err := cursorEffects(ctx, scope, event)
 				if err != nil || event.UpdateID() != 1 {
 					return result, err
 				}
+
 				// The valid earlier request must also remain unsent when validation fails.
 				return interaction.HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{publicRequest(), invalid}}, nil
 			}, &logs)
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
+
 			_ = assertKind(t, poller.Run(ctx), ErrorConflict)
 			assertCursorState(t, db, 2, 1, 2)
 			assertCursorRequests(t, fake, []int64{1, 2, 3})
@@ -299,9 +341,11 @@ func TestResponseIntegrationInvalidRequestsRollbackBeforeDelivery(t *testing.T) 
 			if err != nil || !found || outcome.Status != persistence.UpdateHandlerFailed || outcome.FailureCode != "invalid_response" {
 				t.Fatalf("invalid response was not terminally rejected: %+v %v", outcome, err)
 			}
+
 			if len(fake.Requests()) != 6 {
 				t.Fatal("invalid response attempted delivery or fallback")
 			}
+
 			assertResponseDiagnostics(t, db, logs.String(), map[string][]string{"dispatch": {"failed", "completed"}, "callback_ack": {"ok"}})
 		})
 	}

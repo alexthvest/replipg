@@ -36,13 +36,17 @@ func TestIdentityValidation(t *testing.T) {
 
 func checkValidation(t *testing.T, err error, valid bool) {
 	t.Helper()
+
 	if valid {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		return
 	}
+
 	var domain *contract.DomainError
+
 	if !errors.Is(err, contract.ErrInvalidInput) || !errors.As(err, &domain) {
 		t.Fatalf("expected inspectable invalid input, got %v", err)
 	}
@@ -107,9 +111,11 @@ func TestResultValues(t *testing.T) {
 	replay := contract.MutationResult{Applied: false, AppliedRevision: 2, Current: current}
 	result := contract.ConsumeResult{Mutation: replay, Character: charactercontract.Snapshot{ID: current.CharacterID, Health: 100}, HealingHP: 25}
 	opened := contract.OpenResult{CharacterCreated: true, StarterGranted: true, Current: current}
+
 	if result.Mutation.Applied || result.Mutation.AppliedRevision != 2 || result.Mutation.Current.Revision != 4 || result.HealingHP != 25 || !opened.StarterGranted {
 		t.Fatal("result lost replay or initialization values")
 	}
+
 	if (contract.Snapshot{CharacterID: "internal"}).Revision != 0 {
 		t.Fatal("uninitialized snapshot must allow revision zero")
 	}

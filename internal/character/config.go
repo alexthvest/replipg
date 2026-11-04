@@ -62,7 +62,9 @@ func ParseConfig(data []byte) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+
 	var cfg Config
+
 	for _, field := range []struct {
 		name    string
 		target  *int64
@@ -75,17 +77,22 @@ func ParseConfig(data []byte) (Config, error) {
 			return Config{}, configError(field.name, "must be a bounded integer in its allowed range")
 		}
 	}
+
 	var duration string
+
 	if json.Unmarshal(fields["incapacitation_duration"], &duration) != nil {
 		return Config{}, configError("incapacitation_duration", "must be a positive duration")
 	}
+
 	cfg.incapacitationDuration, err = time.ParseDuration(duration)
 	if err != nil || cfg.incapacitationDuration <= 0 {
 		return Config{}, configError("incapacitation_duration", "must be a positive duration")
 	}
+
 	if json.Unmarshal(fields["recovery_percent"], &cfg.recoveryPercent) != nil || !decimalPercent(cfg.recoveryPercent) {
 		return Config{}, configError("recovery_percent", "must be a decimal string strictly between zero and 100")
 	}
+
 	return cfg, nil
 }
 
@@ -95,36 +102,46 @@ func configFields(data []byte) (map[string]json.RawMessage, error) {
 	if err != nil || start != json.Delim('{') {
 		return nil, configError("document", "must be one JSON object")
 	}
+
 	fields := make(map[string]json.RawMessage, 5)
 	for decoder.More() {
 		token, err := decoder.Token()
 		if err != nil {
 			return nil, configError("document", "must be valid JSON")
 		}
+
 		name, ok := token.(string)
 		if !ok {
 			return nil, configError("document", "must be valid JSON")
 		}
+
 		switch name {
 		case "max_health", "attack", "defense", "incapacitation_duration", "recovery_percent":
 		default:
 			return nil, configError("document", "contains an unknown field")
 		}
+
 		if _, exists := fields[name]; exists {
 			return nil, configError(name, "must appear once")
 		}
+
 		var raw json.RawMessage
+
 		if err := decoder.Decode(&raw); err != nil {
 			return nil, configError(name, "must be valid JSON")
 		}
+
 		fields[name] = raw
 	}
+
 	if end, err := decoder.Token(); err != nil || end != json.Delim('}') {
 		return nil, configError("document", "must be valid JSON")
 	}
+
 	if _, err := decoder.Token(); err != io.EOF {
 		return nil, configError("document", "must contain no trailing data")
 	}
+
 	return fields, nil
 }
 
@@ -138,19 +155,23 @@ func decimalPercent(value string) bool {
 	if value == "" {
 		return false
 	}
+
 	dot := -1
 	for i, c := range value {
 		if c == '.' && dot < 0 {
 			dot = i
 			continue
 		}
+
 		if c < '0' || c > '9' {
 			return false
 		}
 	}
+
 	if dot == 0 || dot == len(value)-1 {
 		return false
 	}
+
 	percent, ok := new(big.Rat).SetString(value)
 	return ok && percent.Sign() > 0 && percent.Cmp(big.NewRat(100, 1)) < 0
 }

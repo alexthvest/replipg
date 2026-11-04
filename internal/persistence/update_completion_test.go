@@ -19,6 +19,7 @@ func TestTransactionCommitsFeatureStateOutcomeAndCursorAtomically(t *testing.T) 
 		if _, err := tx.ExecContext(ctx, `INSERT INTO task_2_4_feature(value) VALUES (?)`, "committed"); err != nil {
 			return err
 		}
+
 		return db.RecordTerminal(ctx, tx, outcome)
 	})
 	if err != nil {
@@ -29,6 +30,7 @@ func TestTransactionCommitsFeatureStateOutcomeAndCursorAtomically(t *testing.T) 
 	if got, err := db.CompletedUpdate(context.Background()); err != nil || got != outcome.UpdateID {
 		t.Fatalf("CompletedUpdate() = %d, %v, want %d, nil", got, err, outcome.UpdateID)
 	}
+
 	got, found, err := db.TerminalOutcome(context.Background(), outcome.UpdateID)
 	if err != nil || !found || got != outcome {
 		t.Fatalf("TerminalOutcome() = %+v, %v, %v, want %+v, true, nil", got, found, err, outcome)
@@ -44,22 +46,28 @@ func TestTransactionCallbackFailureRollsBackAllChanges(t *testing.T) {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO task_2_4_feature(value) VALUES (?)`, "rolled back"); err != nil {
 			return err
 		}
+
 		if err := db.RecordTerminal(ctx, tx, validUpdateOutcome(12)); err != nil {
 			return err
 		}
+
 		return wantErr
 	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("WithinTransaction() error = %v, want wrapped callback error", err)
 	}
+
 	var txErr *TransactionError
+
 	if !errors.As(err, &txErr) || txErr.Stage != TransactionStageCallback {
 		t.Fatalf("WithinTransaction() error = %#v, want callback TransactionError", err)
 	}
+
 	assertFeatureCount(t, db, 0)
 	if cursor, err := db.CompletedUpdate(context.Background()); err != nil || cursor != 0 {
 		t.Fatalf("CompletedUpdate() = %d, %v, want 0, nil", cursor, err)
 	}
+
 	if _, found, err := db.TerminalOutcome(context.Background(), 12); err != nil || found {
 		t.Fatalf("TerminalOutcome() found = %v, err = %v, want false, nil", found, err)
 	}
@@ -73,13 +81,16 @@ func TestTransactionCallbackPanicRollsBackAndReleasesImmediateLock(t *testing.T)
 	panicValue := &struct{ label string }{label: "feature panic"}
 
 	recovered := invokePanickingTransaction(holder, panicValue)
+
 	if recovered != panicValue {
 		t.Fatalf("recovered panic = %#v, want original %#v", recovered, panicValue)
 	}
+
 	assertFeatureCount(t, holder, 0)
 	if cursor, err := holder.CompletedUpdate(context.Background()); err != nil || cursor != 0 {
 		t.Fatalf("CompletedUpdate() = %d, %v, want 0, nil", cursor, err)
 	}
+
 	if _, found, err := holder.TerminalOutcome(context.Background(), 13); err != nil || found {
 		t.Fatalf("TerminalOutcome() found = %v, err = %v, want false, nil", found, err)
 	}
@@ -88,6 +99,7 @@ func TestTransactionCallbackPanicRollsBackAndReleasesImmediateLock(t *testing.T)
 	if err := contender.WithinTransaction(context.Background(), func(context.Context, runtimecontract.DBTX) error { return nil }); err != nil {
 		t.Fatalf("transaction after panic error = %v", err)
 	}
+
 	if elapsed := time.Since(started); elapsed > testBusyTimeout+500*time.Millisecond {
 		t.Fatalf("transaction after panic took %v, lock was not promptly released", elapsed)
 	}
@@ -109,22 +121,28 @@ func TestTransactionCommitFailureLeavesNoPartialChanges(t *testing.T) {
 		return err
 	})
 	var txErr *TransactionError
+
 	if !errors.As(err, &txErr) || txErr.Stage != TransactionStageCommit || !errors.Is(err, ErrTransaction) {
 		t.Fatalf("WithinTransaction() error = %#v, want commit TransactionError", err)
 	}
+
 	if got := err.Error(); got != "transaction failed during commit" {
 		t.Fatalf("commit error exposed unsafe details: %q", got)
 	}
+
 	var count int
+
 	if queryErr := db.sql.QueryRowContext(context.Background(), `SELECT count(*) FROM task_2_4_child`).Scan(&count); queryErr != nil || count != 0 {
 		t.Fatalf("child count = %d, %v, want 0, nil", count, queryErr)
 	}
+
 	if err := db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO task_2_4_parent(id) VALUES (404)`)
 		return err
 	}); err != nil {
 		t.Fatalf("transaction after commit failure error = %v", err)
 	}
+
 	if got := db.sql.Stats().InUse; got != 0 {
 		t.Fatalf("connections in use after commit failure recovery = %d, want 0", got)
 	}
@@ -137,6 +155,7 @@ func TestTerminalOutcomeIsImmutableAndSurvivesReopen(t *testing.T) {
 	if err := recordOutcome(db, original); err != nil {
 		t.Fatalf("record original: %v", err)
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
@@ -148,10 +167,12 @@ func TestTerminalOutcomeIsImmutableAndSurvivesReopen(t *testing.T) {
 	if !errors.Is(err, ErrUpdateAlreadyProcessed) {
 		t.Fatalf("record duplicate error = %v, want ErrUpdateAlreadyProcessed", err)
 	}
+
 	got, found, err := db.TerminalOutcome(context.Background(), original.UpdateID)
 	if err != nil || !found || got != original {
 		t.Fatalf("TerminalOutcome() = %+v, %v, %v, want original", got, found, err)
 	}
+
 	if cursor, err := db.CompletedUpdate(context.Background()); err != nil || cursor != original.UpdateID {
 		t.Fatalf("CompletedUpdate() = %d, %v, want %d", cursor, err, original.UpdateID)
 	}
@@ -169,6 +190,7 @@ func TestTerminalStatusesAndFailureCodesRoundTrip(t *testing.T) {
 		if err := recordOutcome(db, want); err != nil {
 			t.Fatalf("record status %q: %v", want.Status, err)
 		}
+
 		got, found, err := db.TerminalOutcome(context.Background(), want.UpdateID)
 		if err != nil || !found || got != want {
 			t.Fatalf("TerminalOutcome(%d) = %+v, %v, %v, want %+v, true, nil", want.UpdateID, got, found, err, want)
@@ -181,13 +203,16 @@ func TestRecordTerminalRejectsCursorRegressionWithoutMutation(t *testing.T) {
 	if err := recordOutcome(db, validUpdateOutcome(30)); err != nil {
 		t.Fatalf("record initial: %v", err)
 	}
+
 	err := recordOutcome(db, validUpdateOutcome(29))
 	if !errors.Is(err, ErrCursorRegression) {
 		t.Fatalf("record regression error = %v, want ErrCursorRegression", err)
 	}
+
 	if cursor, err := db.CompletedUpdate(context.Background()); err != nil || cursor != 30 {
 		t.Fatalf("CompletedUpdate() = %d, %v, want 30", cursor, err)
 	}
+
 	if _, found, err := db.TerminalOutcome(context.Background(), 29); err != nil || found {
 		t.Fatalf("regressed outcome found = %v, err = %v", found, err)
 	}
@@ -213,20 +238,24 @@ func TestUpdateOutcomeValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.outcome.Validate()
 			var validation *UpdateOutcomeValidationError
+
 			if !errors.As(err, &validation) || validation.Field != tt.field {
 				t.Fatalf("Validate() error = %#v, want field %q", err, tt.field)
 			}
+
 			if errors.Is(err, context.Canceled) {
 				t.Fatal("validation error has unrelated cause")
 			}
 		})
 	}
+
 	for _, status := range []UpdateStatus{UpdateCompleted, UpdateIgnored} {
 		outcome := UpdateOutcome{UpdateID: 1, Status: status, CorrelationID: "corr", CompletedAt: now}
 		if err := outcome.Validate(); err != nil {
 			t.Errorf("status %q Validate() error = %v", status, err)
 		}
 	}
+
 	for _, status := range []UpdateStatus{UpdateDecodeFailed, UpdateHandlerFailed} {
 		outcome := UpdateOutcome{UpdateID: 1, Status: status, CorrelationID: "corr", FailureCode: "safe_code", CompletedAt: now}
 		if err := outcome.Validate(); err != nil {
@@ -268,10 +297,12 @@ func TestWithinTransactionHonorsCancellationAndImmediateLock(t *testing.T) {
 		close(release)
 		t.Fatalf("competing WithinTransaction() error = %v, want ErrContention", err)
 	}
+
 	if elapsed := time.Since(started); elapsed > testBusyTimeout+500*time.Millisecond {
 		close(release)
 		t.Fatalf("contention elapsed = %v, exceeds bound", elapsed)
 	}
+
 	close(release)
 	if err := <-holderDone; err != nil {
 		t.Fatalf("holder transaction error = %v", err)
@@ -294,13 +325,16 @@ func openMigratedTestDB(t *testing.T, dir string) *DB {
 		t.Fatalf("Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
 	set, err := RuntimeMigrations()
 	if err != nil {
 		t.Fatalf("RuntimeMigrations() error = %v", err)
 	}
+
 	if err := db.Migrate(context.Background(), set); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
+
 	return db
 }
 
@@ -314,6 +348,7 @@ func createFeatureTable(t *testing.T, db *DB) {
 func assertFeatureCount(t *testing.T, db *DB, want int) {
 	t.Helper()
 	var got int
+
 	if err := db.sql.QueryRowContext(context.Background(), `SELECT count(*) FROM task_2_4_feature`).Scan(&got); err != nil || got != want {
 		t.Fatalf("feature count = %d, %v, want %d", got, err, want)
 	}
@@ -327,13 +362,16 @@ func recordOutcome(db *DB, outcome UpdateOutcome) error {
 
 func invokePanickingTransaction(db *DB, panicValue any) (recovered any) {
 	defer func() { recovered = recover() }()
+
 	_ = db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO task_2_4_feature(value) VALUES (?)`, "must roll back"); err != nil {
 			return err
 		}
+
 		if err := db.RecordTerminal(ctx, tx, validUpdateOutcome(13)); err != nil {
 			return err
 		}
+
 		panic(panicValue)
 	})
 	return recovered

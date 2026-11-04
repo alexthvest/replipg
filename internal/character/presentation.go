@@ -19,5 +19,6 @@ func (p Presentation) validate() error {
 	if p.Catalog == nil || p.Resolve == nil {
 		return errors.New("character: missing presentation dependency")
 	}
+
 	return nil
 }

@@ -35,6 +35,7 @@ func TestDeliveryRecoveryIntegrationEnqueueAndRetryWait(t *testing.T) {
 	h.fake.Enqueue(apiResponse(`{"ok":false,"error_code":429,"description":"private-api-marker","parameters":{"retry_after":17}}`))
 	h.run(false, outbox.ErrDeliveryNotCompleted)
 	status := h.status(id, outbox.StateRetrying, 1)
+
 	if !status.NextAttemptAt.Equal(h.clock.Now().Add(17 * time.Second)) {
 		t.Fatalf("Telegram retry_after floor lost: %+v", status)
 	}
@@ -44,10 +45,12 @@ func TestDeliveryRecoveryIntegrationEnqueueAndRetryWait(t *testing.T) {
 	go func() { waited <- h.worker.WaitNext(ctx, time.Minute) }()
 	gate, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
+
 	if err := h.clock.WaitForTimers(gate, 1); err != nil {
 		cancel()
 		t.Fatal(err)
 	}
+
 	cancel() // Shutdown while sleeping must not need a clock advance.
 	select {
 	case err := <-waited:
@@ -57,9 +60,11 @@ func TestDeliveryRecoveryIntegrationEnqueueAndRetryWait(t *testing.T) {
 	case <-gate.Done():
 		t.Fatal("retry wait did not stop on cancellation")
 	}
+
 	if h.clock.PendingTimers() != 0 {
 		t.Fatal("cancelled retry wait leaked a timer")
 	}
+
 	h.restart(nil)
 	h.status(id, outbox.StateRetrying, 1)
 	h.clock.Advance(17*time.Second - time.Millisecond)
@@ -86,13 +91,16 @@ func TestDeliveryRecoveryIntegrationUnknownTransmission(t *testing.T) {
 					h.fake.Enqueue(testsupport.TelegramResponse{WaitForCancellation: true})
 					ctx, cancel := context.WithCancel(context.Background())
 					defer cancel()
+
 					done := make(chan error, 1)
 					go func() { _, err := h.worker.RunOnce(ctx); done <- err }()
 					gate, stop := context.WithTimeout(context.Background(), 5*time.Second)
 					defer stop()
+
 					if err := h.fake.WaitForRequests(gate, 2); err != nil {
 						t.Fatal(err)
 					}
+
 					h.status(id, outbox.StateAttempting, 1)
 					cancel()
 					select {
@@ -103,6 +111,7 @@ func TestDeliveryRecoveryIntegrationUnknownTransmission(t *testing.T) {
 					case <-gate.Done():
 						t.Fatal("transmission did not stop on cancellation")
 					}
+
 					h.status(id, outbox.StateAttempting, 1)
 				case "connection_drop":
 					h.fake.Enqueue(testsupport.TelegramResponse{DropConnection: true})
@@ -116,26 +125,34 @@ func TestDeliveryRecoveryIntegrationUnknownTransmission(t *testing.T) {
 					h.run(false, outbox.ErrStorage)
 					h.status(id, outbox.StateAttempting, 1)
 				}
+
 				h.requests(1)
 				h.restart(nil)
 				status := h.status(id, outbox.StateReconciliationRequired, 1)
+
 				if !status.NextAttemptAt.IsZero() || !status.TerminalAt.IsZero() {
 					t.Fatalf("uncertain delivery has automatic retry or terminal time: %+v", status)
 				}
+
 				var finished sql.NullInt64
 				var outcome sql.NullString
+
 				if err := h.db.QueryRowContext(context.Background(), `SELECT finished_at,outcome FROM outbound_attempts WHERE delivery_id=?`, id).Scan(&finished, &outcome); err != nil {
 					t.Fatal(err)
 				}
+
 				if interruption != "connection_drop" && (finished.Valid || outcome.Valid) {
 					t.Fatal("interrupted transaction changed original attempt facts")
 				}
+
 				if interruption == "connection_drop" && (!finished.Valid || outcome.String != string(runtimecontract.DeliveryIndeterminate)) {
 					t.Fatalf("dropped connection must preserve indeterminate evidence: %v %v", finished, outcome)
 				}
+
 				if err := h.store.ReconcilePending(context.Background(), time.Second); err != nil {
 					t.Fatal(err)
 				}
+
 				h.clock.Advance(time.Hour)
 				h.run(false, nil)
 				h.requests(1) // No registered owner: restart never authorizes resend.
@@ -147,17 +164,21 @@ func TestDeliveryRecoveryIntegrationUnknownTransmission(t *testing.T) {
 				calls := 0
 				h.restart(recoveryReconciler(func(_ context.Context, delivery outbox.Delivery) (outbox.ReconciliationResolution, error) {
 					calls++
+
 					if delivery.ID != id || delivery.Attempts != 1 || string(delivery.Payload.Data()) != recoveryBody {
 						t.Fatal("reconciliation lost original durable delivery")
 					}
+
 					return outbox.ReconciliationResolution{Decision: resolution, CorrelationID: "0123456789abcdef0123456789abcdef"}, nil
 				}))
 				if err := h.store.ReconcilePending(context.Background(), time.Second); err != nil {
 					t.Fatal(err)
 				}
+
 				if calls != 1 {
 					t.Fatalf("registered reconciliation calls = %d", calls)
 				}
+
 				h.requests(1) // A reconciliation decision itself never sends.
 				if resolution == outbox.ReconciliationRetry {
 					h.status(id, outbox.StatePending, 1)
@@ -186,6 +207,7 @@ func TestDeliveryRecoveryIntegrationTerminalStatus(t *testing.T) {
 	if s := h.status(permanent, outbox.StatePermanentFailure, 1); s.ReasonCode != "authorization" {
 		t.Fatalf("permanent failure reason = %q", s.ReasonCode)
 	}
+
 	exhausted := h.enqueue(2)
 	h.fake.Enqueue(apiResponse(`{"ok":false,"error_code":503,"description":"private-api-marker"}`))
 	h.run(false, outbox.ErrDeliveryNotCompleted)
@@ -198,6 +220,7 @@ func TestDeliveryRecoveryIntegrationTerminalStatus(t *testing.T) {
 	if s := h.status(exhausted, outbox.StatePermanentFailure, 2); s.ReasonCode != "retry_exhausted" {
 		t.Fatalf("exhaustion reason = %q", s.ReasonCode)
 	}
+
 	completed := h.enqueue(3)
 	h.fake.Enqueue(acceptedResponse())
 	h.run(true, nil)
@@ -219,19 +242,24 @@ func TestDeliveryRecoveryIntegrationTerminalStatus(t *testing.T) {
 	var result struct {
 		Work health.WorkCounts `json:"work"`
 	}
+
 	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
+
 	want := health.DeliveryCounts{Pending: 1, Retrying: 1, ReconciliationRequired: 1, Completed: 1, PermanentFailure: 2}
+
 	if rr.Code != http.StatusOK || result.Work.Deliveries != want {
 		t.Fatalf("aggregate delivery status = %d %s", rr.Code, rr.Body.String())
 	}
+
 	h.assertPrivate(rr.Body.String())
 	for _, id := range []runtimecontract.DeliveryID{permanent, exhausted, completed, retrying, uncertain, pending} {
 		if strings.Contains(rr.Body.String(), string(id)) {
 			t.Fatal("aggregate status exposed a delivery identifier")
 		}
 	}
+
 	// Consume pending and retrying records, then prove terminal records remain
 	// unclaimable across a further restart, even far beyond every due time.
 	h.fake.Enqueue(acceptedResponse())
@@ -264,10 +292,12 @@ func newDeliveryRecovery(t *testing.T) *deliveryRecovery {
 	h := &deliveryRecovery{t: t, dir: t.TempDir(), clock: testsupport.NewManualClock(time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC))}
 	h.fake = testsupport.NewFakeTelegram(apiResponse(`{"ok":true,"result":{"id":42,"is_bot":true,"first_name":"Test"}}`))
 	t.Cleanup(h.fake.Close)
+
 	client, err := telegram.NewClient(context.Background(), telegram.ClientConfig{Token: "42:private-token-marker", BaseURL: h.fake.URL(), HTTPClient: h.fake.Client(), RequestTimeout: 5 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	h.delivery = telegram.NewDelivery(client, h.clock.Now)
 	t.Cleanup(func() {
 		if h.db != nil {
@@ -276,6 +306,7 @@ func newDeliveryRecovery(t *testing.T) *deliveryRecovery {
 			}
 		}
 	})
+
 	h.restart(nil)
 	return h
 }
@@ -327,8 +358,10 @@ func (h *deliveryRecovery) enqueue(maxAttempts int) runtimecontract.DeliveryID {
 		h.t.Fatal(err)
 	}
 	var id runtimecontract.DeliveryID
+
 	err = h.db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 		var err error
+
 		id, err = h.store.Enqueue(ctx, tx, runtimecontract.DeliveryRequest{Kind: "integration-public", Payload: payload, Retry: runtimecontract.RetryPolicy{MaxAttempts: maxAttempts, InitialDelay: time.Second, MaxDelay: 10 * time.Second}})
 		return err
 	})

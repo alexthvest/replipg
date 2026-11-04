@@ -12,6 +12,7 @@ import (
 // Schema constraints keep every assignment compatible and backed by ownership.
 func writeEquipment(ctx context.Context, tx runtimecontract.DBTX, id charactercontract.ID, slot contract.Slot, itemID contract.ItemID) error {
 	var err error
+
 	if itemID == "" {
 		_, err = tx.ExecContext(ctx, `DELETE FROM inventory_equipment WHERE character_id=? AND slot=?`, id, slot)
 	} else {
@@ -20,5 +21,6 @@ func writeEquipment(ctx context.Context, tx runtimecontract.DBTX, id characterco
 	if err != nil {
 		return contract.NewStorageError(err)
 	}
+
 	return nil
 }

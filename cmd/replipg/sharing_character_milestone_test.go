@@ -28,16 +28,20 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	db := sharingCompositionDB(t)
 	if err := db.WithinTransaction(t.Context(), options.Prepare); err != nil {
 		t.Fatal(err)
 	}
+
 	store := outbox.NewStore(db, outbox.Options{})
 	registry := interaction.NewRegistry()
 	if err := options.Register(app.Registrations{Registry: registry, Outbox: store, Membership: unavailableMembership{}}); err != nil {
 		t.Fatal(err)
 	}
+
 	var projector app.Worker
+
 	for _, factory := range options.Workers {
 		if factory.Name == "menu_sharing" {
 			projector, err = factory.New(db, nil)
@@ -46,35 +50,42 @@ func TestSharingCharacterMilestone(t *testing.T) {
 			}
 		}
 	}
+
 	if projector == nil {
 		t.Fatal("missing production sharing worker")
 	}
+
 	registry.Seal()
 	store.Seal()
 	requests := make(chan map[string]string, 32)
 	var rejectPersonal atomic.Bool
 	var publicSends atomic.Int32
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/getMe") {
 			_, _ = io.WriteString(w, `{"ok":true,"result":{"id":123,"is_bot":true}}`)
 			return
 		}
+
 		// Editing or deleting an earlier public copy is forbidden in this journey.
 		if !strings.HasSuffix(r.URL.Path, "/sendMessage") {
 			t.Error("unexpected Telegram method")
 			w.WriteHeader(400)
 			return
 		}
+
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Error(err)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
+
 		fields := map[string]string{}
 		for key := range r.MultipartForm.Value {
 			fields[key] = r.FormValue(key)
 		}
+
 		requests <- fields
 		if fields["ephemeral_message_parameters"] != "" {
 			if rejectPersonal.Load() {
@@ -82,6 +93,7 @@ func TestSharingCharacterMilestone(t *testing.T) {
 				_, _ = io.WriteString(w, `{"ok":false,"error_code":400,"description":"fixture rejection"}`)
 				return
 			}
+
 			_, _ = io.WriteString(w, `{"ok":true,"result":{"ephemeral_message_id":900,"chat":{"id":-100,"type":"supergroup"}}}`)
 		} else {
 			id := 900 + publicSends.Add(1)
@@ -89,15 +101,18 @@ func TestSharingCharacterMilestone(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+
 	client, err := telegram.NewClient(t.Context(), telegram.ClientConfig{Token: "42:fixture", BaseURL: server.URL, HTTPClient: server.Client(), RequestTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	sender := telegram.NewDelivery(client, time.Now)
 	worker, err := outbox.NewWorker(store, outbox.WorkerOptions{Delivery: sharingProductionDelivery{sender}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	receive := func() map[string]string {
 		t.Helper()
 		select {
@@ -111,37 +126,48 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	dispatch := func(event interaction.Event) interaction.HandlerResult {
 		t.Helper()
 		handler, ok := registry.Resolve(event)
+
 		if !ok {
 			t.Fatal("missing production route")
 		}
+
 		if preparing, ok := handler.(interaction.PreparingHandler); ok {
 			handler, err = preparing.Prepare(t.Context(), event)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
+
 		var result interaction.HandlerResult
+
 		if err := db.WithinTransaction(t.Context(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 			var handleErr error
+
 			result, handleErr = handler.Handle(ctx, sharingProductionScope{tx, store}, event)
 			return handleErr
 		}); err != nil {
 			t.Fatal(err)
 		}
+
 		return result
 	}
 	var update runtimecontract.UpdateID
+
 	command := func(name interaction.CommandName, arguments string) runtimecontract.EphemeralResponse {
 		t.Helper()
 		update++
 		result := dispatch(interaction.Command{Identity: interaction.Identity{Update: update, User: 7, Chat: -100, ChatKind: runtimecontract.ChatKindSupergroup}, Name: name, Arguments: arguments, EphemeralMessageID: 1, SentAt: time.Now()})
+
 		if len(result.ImmediateResponses) != 1 {
 			t.Fatalf("%s lacks personal response", name)
 		}
+
 		response, ok := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 		if !ok {
 			t.Fatalf("%s became public", name)
 		}
+
 		return response
 	}
 	sendPersonal := func(response runtimecontract.EphemeralResponse, wantFailure bool) {
@@ -150,6 +176,7 @@ func TestSharingCharacterMilestone(t *testing.T) {
 		if (err != nil) != wantFailure {
 			t.Fatalf("personal delivery failure=%v, want %v", err != nil, wantFailure)
 		}
+
 		if fields := receive(); fields["ephemeral_message_parameters"] == "" {
 			t.Fatal("personal interaction sent publicly")
 		}
@@ -158,6 +185,7 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	if len(open.Content.Buttons) != 1 || open.Content.Buttons[0][0].Text != "Share" {
 		t.Fatal("missing character Share")
 	}
+
 	sendPersonal(open, false)
 	data := open.Content.Buttons[0][0].CallbackData
 	press := func() interaction.HandlerResult {
@@ -171,26 +199,33 @@ func TestSharingCharacterMilestone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		decoded, err := telegram.DecodeUpdate(raw)
 		if err != nil || decoded.Status != telegram.DecodeMapped {
 			t.Fatalf("source callback decoding: %v %s", err, decoded.Status)
 		}
+
 		return dispatch(decoded.Event)
 	}
 	personalGuidance := func(result interaction.HandlerResult, fragment string) {
 		t.Helper()
+
 		if len(result.ImmediateResponses) != 1 {
 			t.Fatal("missing personal sharing guidance")
 		}
+
 		response, ok := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 		if !ok || !strings.Contains(strings.ToLower(response.Content.Text), fragment) {
 			t.Fatalf("unexpected personal guidance: %+v", result)
 		}
+
 		sendPersonal(response, false)
 	}
 	countPublic := func(want int) {
 		t.Helper()
 		var got int
+
 		if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM outbound_deliveries WHERE kind='menu_share_public'`).Scan(&got); err != nil || got != want {
 			t.Fatalf("public work=%d want %d: %v", got, want, err)
 		}
@@ -207,9 +242,11 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	countPublic(1)
 	run(worker)
 	first := receive()
+
 	if first["text"] != open.Content.Text+"\n\nShared by user 7" || first["chat_id"] != "-100" || first["ephemeral_message_parameters"] != "" || first["reply_markup"] != "" || first["reply_parameters"] != "" {
 		t.Fatalf("invalid attributed ordinary snapshot: %v", first)
 	}
+
 	// The blocked press scheduled the next inspection in the future. Make that
 	// inspection due in the isolated database instead of waiting on wall time.
 	if err := db.WithinTransaction(t.Context(), func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -218,11 +255,13 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	run(projector)
 	run(worker)
 	if feedback := receive(); feedback["ephemeral_message_parameters"] == "" {
 		t.Fatal("outcome guidance became public")
 	}
+
 	personalGuidance(press(), "second")
 	countPublic(1)
 
@@ -230,9 +269,11 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	// normally. Neither action may edit the old public snapshot or publish another.
 	sendPersonal(command("dev_character_damage", "1"), false)
 	latest := command("character", "")
+
 	if latest.Content.Text == open.Content.Text {
 		t.Fatal("fixture did not change live character state")
 	}
+
 	sendPersonal(latest, false)
 	settings := command("settings", "")
 	for _, response := range []runtimecontract.EphemeralResponse{settings, command("dev_character_damage", "0")} {
@@ -243,13 +284,17 @@ func TestSharingCharacterMilestone(t *testing.T) {
 				}
 			}
 		}
+
 		sendPersonal(response, false)
 	}
+
 	var before string
 	const stateQuery = `SELECT json_array(id,user_id,max_health,health,attack,defense,recover_at_ms,recovery_health,revision) FROM characters WHERE user_id=7`
+
 	if err := db.QueryRowContext(t.Context(), stateQuery).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
+
 	countPublic(1)
 
 	// Production composition intentionally has no test clock knob. Age only this
@@ -261,18 +306,24 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	personalGuidance(press(), "sharing") // Same old source, not a freshly rendered view.
 	countPublic(2)
 	run(worker)
 	second := receive()
+
 	if !reflect.DeepEqual(first, second) {
 		t.Fatal("deliberate reshare substituted current character state or controls")
 	}
+
 	var after string
+
 	if err := db.QueryRowContext(t.Context(), stateQuery).Scan(&after); err != nil || after != before {
 		t.Fatal("sharing mutated character state")
 	}
+
 	var inventories int
+
 	if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM inventories`).Scan(&inventories); err != nil || inventories != 0 {
 		t.Fatal("character sharing initialized inventory")
 	}
@@ -282,9 +333,11 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	rejectPersonal.Store(true)
 	sendPersonal(command("character", ""), true)
 	countPublic(2)
+
 	if publicSends.Load() != 2 {
 		t.Fatalf("public copies=%d, want two retained sends", publicSends.Load())
 	}
+
 	select {
 	case <-requests:
 		t.Fatal("unexpected fallback request")

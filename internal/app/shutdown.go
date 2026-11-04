@@ -24,9 +24,11 @@ func (t systemTimer) C() <-chan time.Time { return t.Timer.C }
 func (r *Runtime) admit(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	if r.draining {
 		return context.Canceled
 	}
+
 	return ctx.Err()
 }
 
@@ -48,11 +50,13 @@ func (r *Runtime) drain(ctx context.Context, owned *sync.WaitGroup, poller *tele
 	go func() { owned.Wait(); close(finished) }()
 	timer := r.newShutdownTimer(r.cfg.ShutdownDeadline)
 	defer timer.Stop()
+
 	select {
 	case <-finished:
 	case <-timer.C():
 		cancelWork()
 		<-finished
 	}
+
 	cancelWork()
 }

@@ -87,6 +87,7 @@ func (f *FakeTelegram) WaitForRequests(ctx context.Context, count int) error {
 			f.mu.Unlock()
 			return nil
 		}
+
 		changed := f.changed
 		f.mu.Unlock()
 
@@ -113,6 +114,7 @@ func (f *FakeTelegram) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not record request", http.StatusInternalServerError)
 		return
 	}
+
 	if err := r.Body.Close(); err != nil {
 		http.Error(w, "could not close request", http.StatusInternalServerError)
 		return
@@ -129,6 +131,7 @@ func (f *FakeTelegram) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.requests = append(f.requests, request)
 	var response TelegramResponse
+
 	if len(f.responses) > 0 {
 		response = f.responses[0]
 		f.responses = f.responses[1:]
@@ -146,24 +149,29 @@ func (f *FakeTelegram) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 		return
 	}
+
 	if response.DropConnection {
 		hijacker, ok := w.(http.Hijacker)
 		if !ok {
 			http.Error(w, "connection dropping is unsupported", http.StatusInternalServerError)
 			return
 		}
+
 		connection, _, err := hijacker.Hijack()
 		if err != nil {
 			return
 		}
+
 		_ = connection.Close()
 		return
 	}
+
 	for name, values := range response.Header {
 		for _, value := range values {
 			w.Header().Add(name, value)
 		}
 	}
+
 	statusCode := response.StatusCode
 	if statusCode == 0 {
 		statusCode = http.StatusOK

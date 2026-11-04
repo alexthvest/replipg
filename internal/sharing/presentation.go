@@ -13,5 +13,6 @@ func Attribution(catalog *localization.Catalog, locale localization.Locale, owne
 	if owner <= 0 {
 		return "", errors.New("sharing: invalid attribution owner")
 	}
+
 	return catalog.Text(locale, localization.SharingAttribution, localization.Args{"user_id": localization.Integer(int64(owner))})
 }

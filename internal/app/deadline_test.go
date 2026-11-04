@@ -28,45 +28,56 @@ func TestShutdownDeadlineCancelsThenJoinsOwnedWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	clock := testsupport.NewManualClock(time.Now())
 	r.newShutdownTimer = func(d time.Duration) runtimeTimer { return clock.NewTimer(d) }
 	work, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	var owned sync.WaitGroup
+
 	owned.Add(1)
 	joined := make(chan struct{})
 	release := make(chan struct{})
 	var releaseOnce sync.Once
+
 	defer releaseOnce.Do(func() { close(release) })
+
 	go func() { defer owned.Done(); <-work.Done(); close(joined); <-release }()
 	done := make(chan struct{})
 	go func() { r.drain(work, &owned, nil, func() {}, cancel); close(done) }()
 	wait, stop := context.WithTimeout(context.Background(), 3*time.Second)
 	defer stop()
+
 	if err := clock.WaitForTimers(wait, 1); err != nil {
 		t.Fatal(err)
 	}
+
 	clock.Advance(cfg.ShutdownDeadline - time.Nanosecond)
 	if work.Err() != nil {
 		t.Fatal("work canceled before deadline")
 	}
+
 	clock.Advance(time.Nanosecond)
 	select {
 	case <-joined:
 	case <-wait.Done():
 		t.Fatal("deadline did not cancel work")
 	}
+
 	select {
 	case <-done:
 		t.Fatal("drain returned before owned work joined")
 	default:
 	}
+
 	releaseOnce.Do(func() { close(release) })
 	select {
 	case <-done:
 	case <-wait.Done():
 		t.Fatal("owned work not joined")
 	}
+
 	if got := clock.PendingTimers(); got != 0 {
 		t.Fatalf("deadline timer leaked: %d", got)
 	}
@@ -87,7 +98,9 @@ type deadlineTransport struct {
 func (f *deadlineTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	f.active.Add(1)
 	defer f.active.Add(-1)
+
 	var body string
+
 	switch {
 	case strings.HasSuffix(req.URL.Path, "/getMe"):
 		body = `{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`
@@ -100,6 +113,7 @@ func (f *deadlineTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			case <-req.Context().Done():
 				return nil, req.Context().Err()
 			}
+
 			body = `{"ok":true,"result":[{"update_id":41,"message":{"message_id":7,"from":{"id":8,"is_bot":false},"chat":{"id":-123,"type":"group"},"text":"hello"}}]}`
 		} else {
 			<-req.Context().Done()
@@ -113,6 +127,7 @@ func (f *deadlineTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		case <-req.Context().Done():
 			return nil, req.Context().Err()
 		}
+
 		body = `{"ok":true,"result":{"message_id":9,"chat":{"id":-123,"type":"group"},"date":1,"text":"sent"}}`
 	default:
 		return nil, errors.New("unexpected fake Bot API request")
@@ -157,6 +172,7 @@ func startDeadlineRuntime(t *testing.T, cfg config.Config, transport *deadlineTr
 			if err != nil {
 				return nil, err
 			}
+
 			h.listener = &deadlineListener{Listener: l}
 			return h.listener, nil
 		},
@@ -164,14 +180,17 @@ func startDeadlineRuntime(t *testing.T, cfg config.Config, transport *deadlineTr
 			if register != nil {
 				return register(r, h.db)
 			}
+
 			return nil
 		},
 	}
 	var err error
+
 	h.runtime, err = New(cfg, options)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	h.runtime.newShutdownTimer = func(d time.Duration) runtimeTimer { return h.clock.NewTimer(d) }
 	ctx, cancel := context.WithCancel(context.Background())
 	h.cancel = cancel
@@ -182,6 +201,7 @@ func startDeadlineRuntime(t *testing.T, cfg config.Config, transport *deadlineTr
 		// either shutdown completion or timer creation before advancing cleanup.
 		wait, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
+
 		timerReady := make(chan struct{})
 		go func() { _ = h.clock.WaitForTimers(wait, 1); close(timerReady) }()
 		select {
@@ -190,12 +210,14 @@ func startDeadlineRuntime(t *testing.T, cfg config.Config, transport *deadlineTr
 			h.clock.Advance(cfg.ShutdownDeadline)
 		case <-wait.Done():
 		}
+
 		select {
 		case <-h.done:
 		case <-wait.Done():
 			t.Error("runtime did not join during test cleanup")
 		}
 	})
+
 	waitDeadlineSignal(t, h.runtime.Ready(), "runtime readiness")
 	return h
 }
@@ -214,24 +236,31 @@ func (h *deadlineRuntime) draining(t *testing.T) {
 	h.cancel()
 	wait, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
+
 	if err := h.clock.WaitForTimers(wait, 1); err != nil {
 		t.Fatal(err)
 	}
+
 	if snapshot := h.runtime.State().Snapshot(); snapshot.Ready || snapshot.Lifecycle != health.Draining {
 		t.Fatalf("shutdown did not become not ready: %+v", snapshot)
 	}
+
 	req, err := http.NewRequestWithContext(wait, http.MethodGet, "http://"+h.listener.Addr().String()+"/readyz", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	_ = response.Body.Close()
+
 	if response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("draining readiness = %d", response.StatusCode)
 	}
+
 	select {
 	case <-h.done:
 		t.Fatal("runtime returned before admitted work finished")
@@ -245,21 +274,27 @@ func (h *deadlineRuntime) stopped(t *testing.T, transport *deadlineTransport) {
 	if h.err != nil {
 		t.Fatal(h.err)
 	}
+
 	if snapshot := h.runtime.State().Snapshot(); snapshot.Ready || snapshot.Lifecycle != health.Stopped {
 		t.Fatalf("shutdown state: %+v", snapshot)
 	}
+
 	if got := h.clock.PendingTimers(); got != 0 {
 		t.Fatalf("shutdown timer leaked: %d", got)
 	}
+
 	if got := transport.active.Load(); got != 0 {
 		t.Fatalf("Bot API requests not joined: %d", got)
 	}
+
 	if got := h.listener.closes.Load(); got != 1 {
 		t.Fatalf("listener closed %d times", got)
 	}
+
 	if _, err := h.db.ExecContext(context.Background(), "SELECT 1"); !errors.Is(err, persistence.ErrPersistenceClosed) {
 		t.Fatalf("database not closed: %v", err)
 	}
+
 	conn, err := net.DialTimeout("tcp", h.listener.Addr().String(), time.Second)
 	if err == nil {
 		_ = conn.Close()
@@ -274,6 +309,7 @@ func reopenDeadlineDB(t *testing.T, cfg config.Config) *persistence.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
 	return db
 }
 
@@ -291,11 +327,14 @@ func TestRuntimeDeadlineRollsBackHandlerAndPreservesCompletedWork(t *testing.T) 
 				if _, err := db.ExecContext(context.Background(), `CREATE TABLE deadline_feature(value INTEGER)`); err != nil {
 					return err
 				}
+
 				return r.Registry.RegisterGroupMessages(deadlineHandler(func(ctx context.Context, scope runtimecontract.WorkScope, _ interaction.Event) (interaction.HandlerResult, error) {
 					defer close(returned)
+
 					if _, err := scope.DBTX().ExecContext(ctx, `INSERT INTO deadline_feature(value) VALUES(1)`); err != nil {
 						return interaction.HandlerResult{}, err
 					}
+
 					entered <- ctx
 					select {
 					case <-release:
@@ -307,19 +346,23 @@ func TestRuntimeDeadlineRollsBackHandlerAndPreservesCompletedWork(t *testing.T) 
 			})
 			close(update)
 			var handlerCtx context.Context
+
 			select {
 			case handlerCtx = <-entered:
 			case <-time.After(5 * time.Second):
 				t.Fatal("handler did not start")
 			}
+
 			h.draining(t)
 			if handlerCtx.Err() != nil {
 				t.Fatal("root cancellation canceled admitted handler")
 			}
+
 			h.clock.Advance(cfg.ShutdownDeadline - time.Nanosecond)
 			if handlerCtx.Err() != nil {
 				t.Fatal("handler canceled before deadline")
 			}
+
 			if expire {
 				h.clock.Advance(time.Nanosecond)
 				waitDeadlineSignal(t, handlerCtx.Done(), "handler cancellation")
@@ -330,24 +373,30 @@ func TestRuntimeDeadlineRollsBackHandlerAndPreservesCompletedWork(t *testing.T) 
 			waitDeadlineSignal(t, returned, "handler return")
 			db := reopenDeadlineDB(t, cfg)
 			var count int
+
 			if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM deadline_feature`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
+
 			want, cursorWant := 1, runtimecontract.UpdateID(41)
 			if expire {
 				want, cursorWant = 0, 0
 			}
+
 			if count != want {
 				t.Fatalf("feature rows = %d, want %d", count, want)
 			}
+
 			cursor, err := db.CompletedUpdate(context.Background())
 			if err != nil || cursor != cursorWant {
 				t.Fatalf("durable cursor = %d, %v; want %d", cursor, err, cursorWant)
 			}
+
 			_, found, err := db.TerminalOutcome(context.Background(), 41)
 			if err != nil || found == expire {
 				t.Fatalf("terminal outcome found = %v, error = %v", found, err)
 			}
+
 			if got := transport.requests.Load(); got != 1 {
 				t.Fatalf("new intake after draining: %d polls", got)
 			}
@@ -360,6 +409,7 @@ func TestRuntimeDeadlinePreservesAttemptingSendForStartupReconciliation(t *testi
 	cfg.ShutdownDeadline = time.Minute
 	transport := &deadlineTransport{sendEntered: make(chan context.Context, 1)}
 	var deliveryID runtimecontract.DeliveryID
+
 	register := func(r Registrations, db *persistence.DB) error {
 		err := r.Outbox.Register("deadline", 1, func(runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) {
 			return runtimecontract.PublicResponse{Destination: runtimecontract.GroupDestination{ChatID: -123, Kind: runtimecontract.ChatKindGroup}, Content: runtimecontract.MessageContent{Text: "durable response"}}, nil
@@ -367,52 +417,66 @@ func TestRuntimeDeadlinePreservesAttemptingSendForStartupReconciliation(t *testi
 		if err != nil {
 			return err
 		}
+
 		if deliveryID != "" {
 			return nil
 		}
+
 		payload, err := runtimecontract.NewVersionedPayload(1, []byte("payload"))
 		if err != nil {
 			return err
 		}
+
 		return db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 			var enqueueErr error
+
 			deliveryID, enqueueErr = r.Outbox.Enqueue(ctx, tx, runtimecontract.DeliveryRequest{Kind: "deadline", Payload: payload, Retry: runtimecontract.RetryPolicy{MaxAttempts: 3, InitialDelay: time.Millisecond, MaxDelay: time.Second}})
 			return enqueueErr
 		})
 	}
 	h := startDeadlineRuntime(t, cfg, transport, register)
 	var sendCtx context.Context
+
 	select {
 	case sendCtx = <-transport.sendEntered:
 	case <-time.After(5 * time.Second):
 		t.Fatal("durable send did not start")
 	}
+
 	h.draining(t)
 	if sendCtx.Err() != nil {
 		t.Fatal("root cancellation interrupted in-flight send")
 	}
+
 	h.clock.Advance(cfg.ShutdownDeadline - time.Nanosecond)
 	if sendCtx.Err() != nil {
 		t.Fatal("send canceled before deadline")
 	}
+
 	h.clock.Advance(time.Nanosecond)
 	waitDeadlineSignal(t, sendCtx.Done(), "send cancellation")
 	h.stopped(t, transport)
 	db := reopenDeadlineDB(t, cfg)
 	var state string
+
 	if err := db.QueryRowContext(context.Background(), `SELECT state FROM outbound_deliveries WHERE id=?`, deliveryID).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
+
 	if state != "attempting" {
 		t.Fatalf("interrupted send state = %s", state)
 	}
+
 	var unfinished int
+
 	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM outbound_attempts WHERE delivery_id=? AND finished_at IS NULL`, deliveryID).Scan(&unfinished); err != nil {
 		t.Fatal(err)
 	}
+
 	if unfinished != 1 {
 		t.Fatalf("unfinished durable attempts = %d", unfinished)
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -422,12 +486,15 @@ func TestRuntimeDeadlinePreservesAttemptingSendForStartupReconciliation(t *testi
 	restartedTransport := &deadlineTransport{sendEntered: make(chan context.Context, 1)}
 	restarted := startDeadlineRuntime(t, cfg, restartedTransport, func(r Registrations, db *persistence.DB) error {
 		var recovered string
+
 		if err := db.QueryRowContext(context.Background(), `SELECT state FROM outbound_deliveries WHERE id=?`, deliveryID).Scan(&recovered); err != nil {
 			return err
 		}
+
 		if recovered != "reconciliation_required" {
 			return errors.New("ambiguous send not recovered before registration")
 		}
+
 		return register(r, db)
 	})
 	restarted.cancel()
@@ -435,13 +502,16 @@ func TestRuntimeDeadlinePreservesAttemptingSendForStartupReconciliation(t *testi
 	if got := transport.sends.Load(); got != 1 {
 		t.Fatalf("original sends = %d", got)
 	}
+
 	if got := restartedTransport.sends.Load(); got != 0 {
 		t.Fatalf("recovered ambiguous work resent %d times", got)
 	}
+
 	recoveredDB := reopenDeadlineDB(t, cfg)
 	if err := recoveredDB.QueryRowContext(context.Background(), `SELECT state FROM outbound_deliveries WHERE id=?`, deliveryID).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
+
 	if state != "reconciliation_required" {
 		t.Fatalf("recovered state = %s", state)
 	}

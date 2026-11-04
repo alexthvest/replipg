@@ -13,15 +13,18 @@ func renderLocalizedSummary(c *localization.Catalog, l localization.Locale, s co
 	if err != nil {
 		return "", err
 	}
+
 	text, err := c.Text(l, "character.summary", localization.Args{"health": localization.Integer(s.Health), "max": localization.Integer(s.MaxHealth), "attack": localization.Integer(s.Attack), "defense": localization.Integer(s.Defense), "state": localization.String(state)})
 	if err != nil {
 		return "", err
 	}
+
 	if created {
 		notice, e := c.Text(l, "character.created", nil)
 		if e != nil {
 			return "", e
 		}
+
 		text = notice + text
 	}
 	if s.State == contract.StateIncapacitated {
@@ -29,12 +32,15 @@ func renderLocalizedSummary(c *localization.Catalog, l localization.Locale, s co
 		if e != nil {
 			return "", e
 		}
+
 		text += notice
 	}
 	return text, nil
 }
+
 func renderLocalizedDomainError(c *localization.Catalog, l localization.Locale, err error) (string, error) {
 	var key localization.Key
+
 	switch {
 	case errors.Is(err, contract.ErrIncapacitated):
 		key = "character.error.incapacitated"

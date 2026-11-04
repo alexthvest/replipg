@@ -75,13 +75,16 @@ func New(cfg config.Config, options Options) (*Runtime, error) {
 	if err := validateWorkers(options.Workers); err != nil {
 		return nil, err
 	}
+
 	options.Workers = append([]WorkerFactory(nil), options.Workers...)
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
+
 	if err := runtimecontract.ValidateCommandDeclarations(options.Commands); err != nil {
 		return nil, err
 	}
+
 	if options.Commands != nil {
 		options.Commands = append([]runtimecontract.CommandDeclaration{}, options.Commands...)
 	}
@@ -147,16 +150,20 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 
 	startupCtx, cancelStartup := context.WithCancel(ctx)
 	defer cancelStartup()
+
 	workCtx, cancelWork := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelWork()
+
 	admissionCtx, stopAdmission := context.WithCancel(workCtx)
 	defer stopAdmission()
+
 	db, err := r.options.Open(startupCtx, persistence.Options{StorageDir: r.cfg.StorageDir, StorageFilesystem: r.cfg.StorageFilesystem, BusyTimeout: r.cfg.BusyTimeout})
 	if err != nil {
 		return r.failure(ctx, "storage")
 	}
 
 	defer func() { _ = db.Close() }()
+
 	migrations, err := persistence.RuntimeMigrations()
 	if err != nil {
 		return r.failure(ctx, "migrations")
@@ -165,6 +172,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 	if err = db.Migrate(startupCtx, migrations); err != nil {
 		return r.failure(ctx, "migrations")
 	}
+
 	if r.options.Prepare != nil {
 		prepareCtx, cancelPrepare := context.WithTimeout(startupCtx, r.cfg.HandlerTimeout)
 		err = db.WithinTransaction(prepareCtx, r.options.Prepare)
@@ -185,6 +193,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 
 	var owned, healthOwned sync.WaitGroup
 	var poller *telegram.Poller
+
 	results := make(chan error, 4+len(r.options.Workers))
 	start := func(stage string, fn func() error) {
 		r.startRequired(workCtx, &owned, results, stage, fn)
@@ -201,6 +210,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 			}
 		}
 	}()
+
 	r.lifecycle(ctx, health.Recovering)
 	deliveries := outbox.NewStore(db, outbox.Options{Diagnostics: r.options.Diagnostics})
 	jobs := scheduler.New(db, systemClock{})
@@ -253,6 +263,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		if err := r.admit(ctx); err != nil {
 			return err
 		}
+
 		return processor.ProcessUpdate(ctx, update)
 	}})
 	if err != nil {
@@ -279,12 +290,15 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		if err != nil {
 			return r.failure(ctx, "feature_worker_factory")
 		}
+
 		featureWorkers[i] = worker
 	}
+
 	outboxStarted, schedulerStarted := make(chan struct{}), make(chan struct{})
 	if ctx.Err() != nil {
 		return nil
 	}
+
 	start("outbox_worker", func() error { close(outboxStarted); return r.runOutbox(workCtx, outbound, admissionCtx) })
 	start("scheduler_worker", func() error { close(schedulerStarted); return r.runScheduler(workCtx, scheduled, admissionCtx) })
 	start("intake", func() error { return poller.Run(workCtx) })
@@ -295,6 +309,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		startedLoops = append(startedLoops, started)
 		start(r.options.Workers[i].Name, func() error { close(started); return r.runFeatureWorker(workCtx, worker, admissionCtx) })
 	}
+
 	for _, started := range startedLoops {
 		select {
 		case <-started:
@@ -318,6 +333,7 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		r.mu.Unlock()
 		return <-results
 	}
+
 	for _, dependency := range []health.Dependency{health.Intake, health.Outbox, health.Scheduler} {
 		_ = r.state.SetDependency(dependency, true)
 	}
@@ -345,6 +361,7 @@ func (r *Runtime) startRequired(ctx context.Context, owned *sync.WaitGroup, resu
 	owned.Add(1)
 	go func() {
 		defer owned.Done()
+
 		err := fn()
 		r.mu.Lock()
 		expectedExit := err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, telegram.ErrPollerState) || errors.Is(err, http.ErrServerClosed)
@@ -352,6 +369,7 @@ func (r *Runtime) startRequired(ctx context.Context, owned *sync.WaitGroup, resu
 			r.mu.Unlock()
 			return
 		}
+
 		r.criticalFailed = true
 		r.lifecycle(ctx, health.Draining)
 		r.mu.Unlock()
@@ -364,6 +382,7 @@ func (r *Runtime) startRequired(ctx context.Context, owned *sync.WaitGroup, resu
 		case "scheduler_worker":
 			category, operation = observability.CategoryScheduler, observability.OperationExecute
 		}
+
 		r.emit(ctx, category, operation, observability.OutcomeFailed, "")
 		results <- &StartupError{Stage: stage, CorrelationID: r.correlation}
 	}()
@@ -387,6 +406,7 @@ func (r *Runtime) runOutbox(ctx context.Context, w outboxRunner, admission ...co
 		if err := r.admit(claimCtx); err != nil {
 			return err
 		}
+
 		done, err := w.RunOnce(ctx)
 		if done || err != nil {
 			outcome := observability.OutcomeCompleted
@@ -419,6 +439,7 @@ func (r *Runtime) runScheduler(ctx context.Context, w schedulerRunner, admission
 		if err := r.admit(claimCtx); err != nil {
 			return err
 		}
+
 		done, err := w.RunOnce(ctx)
 		if done || err != nil {
 			outcome := observability.OutcomeCompleted

@@ -16,23 +16,31 @@ func TestContractValues(t *testing.T) {
 	if err := change.Validate(); err != nil {
 		t.Fatal(err)
 	}
+
 	result := contract.MutationResult{Applied: false, AppliedRevision: 1, Current: character}
+
 	if result.Current != character || result.AppliedRevision != 1 {
 		t.Fatal("replay must carry current snapshot and original revision")
 	}
+
 	eligibility := contract.Eligibility{Kind: contract.EligibilityMissing}
+
 	if eligibility.Character != (contract.Snapshot{}) {
 		t.Fatal("missing eligibility must permit zero snapshot")
 	}
+
 	character.State, character.RecoverAt = contract.StateIncapacitated, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
 	if !character.State.Valid() {
 		t.Fatal("incapacitated state unsupported")
 	}
+
 	for _, kind := range []contract.EligibilityKind{contract.EligibilityMissing, contract.EligibilityActive, contract.EligibilityIncapacitated} {
 		if !kind.Valid() {
 			t.Fatalf("unsupported eligibility %q", kind)
 		}
 	}
+
 	if contract.State("").Valid() || contract.HealthKind("set").Valid() || contract.EligibilityKind("other").Valid() {
 		t.Fatal("unknown enum accepted")
 	}
@@ -57,13 +65,17 @@ func TestHealthChangeValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.change.Validate()
+
 			if tt.valid {
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				return
 			}
+
 			var domain *contract.DomainError
+
 			if !errors.Is(err, contract.ErrInvalidInput) || !errors.As(err, &domain) {
 				t.Fatalf("expected inspectable invalid input, got %v", err)
 			}

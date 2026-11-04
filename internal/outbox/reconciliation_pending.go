@@ -46,6 +46,7 @@ func (s *Store) ReconcilePending(ctx context.Context, bound time.Duration) error
 
 	for rows.Next() {
 		var id runtimecontract.DeliveryID
+
 		if err := rows.Scan(&id); err != nil {
 			_ = rows.Close()
 			return storageError(ctx, err)

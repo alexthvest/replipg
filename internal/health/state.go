@@ -7,6 +7,7 @@ import (
 )
 
 var ErrInvalidDependency = errors.New("invalid dependency")
+
 var ErrInvalidLifecycle = errors.New("invalid lifecycle")
 
 // Lifecycle is one of the runtime's operational phases.
@@ -65,8 +66,10 @@ func (s *State) SetLifecycle(state Lifecycle) error {
 	default:
 		return ErrInvalidLifecycle
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.lifecycle = state
 	return nil
 }
@@ -74,6 +77,7 @@ func (s *State) SetLifecycle(state Lifecycle) error {
 // SetDependency records whether a required component permits safe admission.
 func (s *State) SetDependency(dependency Dependency, healthy bool) error {
 	var index int
+
 	switch dependency {
 	case Storage:
 		index = 0
@@ -88,8 +92,10 @@ func (s *State) SetDependency(dependency Dependency, healthy bool) error {
 	default:
 		return ErrInvalidDependency
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.dependencies[index] = healthy
 	return nil
 }
@@ -98,6 +104,7 @@ func (s *State) SetDependency(dependency Dependency, healthy bool) error {
 func (s *State) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	state := s.lifecycle
 	if state == "" {
 		state = Starting
@@ -119,6 +126,7 @@ func (s *State) Snapshot() Snapshot {
 				return result
 			}
 		}
+
 		result.Ready = true
 	}
 	return result

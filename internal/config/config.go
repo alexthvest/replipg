@@ -267,6 +267,7 @@ func (l EnvLoader) Load() (Config, error) {
 	devSmoke := false
 	if value, present := l.lookup(EnvDevSmoke); present {
 		var err error
+
 		devSmoke, err = strconv.ParseBool(value)
 		if err != nil {
 			return Config{}, invalid(EnvDevSmoke, "must be a boolean")

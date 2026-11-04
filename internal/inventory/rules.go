@@ -12,6 +12,7 @@ func equipmentRule(snapshot contract.Snapshot, catalog Catalog, change contract.
 	if !change.Slot.Valid() {
 		return false, contract.ErrInvalidInput
 	}
+
 	current := snapshot.Weapon
 	if change.Slot == contract.SlotArmor {
 		current = snapshot.Armor
@@ -19,9 +20,11 @@ func equipmentRule(snapshot contract.Snapshot, catalog Catalog, change contract.
 	if change.ItemID == "" {
 		return current != "", nil
 	}
+
 	if err := change.ItemID.Validate(); err != nil {
 		return false, err
 	}
+
 	item, exists := catalog.Lookup(change.ItemID)
 	if !exists {
 		return false, contract.ErrInvalidInput
@@ -30,6 +33,7 @@ func equipmentRule(snapshot contract.Snapshot, catalog Catalog, change contract.
 	if !compatible {
 		return false, contract.ErrIncompatibleSlot
 	}
+
 	for _, owned := range snapshot.Items {
 		if owned.ItemID == change.ItemID && owned.Quantity > 0 {
 			return current != change.ItemID, nil
@@ -44,9 +48,11 @@ func EffectiveStats(baseAttack, baseDefense int64, modifiers contract.Modifiers)
 	if baseAttack < 0 || baseDefense < 0 || modifiers.Attack < 0 || modifiers.Defense < 0 {
 		return contract.CombatStats{}, contract.ErrInvalidInput
 	}
+
 	if baseAttack > math.MaxInt64-modifiers.Attack || baseDefense > math.MaxInt64-modifiers.Defense {
 		return contract.CombatStats{}, contract.ErrExhausted
 	}
+
 	return contract.CombatStats{Attack: baseAttack + modifiers.Attack, Defense: baseDefense + modifiers.Defense}, nil
 }
 

@@ -41,6 +41,7 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	if err != nil {
 		return app.Options{}, err
 	}
+
 	characters, err := character.NewService(tuning, time.Now)
 	if err != nil {
 		return app.Options{}, err
@@ -57,17 +58,21 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	if err != nil {
 		return app.Options{}, err
 	}
+
 	ids := make([]string, 0, len(items.Items()))
 	for _, item := range items.Items() {
 		ids = append(ids, string(item.ID))
 	}
+
 	if err := catalog.ValidateItems(ids, inventory.ValidateItemText); err != nil {
 		return app.Options{}, err
 	}
+
 	shares, err := sharing.NewService(catalog, sharing.ServiceOptions{Now: time.Now})
 	if err != nil {
 		return app.Options{}, err
 	}
+
 	specs := []settings.CommandSpec{{Name: "character", Description: localization.Key("command.character"), Ephemeral: true}}
 	if development {
 		specs = append(specs, settings.CommandSpec{Name: "dev_character_damage", Description: localization.Key("command.dev_character_damage"), Ephemeral: true}, settings.CommandSpec{Name: "dev_character_defeat", Description: localization.Key("command.dev_character_defeat"), Ephemeral: true})
@@ -84,19 +89,23 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 	if err != nil {
 		return app.Options{}, err
 	}
+
 	store := settings.NewStore(builder)
 	commands, err := builder.Commands(localization.English)
 	if err != nil {
 		return app.Options{}, err
 	}
+
 	var ledger *sharingLedger
 	var projector *sharing.Projector
+
 	// Runtime finishes registration and worker construction before admitting
 	// updates. Bind refresh through that existing ordering without reordering recovery.
 	refresh := func(ctx context.Context, tx runtimecontract.DBTX, token string) error {
 		if projector == nil {
 			return errors.New("sharing: projector not initialized")
 		}
+
 		return projector.Refresh(ctx, tx, token)
 	}
 	return app.Options{
@@ -105,6 +114,7 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			if err := supplies.Prepare(ctx, tx); err != nil {
 				return err
 			}
+
 			return store.Prepare(ctx, tx, time.Now())
 		},
 		Register: func(r app.Registrations) error {
@@ -112,13 +122,16 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			if err != nil {
 				return err
 			}
+
 			if err := sharing.Register(r.Registry, shares, ledger, refresh, store.Resolve); err != nil {
 				return err
 			}
+
 			characterPresentation := character.Presentation{Catalog: catalog, Resolve: store.Resolve, Sharing: shares}
 			if err := character.Register(r.Registry, characters, time.Now, characterPresentation); err != nil {
 				return err
 			}
+
 			if development {
 				if err := character.RegisterDevelopment(r.Registry, characters, time.Now, characterPresentation); err != nil {
 					return err
@@ -128,6 +141,7 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			if err := inventory.Register(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
 				return err
 			}
+
 			if inventoryDevelopment {
 				if err := inventory.RegisterDevelopment(r.Registry, supplies, time.Now, inventoryPresentation); err != nil {
 					return err
@@ -136,9 +150,11 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			if err := settings.Register(r.Registry, store, catalog, r.Membership, time.Now); err != nil {
 				return err
 			}
+
 			if cfg.DevSmoke {
 				return devsmoke.Register(r.Registry, time.Now, devsmoke.Presentation{Catalog: catalog, Resolve: store.Resolve})
 			}
+
 			return nil
 		},
 		Workers: []app.WorkerFactory{{Name: "group_menu", New: func(tx runtimecontract.Transactor, menus runtimecontract.GroupMenuWriter) (app.Worker, error) {
@@ -147,10 +163,12 @@ func productionOptions(cfg config.Config, lookup config.LookupEnv) (app.Options,
 			if ledger == nil {
 				return nil, errors.New("sharing: delivery ledger not initialized")
 			}
+
 			worker, err := sharing.NewProjector(tx, ledger, catalog, store.Resolve, time.Now)
 			if err != nil {
 				return nil, err
 			}
+
 			projector = worker
 			return worker, nil
 		}}},

@@ -17,6 +17,7 @@ type characterRecord struct {
 
 func updateCharacter(ctx context.Context, tx runtimecontract.DBTX, snapshot contract.Snapshot, recoveryHealth, previousRevision int64) error {
 	var deadline, recovery any
+
 	if snapshot.State == contract.StateIncapacitated {
 		deadline, recovery = snapshot.RecoverAt.UnixMilli(), recoveryHealth
 	}
@@ -24,13 +25,16 @@ func updateCharacter(ctx context.Context, tx runtimecontract.DBTX, snapshot cont
 	if err != nil {
 		return contract.NewStorageError(err)
 	}
+
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return contract.NewStorageError(err)
 	}
+
 	if affected != 1 {
 		return contract.NewStorageError(errors.New("character revision invariant failed"))
 	}
+
 	return nil
 }
 
@@ -39,10 +43,12 @@ func insertCharacter(ctx context.Context, tx runtimecontract.DBTX, id contract.I
 	if err != nil {
 		return false, contract.NewStorageError(err)
 	}
+
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return false, contract.NewStorageError(err)
 	}
+
 	return affected == 1, nil
 }
 
@@ -65,17 +71,22 @@ func readCharacter(ctx context.Context, tx runtimecontract.DBTX, query string, i
 			err = contract.NewStorageError(errors.Join(err, closeErr))
 		}
 	}()
+
 	if !rows.Next() {
 		if rowErr := rows.Err(); rowErr != nil {
 			return characterRecord{}, false, contract.NewStorageError(rowErr)
 		}
+
 		return characterRecord{}, false, nil
 	}
+
 	var recoverAt, recoveryHealth sql.NullInt64
+
 	snapshot := &record.snapshot
 	if scanErr := rows.Scan(&snapshot.ID, &snapshot.UserID, &snapshot.MaxHealth, &snapshot.Health, &snapshot.Attack, &snapshot.Defense, &recoverAt, &recoveryHealth, &snapshot.Revision); scanErr != nil {
 		return characterRecord{}, false, contract.NewStorageError(scanErr)
 	}
+
 	snapshot.State = contract.StateActive
 	if recoverAt.Valid {
 		snapshot.State = contract.StateIncapacitated
@@ -85,8 +96,10 @@ func readCharacter(ctx context.Context, tx runtimecontract.DBTX, query string, i
 	if rows.Next() {
 		return characterRecord{}, false, contract.NewStorageError(errors.New("character ownership invariant failed"))
 	}
+
 	if rowErr := rows.Err(); rowErr != nil {
 		return characterRecord{}, false, contract.NewStorageError(rowErr)
 	}
+
 	return record, true, nil
 }

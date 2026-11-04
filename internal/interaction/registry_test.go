@@ -38,6 +38,7 @@ func TestRegistryResolvesOnlyRegisteredOwners(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	registry.Seal()
 	for _, tt := range []struct {
 		name  string
@@ -59,11 +60,13 @@ func TestRegistryResolvesOnlyRegisteredOwners(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, ok := registry.Resolve(tt.event)
+
 			if got != tt.want || ok != (tt.want != nil) {
 				t.Fatalf("Resolve() = (%v, %v), want (%v, %v)", got, ok, tt.want, tt.want != nil)
 			}
 		})
 	}
+
 	if command.calls+callback.calls+message.calls != 0 {
 		t.Fatal("route resolution invoked a handler")
 	}
@@ -87,6 +90,7 @@ func TestRegistryRejectsAmbiguousOwnership(t *testing.T) {
 			if err := tt.register(r, owner); err != nil {
 				t.Fatal(err)
 			}
+
 			for _, contender := range []Handler{&recordingHandler{}, owner} {
 				if err := tt.conflict(r, contender); !errors.Is(err, ErrRouteConflict) {
 					t.Fatalf("conflict = %v, want ErrRouteConflict", err)
@@ -104,11 +108,13 @@ func TestRegistryRejectsInvalidRegistrationsWithoutReservingRoutes(t *testing.T)
 			t.Errorf("RegisterCommand(%q) = %v", name, err)
 		}
 	}
+
 	for _, prefix := range []CallbackPrefix{"", CallbackPrefix(strings.Repeat("a", 65)), "\xff"} {
 		if err := r.RegisterCallback(prefix, h); !errors.Is(err, ErrInvalidRoute) {
 			t.Errorf("RegisterCallback(%q) = %v", prefix, err)
 		}
 	}
+
 	for _, handler := range []Handler{nil, (*recordingHandler)(nil)} {
 		for _, err := range []error{r.RegisterCommand("valid", handler), r.RegisterCallback("valid:", handler), r.RegisterGroupMessages(handler)} {
 			if !errors.Is(err, ErrInvalidHandler) {
@@ -116,6 +122,7 @@ func TestRegistryRejectsInvalidRegistrationsWithoutReservingRoutes(t *testing.T)
 			}
 		}
 	}
+
 	for _, err := range []error{r.RegisterCommand("valid", h), r.RegisterCallback("valid:", h), r.RegisterCallback("valid_other:", h), r.RegisterGroupMessages(h)} {
 		if err != nil {
 			t.Fatal(err)
@@ -133,6 +140,7 @@ func TestRegistrySealsBeforeReadinessAndHasNoBuiltInRoutes(t *testing.T) {
 			t.Errorf("registration after Seal() = %v", err)
 		}
 	}
+
 	for _, event := range []Event{Command{Identity: testIdentity(), Name: "feature"}, Callback{Identity: testIdentity(), Data: "feature:"}, GroupMessage{Identity: testIdentity(), Text: "anything"}} {
 		if handler, ok := r.Resolve(event); handler != nil || ok {
 			t.Fatalf("empty registry resolved %T", event)
@@ -146,10 +154,12 @@ func TestRegistryDoesNotAdmitEventsUntilSealed(t *testing.T) {
 	if err := r.RegisterCommand("feature", h); err != nil {
 		t.Fatal(err)
 	}
+
 	event := &Command{Identity: testIdentity(), Name: "feature"}
 	if owner, ok := r.Resolve(event); owner != nil || ok {
 		t.Fatal("event admitted before registration closed")
 	}
+
 	r.Seal()
 	if owner, ok := r.Resolve(event); owner != h || !ok {
 		t.Fatal("sealed event did not resolve")
@@ -160,10 +170,12 @@ func TestConcurrentRegistrationHasOneOwner(t *testing.T) {
 	r := NewRegistry()
 	const contenders = 16
 	var wg sync.WaitGroup
+
 	results := make(chan error, contenders)
 	for range contenders {
 		wg.Go(func() { results <- r.RegisterCallback("feature:", &recordingHandler{}) })
 	}
+
 	wg.Wait()
 	close(results)
 	winners := 0
@@ -174,9 +186,11 @@ func TestConcurrentRegistrationHasOneOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	if winners != 1 {
 		t.Fatalf("owners = %d, want 1", winners)
 	}
+
 	r.Seal()
 	for range contenders {
 		wg.Go(func() {
@@ -185,6 +199,7 @@ func TestConcurrentRegistrationHasOneOwner(t *testing.T) {
 			}
 		})
 	}
+
 	wg.Wait()
 }
 
@@ -194,6 +209,7 @@ func TestRegistryOnlyResolvesGroupInteractions(t *testing.T) {
 	if err := r.RegisterGroupMessages(h); err != nil {
 		t.Fatal(err)
 	}
+
 	r.Seal()
 	for _, tt := range []struct {
 		kind runtimecontract.ChatKind
@@ -223,19 +239,24 @@ func TestEventsPreserveTypedIdentitiesAndOpaqueFeatureContent(t *testing.T) {
 			t.Fatalf("identity lost in %T", event)
 		}
 	}
+
 	r := NewRegistry()
 	h := &recordingHandler{}
 	if err := r.RegisterCallback("feature:", h); err != nil {
 		t.Fatal(err)
 	}
+
 	r.Seal()
 	resolved, ok := r.Resolve(callback)
+
 	if !ok {
 		t.Fatal("callback did not resolve")
 	}
+
 	if _, err := resolved.Handle(context.Background(), nil, callback); err != nil {
 		t.Fatal(err)
 	}
+
 	if !reflect.DeepEqual(h.event, callback) {
 		t.Fatal("opaque event changed")
 	}

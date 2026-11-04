@@ -20,19 +20,24 @@ func Register(registry *interaction.Registry, now func() time.Time, p Presentati
 	if err := p.validate(); err != nil {
 		return err
 	}
+
 	if registry == nil || now == nil {
 		return errors.New("devsmoke: invalid registration")
 	}
+
 	h := smokeHandler{now: now, presentation: p}
 	if err := registry.RegisterCommand("dev_smoke", h); err != nil {
 		return err
 	}
+
 	if err := registry.RegisterCommand("dev_smoke_ephemeral", h); err != nil {
 		return err
 	}
+
 	if err := registry.RegisterCallback("dev_smoke:", h); err != nil {
 		return err
 	}
+
 	return registry.RegisterGroupMessages(h)
 }
 
@@ -43,11 +48,13 @@ type smokeHandler struct {
 
 func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 	var identity interaction.Identity
+
 	switch e := event.(type) {
 	case interaction.Command:
 		if e.Name == "dev_smoke_ephemeral" && e.EphemeralMessageID <= 0 {
 			return interaction.HandlerResult{}, errIncomingRequired
 		}
+
 		identity = e.Identity
 	case interaction.Callback:
 		identity = e.Identity
@@ -56,19 +63,23 @@ func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 	default:
 		return interaction.HandlerResult{}, nil
 	}
+
 	locale, err := h.presentation.Resolve(ctx, scope.DBTX(), identity.Chat)
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	translate := func(key localization.Key) (string, error) {
 		return h.presentation.Catalog.Text(locale, key, nil)
 	}
 
 	var authorization runtimecontract.EphemeralAuthorization
+
 	text, err := translate("smoke.received")
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	switch e := event.(type) {
 	case interaction.Command:
 		identity = e.Identity
@@ -76,6 +87,7 @@ func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 			if e.EphemeralMessageID <= 0 {
 				return interaction.HandlerResult{}, errIncomingRequired
 			}
+
 			authorization = runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(e.EphemeralMessageID), ValidUntil: h.now().Add(15 * time.Second)}
 			text, err = translate("smoke.ephemeral")
 			if err != nil {
@@ -86,10 +98,12 @@ func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
+
 			button, err := translate("smoke.button")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
+
 			response := runtimecontract.PublicResponse{Destination: destination(identity), Content: runtimecontract.MessageContent{Text: public, Buttons: [][]runtimecontract.InlineButton{{{Text: button, CallbackData: "dev_smoke:reply"}}}}}
 			return result(response), nil
 		}
@@ -103,9 +117,11 @@ func (h smokeHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 	case interaction.GroupMessage:
 		identity = e.Identity
 	}
+
 	if authorization != nil {
 		return result(runtimecontract.EphemeralResponse{Destination: destination(identity), TargetUserID: identity.User, Authorization: authorization, Content: runtimecontract.MessageContent{Text: text}}), nil
 	}
+
 	return result(runtimecontract.PublicResponse{Destination: destination(identity), Content: runtimecontract.MessageContent{Text: text}}), nil
 }
 

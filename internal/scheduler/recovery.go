@@ -14,10 +14,12 @@ func (s *Service) Recover(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	transactor, ok := s.db.(runtimecontract.Transactor)
 	if !ok || isNil(transactor) {
 		return ErrTransactionRequired
 	}
+
 	err := transactor.WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		now := s.clock.Now().UTC().UnixMilli()
 		_, err := tx.ExecContext(ctx, `UPDATE scheduled_jobs SET
@@ -31,5 +33,6 @@ func (s *Service) Recover(ctx context.Context) error {
 	if err != nil {
 		return storeError("recover", err)
 	}
+
 	return nil
 }

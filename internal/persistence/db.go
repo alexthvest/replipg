@@ -67,6 +67,7 @@ func Open(ctx context.Context, opts Options) (*DB, error) {
 	if err != nil {
 		return nil, &OpenError{Stage: "open"}
 	}
+
 	raw.SetMaxOpenConns(maxOpenConnections)
 	raw.SetMaxIdleConns(maxOpenConnections)
 	raw.SetConnMaxLifetime(0)
@@ -78,11 +79,14 @@ func Open(ctx context.Context, opts Options) (*DB, error) {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
+
 		if errors.Is(err, ErrContention) {
 			return nil, err
 		}
+
 		return nil, &OpenError{Stage: "verification"}
 	}
+
 	return db, nil
 }
 
@@ -92,6 +96,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 	if err := db.available(ctx); err != nil {
 		return nil, err
 	}
+
 	result, err := db.sql.ExecContext(ctx, query, args...)
 	return result, mapError(ctx, err)
 }
@@ -102,6 +107,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 	if err := db.available(ctx); err != nil {
 		return nil, err
 	}
+
 	rows, err := db.sql.QueryContext(ctx, query, args...)
 	return rows, mapError(ctx, err)
 }
@@ -125,9 +131,11 @@ func (db *DB) available(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	if db.closed.Load() {
 		return ErrPersistenceClosed
 	}
+
 	return nil
 }
 
@@ -135,22 +143,27 @@ func validateOptions(opts Options) error {
 	if opts.StorageFilesystem != config.FilesystemLocal {
 		return &OptionsError{Field: "StorageFilesystem", Reason: "must declare local storage"}
 	}
+
 	if strings.IndexByte(opts.StorageDir, 0) >= 0 ||
 		!filepath.IsAbs(opts.StorageDir) ||
 		filepath.Clean(opts.StorageDir) != opts.StorageDir ||
 		opts.StorageDir == string(filepath.Separator) {
 		return &OptionsError{Field: "StorageDir", Reason: "must be an absolute clean non-root path"}
 	}
+
 	if opts.BusyTimeout < minBusyTimeout || opts.BusyTimeout > maxBusyTimeout {
 		return &OptionsError{Field: "BusyTimeout", Reason: "must be within supported bounds"}
 	}
+
 	info, err := os.Stat(opts.StorageDir)
 	if err != nil {
 		return &OptionsError{Field: "StorageDir", Reason: "must be an existing accessible directory"}
 	}
+
 	if !info.IsDir() {
 		return &OptionsError{Field: "StorageDir", Reason: "must be a directory"}
 	}
+
 	return nil
 }
 
@@ -159,12 +172,15 @@ func rejectUnsafeDatabaseEntry(path string) error {
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
+
 	if err != nil {
 		return &OptionsError{Field: "StorageDir", Reason: "database entry is not accessible"}
 	}
+
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return &OptionsError{Field: "StorageDir", Reason: "database entry must be a regular file"}
 	}
+
 	return nil
 }
 
@@ -191,9 +207,11 @@ func (db *DB) verify(ctx context.Context, busyTimeout time.Duration) error {
 	}
 
 	var journalMode string
+
 	if err := conn.QueryRowContext(ctx, `PRAGMA journal_mode`).Scan(&journalMode); err != nil {
 		return mapError(ctx, err)
 	}
+
 	if !strings.EqualFold(journalMode, "wal") {
 		return errors.New("unexpected journal mode")
 	}
@@ -209,9 +227,11 @@ func (db *DB) verify(ctx context.Context, busyTimeout time.Duration) error {
 	}
 	for _, setting := range settings {
 		var got int
+
 		if err := conn.QueryRowContext(ctx, `PRAGMA `+setting.pragma).Scan(&got); err != nil {
 			return mapError(ctx, err)
 		}
+
 		if got != setting.want {
 			return errors.New("unexpected SQLite setting")
 		}

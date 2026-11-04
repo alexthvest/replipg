@@ -48,11 +48,14 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			assertCommands := func(commands []runtimecontract.CommandDeclaration) {
 				t.Helper()
+
 				if len(commands) != 3 {
 					t.Fatalf("command visibility changed: %+v", commands)
 				}
+
 				for i, name := range []string{"character", "inventory", "settings"} {
 					if commands[i].Name != name || !commands[i].Ephemeral {
 						t.Fatalf("command contract changed: %+v", commands)
@@ -64,18 +67,22 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			if err := db.WithinTransaction(t.Context(), options.Prepare); err != nil {
 				t.Fatal(err)
 			}
+
 			store := outbox.NewStore(db, outbox.Options{})
 			registry := interaction.NewRegistry()
 			if err := options.Register(app.Registrations{Registry: registry, Outbox: store, Membership: inventoryMilestoneMembership{}}); err != nil {
 				t.Fatal(err)
 			}
+
 			var projector, menusWorker app.Worker
+
 			menus := &inventoryMilestoneMenus{}
 			for _, factory := range options.Workers {
 				worker, err := factory.New(db, menus)
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				switch factory.Name {
 				case "menu_sharing":
 					projector = worker
@@ -83,9 +90,11 @@ func TestSharingInventoryMilestone(t *testing.T) {
 					menusWorker = worker
 				}
 			}
+
 			if projector == nil || menusWorker == nil {
 				t.Fatal("missing production workers")
 			}
+
 			registry.Seal()
 			store.Seal()
 			requests := make(chan map[string]string, 64)
@@ -95,20 +104,24 @@ func TestSharingInventoryMilestone(t *testing.T) {
 					_, _ = io.WriteString(w, `{"ok":true,"result":{"id":123,"is_bot":true}}`)
 					return
 				}
+
 				if !strings.HasSuffix(r.URL.Path, "/sendMessage") && !strings.HasSuffix(r.URL.Path, "/editEphemeralMessageText") {
 					t.Error("unexpected Telegram method")
 					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
+
 				if err := r.ParseMultipartForm(1 << 20); err != nil {
 					t.Error(err)
 					return
 				}
 				defer func() { _ = r.MultipartForm.RemoveAll() }()
+
 				fields := map[string]string{"method": r.URL.Path}
 				for key := range r.MultipartForm.Value {
 					fields[key] = r.FormValue(key)
 				}
+
 				requests <- fields
 				if strings.HasSuffix(r.URL.Path, "/editEphemeralMessageText") {
 					_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
@@ -119,15 +132,18 @@ func TestSharingInventoryMilestone(t *testing.T) {
 				}
 			}))
 			defer server.Close()
+
 			client, err := telegram.NewClient(t.Context(), telegram.ClientConfig{Token: "42:fixture", BaseURL: server.URL, HTTPClient: server.Client(), RequestTimeout: time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			sender := telegram.NewDelivery(client, time.Now)
 			worker, err := outbox.NewWorker(store, outbox.WorkerOptions{Delivery: sharingProductionDelivery{sender}})
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			run := func(worker app.Worker) {
 				t.Helper()
 				if worked, err := worker.RunOnce(t.Context()); err != nil || !worked {
@@ -135,6 +151,7 @@ func TestSharingInventoryMilestone(t *testing.T) {
 				}
 			}
 			var update runtimecontract.UpdateID
+
 			identity := func(user runtimecontract.UserID) interaction.Identity {
 				update++
 				return interaction.Identity{Update: update, User: user, Chat: -100, ChatKind: runtimecontract.ChatKindSupergroup}
@@ -142,37 +159,49 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			dispatch := func(event interaction.Event) runtimecontract.EphemeralResponse {
 				t.Helper()
 				handler, ok := registry.Resolve(event)
+
 				if !ok {
 					t.Fatal("missing production route")
 				}
+
 				if preparing, ok := handler.(interaction.PreparingHandler); ok {
 					handler, err = preparing.Prepare(t.Context(), event)
 					if err != nil {
 						t.Fatal(err)
 					}
 				}
+
 				var result interaction.HandlerResult
+
 				if err := db.WithinTransaction(t.Context(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 					var err error
+
 					result, err = handler.Handle(ctx, sharingProductionScope{tx, store}, event)
 					return err
 				}); err != nil {
 					t.Fatal(err)
 				}
+
 				if len(result.ImmediateResponses) != 1 {
 					t.Fatalf("expected one personal response, got %d", len(result.ImmediateResponses))
 				}
+
 				personal, ok := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 				if !ok {
 					t.Fatal("interaction became public")
 				}
+
 				if _, err := sender.SendEphemeral(t.Context(), personal); err != nil {
 					t.Fatal(err)
 				}
+
 				fields := <-requests
+
 				if fields["ephemeral_message_parameters"] == "" && fields["receiver_user_id"] != "7" && fields["receiver_user_id"] != "8" {
 					t.Fatal("browsing/guidance lost restricted transport")
 				}
+
 				return personal
 			}
 			command := func(user runtimecontract.UserID, name interaction.CommandName) runtimecontract.EphemeralResponse {
@@ -187,6 +216,7 @@ func TestSharingInventoryMilestone(t *testing.T) {
 						}
 					}
 				}
+
 				t.Fatalf("missing %q button in %+v", label, view.Content.Buttons)
 				return ""
 			}
@@ -195,6 +225,7 @@ func TestSharingInventoryMilestone(t *testing.T) {
 				body := view.Content
 				body.Buttons = nil
 				var callbacks []string
+
 				for _, row := range view.Content.Buttons {
 					for _, b := range row {
 						callbacks = append(callbacks, b.CallbackData)
@@ -205,9 +236,11 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			publicCount := func() int {
 				t.Helper()
 				var n int
+
 				if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM outbound_deliveries WHERE kind='menu_share_public'`).Scan(&n); err != nil {
 					t.Fatal(err)
 				}
+
 				return n
 			}
 			switchLocale := func(target string) {
@@ -220,21 +253,25 @@ func TestSharingInventoryMilestone(t *testing.T) {
 						}
 					}
 				}
+
 				label := "English"
 				if target == "ru" {
 					label = "Русский"
 				}
 				press(7, settings, button(settings, label))
 				var saved string
+
 				if err := db.QueryRowContext(t.Context(), `SELECT locale FROM group_settings WHERE chat_id=-100`).Scan(&saved); err != nil || saved != target {
 					t.Fatalf("admin locale: %s %v", saved, err)
 				}
+
 				run(menusWorker)
 				assertCommands(menus.commands)
 				wantDescription := "Inspect your inventory"
 				if target == "ru" {
 					wantDescription = "Посмотреть инвентарь"
 				}
+
 				if menus.commands[1].Description != wantDescription {
 					t.Fatal("group menu failed to follow locale")
 				}
@@ -254,34 +291,43 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			unequipped := press(7, equipped, button(equipped, unequip))
 			navigated := press(7, unequipped, button(unequipped, back))
 			button(navigated, shareLabel)
+
 			if publicCount() != 0 {
 				t.Fatal("ordinary equipment browsing queued a snapshot")
 			}
+
 			gameplay := func() string {
 				t.Helper()
 				var state string
+
 				if err := db.QueryRowContext(t.Context(), `SELECT json_array((SELECT json_group_array(json_array(id,user_id,max_health,health,attack,defense,recover_at_ms,recovery_health,revision)) FROM characters),(SELECT json_group_array(json_array(character_id,revision)) FROM inventories),(SELECT json_group_array(json_array(character_id,item_id,quantity)) FROM inventory_items),(SELECT json_group_array(json_array(character_id,slot,item_id)) FROM inventory_equipment),(SELECT count(*) FROM inventory_operations))`).Scan(&state); err != nil {
 					t.Fatal(err)
 				}
+
 				return state
 			}
 			before := gameplay()
 			var copies []map[string]string
+
 			share := func(view runtimecontract.EphemeralResponse, label, pending, success string) {
 				t.Helper()
 				accepted := press(7, view, button(view, label))
+
 				if !strings.Contains(accepted.Content.Text, pending) {
 					t.Fatalf("pending guidance: %q", accepted.Content.Text)
 				}
+
 				run(worker)
 				fields := <-requests
 				attribution := "Shared by user 7"
 				if locale == "ru" {
 					attribution = "Поделился пользователь 7"
 				}
+
 				if fields["text"] != view.Content.Text+"\n\n"+attribution || fields["chat_id"] != "-100" || fields["ephemeral_message_parameters"] != "" || fields["reply_markup"] != "" || fields["reply_parameters"] != "" || !strings.HasSuffix(fields["method"], "/sendMessage") {
 					t.Fatalf("invalid read-only public snapshot: %+v", fields)
 				}
+
 				copies = append(copies, fields)
 				run(projector)
 				run(worker)
@@ -289,6 +335,7 @@ func TestSharingInventoryMilestone(t *testing.T) {
 				var auth struct {
 					Receiver int64 `json:"receiver_user_id"`
 				}
+
 				if err := json.Unmarshal([]byte(feedback["ephemeral_message_parameters"]), &auth); err != nil || auth.Receiver != 7 || !strings.Contains(feedback["text"], success) {
 					t.Fatalf("personal outcome: %+v %v", feedback, err)
 				}
@@ -300,9 +347,11 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			share(navigated, shareLabel, pending, success)
 			first := copies[0]["text"]
 			blocked := press(7, navigated, button(navigated, shareLabel))
+
 			if !strings.Contains(blocked.Content.Text, cooldown) || publicCount() != 1 {
 				t.Fatal("double tap was not personally suppressed")
 			}
+
 			// Simulate an elapsed success interval in this isolated DB; production uses
 			// time.Now. Exact 29.999s/30s boundaries use fake clocks in core tests.
 			token := strings.TrimPrefix(button(navigated, shareLabel), "share:v1:")
@@ -310,13 +359,17 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if n, err := result.RowsAffected(); err != nil || n != 1 {
 				t.Fatalf("elapsed interval setup: %d %v", n, err)
 			}
+
 			share(navigated, shareLabel, pending, success)
+
 			if len(copies) != 2 || copies[0]["text"] != first || copies[1]["text"] != first || publicCount() != 2 {
 				t.Fatal("intentional repost did not retain both identical copies")
 			}
+
 			// A newly opened detail freezes this locale, while all new guidance follows
 			// the administrator's subsequent language selection.
 			oldPage := command(7, "inventory")
@@ -330,9 +383,11 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			fresh := command(7, "inventory")
 			button(fresh, newLabel)
 			member := command(8, "settings")
+
 			if len(member.Content.Buttons) != 0 {
 				t.Fatal("ordinary member gained settings authority")
 			}
+
 			// Even an owner's control cannot authorize another user's settings change.
 			admin := command(7, "settings")
 			target := "English"
@@ -341,20 +396,26 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			}
 			press(8, admin, button(admin, target))
 			var saved string
+
 			if err := db.QueryRowContext(t.Context(), `SELECT locale FROM group_settings WHERE chat_id=-100`).Scan(&saved); err != nil || saved != nextLocale {
 				t.Fatal("ordinary member changed group language")
 			}
+
 			share(oldDetail, shareLabel, newPending, newSuccess)
 			denied := press(7, oldDetail, button(oldDetail, shareLabel))
+
 			if !strings.Contains(denied.Content.Text, newCooldown) || publicCount() != 3 {
 				t.Fatal("cooldown guidance ignored current language")
 			}
+
 			if copies[0]["text"] != first || copies[1]["text"] != first || !strings.HasPrefix(copies[2]["text"], oldDetail.Content.Text+"\n\n") {
 				t.Fatal("language switch changed a captured snapshot")
 			}
+
 			if !reflect.DeepEqual(options.Commands, []runtimecontract.CommandDeclaration{{Name: "character", Description: "Inspect your character", Ephemeral: true}, {Name: "inventory", Description: "Inspect your inventory", Ephemeral: true}, {Name: "settings", Description: "Inspect group language settings", Ephemeral: true}}) {
 				t.Fatal("sharing changed global command declarations")
 			}
+
 			if gameplay() != before {
 				t.Fatal("sharing/settings changed gameplay state")
 			}

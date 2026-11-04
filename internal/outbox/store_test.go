@@ -21,35 +21,44 @@ func TestEnqueueRecordsDelivery(t *testing.T) {
 	store := newTestStore(t, db, now, publicResponse())
 	req := deliveryRequest(t, 1)
 	var id runtimecontract.DeliveryID
+
 	err := db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 		var err error
+
 		id, err = store.Enqueue(ctx, tx, req)
 		return err
 	})
 	if err != nil {
 		t.Fatalf("Enqueue() must persist accepted intent: %v", err)
 	}
+
 	if len(id) != 32 {
 		t.Fatalf("delivery ID must be an opaque 128-bit identifier: %q", id)
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	db = openDB(t, dir)
 	store = newTestStore(t, db, now, publicResponse())
 	status, err := store.Status(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if status.State != StatePending || status.Attempts != 0 || status.MaxAttempts != 3 || !status.NextAttemptAt.Equal(now) || !status.CreatedAt.Equal(now) {
 		t.Fatalf("persisted status = %+v", status)
 	}
+
 	var content []byte
 	var version, initial, max, chat int64
+
 	err = db.QueryRowContext(context.Background(), `SELECT content, content_version, initial_delay_ms, max_delay_ms, destination_chat_id FROM outbound_deliveries WHERE id = ?`, id).Scan(&content, &version, &initial, &max, &chat)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if string(content) != string(req.Payload.Data()) || version != 1 || initial != 1000 || max != 10000 || chat != -123 {
 		t.Fatal("request bytes, schema, retry policy or destination changed")
 	}
@@ -64,23 +73,30 @@ func TestEnqueueRollbackAndConflict(t *testing.T) {
 		if _, err := store.Enqueue(ctx, tx, deliveryRequest(t, 1)); err != nil {
 			return err
 		}
+
 		return abort
 	})
 	if !errors.Is(err, abort) {
 		t.Fatalf("rollback = %v", err)
 	}
+
 	if _, err := store.Status(context.Background(), "fixed-id"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("rolled-back status = %v", err)
 	}
+
 	if err := enqueue(t, db, store, deliveryRequest(t, 1)); err != nil {
 		t.Fatal(err)
 	}
+
 	err = enqueue(t, db, store, deliveryRequest(t, 1))
 	var conflict *ConflictError
+
 	if !errors.Is(err, ErrConflict) || !errors.As(err, &conflict) {
 		t.Fatalf("collision = %v", err)
 	}
+
 	var count int
+
 	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM outbound_deliveries`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("collision changed durable intent: %d, %v", count, err)
 	}
@@ -106,12 +122,15 @@ func TestValidationAndVersionErrorsBeforeInsert(t *testing.T) {
 			if err == nil {
 				t.Fatal("invalid request accepted")
 			}
+
 			if tc.target != nil && !errors.Is(err, tc.target) {
 				t.Fatalf("error = %v", err)
 			}
 		})
 	}
+
 	var count int
+
 	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM outbound_deliveries`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("invalid intents persisted: %d, %v", count, err)
 	}
@@ -157,11 +176,14 @@ func TestEphemeralRoutingMetadata(t *testing.T) {
 			if err := enqueue(t, db, store, deliveryRequest(t, 1)); err != nil {
 				t.Fatal(err)
 			}
+
 			var kind string
 			var target, replace int64
+
 			if err := db.QueryRowContext(context.Background(), `SELECT authorization_kind, target_user_id, replace_callback_message FROM outbound_deliveries`).Scan(&kind, &target, &replace); err != nil {
 				t.Fatal(err)
 			}
+
 			if kind != tc.wantKind || target != 42 || (replace == 1) != tc.replace {
 				t.Fatal("ephemeral metadata changed")
 			}
@@ -176,8 +198,10 @@ func TestSafeStatusForEveryState(t *testing.T) {
 	if err := enqueue(t, db, store, deliveryRequest(t, 1)); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, state := range []State{StatePending, StateAttempting, StateRetrying, StateReconciliationRequired, StateCompleted, StatePermanentFailure} {
 		var next, terminal any
+
 		if state == StatePending || state == StateRetrying {
 			next = int64(1000)
 		}
@@ -188,33 +212,41 @@ func TestSafeStatusForEveryState(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		status, err := store.Status(context.Background(), "fixed-id")
 		if err != nil || status.State != state {
 			t.Fatalf("status = %+v, %v", status, err)
 		}
+
 		if err := db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 			transactional, err := store.StatusInTransaction(ctx, tx, "fixed-id")
 			if err != nil {
 				return err
 			}
+
 			if transactional != status {
 				t.Errorf("transactional status = %+v, want %+v", transactional, status)
 			}
+
 			return nil
 		}); err != nil {
 			t.Fatal(err)
 		}
+
 		if strings.Contains(fmt.Sprintf("%+v", status), "sensitive") || strings.Contains(fmt.Sprintf("%+v", status), "private") {
 			t.Fatal("status leaks content")
 		}
 	}
+
 	if _, err := db.ExecContext(context.Background(), `UPDATE outbound_deliveries SET reason_code = 'retry_exhausted' WHERE id = 'fixed-id'`); err != nil {
 		t.Fatal(err)
 	}
+
 	status, err := store.Status(context.Background(), "fixed-id")
 	if err != nil || status.ReasonCode != "retry_exhausted" {
 		t.Fatalf("safe failure reason = %+v, %v", status, err)
 	}
+
 	typ := reflect.TypeFor[DeliveryStatus]()
 	for _, forbidden := range []string{"Content", "Payload", "Kind", "Destination", "Authorization"} {
 		if _, ok := typ.FieldByName(forbidden); ok {
@@ -229,27 +261,33 @@ func TestRegistrySealingAndDecoderFailures(t *testing.T) {
 	if err := store.Register("feature", 1, func(runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) { return nil, nil }); !errors.Is(err, ErrRegistrationConflict) {
 		t.Fatalf("duplicate registration = %v", err)
 	}
+
 	if err := store.Register("bad", 1, nil); err == nil {
 		t.Fatal("nil decoder accepted")
 	}
+
 	if err := store.Register("", 1, func(runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) { return nil, nil }); err == nil {
 		t.Fatal("empty kind accepted")
 	}
+
 	if err := store.Register("broken", 1, func(runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) {
 		return nil, errors.New("private response secret")
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	req := deliveryRequest(t, 1)
 	req.Kind = "broken"
 	err := enqueue(t, db, store, req)
 	if !errors.Is(err, ErrDecode) || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("unsafe decode failure = %v", err)
 	}
+
 	store.Seal()
 	if err := store.Register("late", 1, func(runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) { return nil, nil }); !errors.Is(err, ErrRegistrySealed) {
 		t.Fatalf("late registration = %v", err)
 	}
+
 	if err := enqueue(t, db, store, deliveryRequest(t, 1)); err != nil {
 		t.Fatal(err)
 	}
@@ -265,10 +303,13 @@ func TestRetryDurationsRoundUpWithoutEarlyRetry(t *testing.T) {
 			t.Fatalf("valid duration rejected: %v", err)
 		}
 	}
+
 	var initial, max int64
+
 	if err := db.QueryRowContext(context.Background(), `SELECT initial_delay_ms, max_delay_ms FROM outbound_deliveries ORDER BY initial_delay_ms DESC LIMIT 1`).Scan(&initial, &max); err != nil {
 		t.Fatal(err)
 	}
+
 	if initial != 2 || max != 2 {
 		t.Fatalf("retry rounded down: %d %d", initial, max)
 	}
@@ -278,19 +319,23 @@ func TestNilTransactionAndSafeStorageErrors(t *testing.T) {
 	db := openDB(t, t.TempDir())
 	store := newTestStore(t, db, time.Unix(1000, 0), publicResponse())
 	var typedNil *persistence.DB
+
 	for _, tx := range []runtimecontract.DBTX{nil, typedNil} {
 		if _, err := store.Enqueue(context.Background(), tx, deliveryRequest(t, 1)); err == nil {
 			t.Fatal("nil transaction accepted")
 		}
 	}
+
 	for _, sentinel := range []error{persistence.ErrContention, persistence.ErrPersistenceClosed, context.Canceled, context.DeadlineExceeded} {
 		if err := storageError(context.Background(), fmt.Errorf("unsafe raw error: %w", sentinel)); !errors.Is(err, sentinel) || strings.Contains(err.Error(), "unsafe") {
 			t.Fatalf("storage error = %v", err)
 		}
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := store.Status(context.Background(), "missing"); !errors.Is(err, persistence.ErrPersistenceClosed) {
 		t.Fatalf("closed storage status = %v", err)
 	}
@@ -307,13 +352,16 @@ func openDB(t *testing.T, dir string) *persistence.DB {
 			t.Error(err)
 		}
 	})
+
 	migrations, err := persistence.RuntimeMigrations()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(context.Background(), migrations); err != nil {
 		t.Fatal(err)
 	}
+
 	return db
 }
 
@@ -323,6 +371,7 @@ func newTestStore(t *testing.T, db runtimecontract.DBTX, now time.Time, response
 	if err := store.Register("feature", 1, func(runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) { return response, nil }); err != nil {
 		t.Fatal(err)
 	}
+
 	return store
 }
 
@@ -332,6 +381,7 @@ func deliveryRequest(t *testing.T, version uint16) runtimecontract.DeliveryReque
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return runtimecontract.DeliveryRequest{Kind: "feature", Payload: payload, Retry: runtimecontract.RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: 10 * time.Second}}
 }
 
@@ -358,25 +408,31 @@ func TestStatusInTransactionReadsCallerWrites(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		if _, err := tx.ExecContext(ctx, `UPDATE outbound_deliveries SET state='completed',next_attempt_at=NULL,terminal_at=?,updated_at=?,reason_code='private raw failure' WHERE id=?`, now.UnixMilli()+20, now.UnixMilli()+30, id); err != nil {
 			return err
 		}
+
 		status, err := store.StatusInTransaction(ctx, tx, id)
 		if err != nil {
 			t.Errorf("transaction status: %v", err)
 			return abort
 		}
+
 		if status.ID != id || status.State != StateCompleted || !status.TerminalAt.Equal(now.Add(20*time.Millisecond)) || !status.UpdatedAt.Equal(now.Add(30*time.Millisecond)) || status.ReasonCode != "delivery_failed" {
 			t.Errorf("transaction status = %+v", status)
 		}
+
 		if _, err := store.StatusInTransaction(ctx, tx, "missing"); !errors.Is(err, ErrNotFound) {
 			t.Errorf("missing status = %v", err)
 		}
+
 		return abort
 	})
 	if !errors.Is(err, abort) {
 		t.Fatal(err)
 	}
+
 	if _, err := store.Status(context.Background(), "transactional"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("status after rollback = %v", err)
 	}
@@ -385,18 +441,22 @@ func TestStatusInTransactionReadsCallerWrites(t *testing.T) {
 func TestStatusInTransactionValidatesCapabilityAndCancellation(t *testing.T) {
 	store := NewStore(nil, Options{})
 	var typedNil *persistence.DB
+
 	for _, tx := range []runtimecontract.DBTX{nil, typedNil} {
 		_, err := store.StatusInTransaction(context.Background(), tx, "id")
 		var invalid *runtimecontract.ValidationError
+
 		if !errors.As(err, &invalid) {
 			t.Errorf("nil transaction = %v", err)
 		}
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := store.StatusInTransaction(ctx, nil, "id"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled status = %v", err)
 	}
+
 	db := openDB(t, t.TempDir())
 	if _, err := store.StatusInTransaction(context.Background(), db, ""); err == nil {
 		t.Fatal("empty ID accepted")

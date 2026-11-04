@@ -24,25 +24,32 @@ func TestCatalogEmbeddedAndCopies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	items := catalog.Items()
+
 	if len(items) < 4 {
 		t.Fatalf("items = %v", items)
 	}
+
 	coin, ok := catalog.Lookup("coin")
 	if !ok || coin.Category != contract.CategoryInert || coin.AttackBonus != 0 || coin.DefenseBonus != 0 || coin.HealingHP != 0 {
 		t.Fatalf("coin = %+v, %v", coin, ok)
 	}
+
 	if _, ok := catalog.Lookup("absent"); ok {
 		t.Fatal("unknown item found")
 	}
+
 	beforeItems, beforeStarter := catalog.Items(), catalog.Starter()
 	items[0].ID = "changed"
 	coin.ID = "changed"
 	starter := catalog.Starter()
 	starter[0].Quantity = 99
+
 	if !reflect.DeepEqual(beforeItems, catalog.Items()) || !reflect.DeepEqual(beforeStarter, catalog.Starter()) {
 		t.Fatal("returned slice mutated catalog")
 	}
+
 	again, err := LoadCatalog()
 	if err != nil || !reflect.DeepEqual(again.Items(), beforeItems) {
 		t.Fatalf("repeat load = %v, %v", again.Items(), err)
@@ -87,18 +94,22 @@ func TestCatalogValidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := strings.Replace(validCatalogJSON, tc.old, tc.replacement, 1)
+
 			if input == validCatalogJSON {
 				t.Fatal("fixture did not change")
 			}
+
 			_, err := ParseCatalog([]byte(input))
 			if !errors.Is(err, contract.ErrInvalidCatalog) {
 				t.Fatalf("error = %v", err)
 			}
+
 			if strings.Contains(err.Error(), "sensitive") || strings.Contains(err.Error(), "damage") {
 				t.Fatalf("unsafe error: %s", err)
 			}
 		})
 	}
+
 	for _, input := range []string{"", "null", "[]", "{}", `{"items":[],"starter":[]}`, validCatalogJSON + "{}", validCatalogJSON + " trailing"} {
 		if _, err := ParseCatalog([]byte(input)); !errors.Is(err, contract.ErrInvalidCatalog) {
 			t.Fatalf("malformed catalog error = %v", err)
@@ -113,16 +124,20 @@ func TestCatalogNumericAndUnicodeBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	stick, _ := catalog.Lookup("stick")
+
 	if stick.AttackBonus != math.MaxInt64 {
 		t.Fatalf("attack = %d", stick.AttackBonus)
 	}
+
 	for _, field := range []string{`"attack_bonus":1`, `"defense_bonus":1`} {
 		zero := strings.Replace(validCatalogJSON, field, field[:strings.LastIndex(field, ":")+1]+"0", 1)
 		if _, err := ParseCatalog([]byte(zero)); err != nil {
 			t.Fatalf("zero bonus: %v", err)
 		}
 	}
+
 	// Raw invalid UTF-8 must be rejected rather than silently replaced by JSON decoding.
 	badUTF8 := strings.Replace(validCatalogJSON, "stick", string([]byte{0xff}), 1)
 	if _, err := ParseCatalog([]byte(badUTF8)); !errors.Is(err, contract.ErrInvalidCatalog) {

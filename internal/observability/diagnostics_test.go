@@ -19,6 +19,7 @@ const sensitiveFixture = "SENSITIVE_arbitrary-context-attribute_7vK!"
 
 func TestJSONSinkEmitsOnlyAllowlistedOperationalFields(t *testing.T) {
 	var output bytes.Buffer
+
 	sink := NewJSONSink(&output)
 	retryAt := time.Date(2026, time.October, 26, 8, 9, 10, 123000000, time.FixedZone("private-zone", 3*60*60))
 	event, err := NewDiagnostic(
@@ -41,27 +42,35 @@ func TestJSONSinkEmitsOnlyAllowlistedOperationalFields(t *testing.T) {
 	sink.Emit(ctx, event)
 
 	var record map[string]any
+
 	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
 		t.Fatalf("decode diagnostic %q: %v", output.String(), err)
 	}
+
 	wantKeys := []string{"category", "chat_id", "correlation_id", "duration_ms", "operation", "outcome", "retry_at", "state"}
 	gotKeys := make([]string, 0, len(record))
 	for key := range record {
 		gotKeys = append(gotKeys, key)
 	}
+
 	sort.Strings(gotKeys)
+
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
 		t.Fatalf("record keys = %v, want %v; record=%s", gotKeys, wantKeys, output.String())
 	}
+
 	if record["category"] != "delivery" || record["correlation_id"] != "0123456789abcdef0123456789abcdef" || record["operation"] != "send_public" || record["outcome"] != "retryable" {
 		t.Fatalf("core fields = %#v", record)
 	}
+
 	if record["duration_ms"] != float64(1500) || record["retry_at"] != "2026-10-26T05:09:10.123Z" || record["state"] != "retrying" {
 		t.Fatalf("operational fields = %#v", record)
 	}
+
 	if record["chat_id"] != float64(-100202) {
 		t.Fatalf("identifier fields = %#v", record)
 	}
+
 	if strings.Contains(output.String(), sensitiveFixture) || strings.Contains(output.String(), "private-zone") {
 		t.Fatalf("diagnostic exposed sensitive context or time-zone data: %s", output.String())
 	}
@@ -89,19 +98,25 @@ func TestMachineCodeShapedSensitiveValuesAreRejected(t *testing.T) {
 				}
 
 				var output bytes.Buffer
+
 				sink := NewJSONSink(&output)
 				sink.Emit(context.Background(), event)
+
 				if output.Len() != 0 {
 					t.Fatalf("sensitive machine code emitted: %s", output.String())
 				}
+
 				_, err := NewDiagnostic(event.Category, event.CorrelationID, event.Operation, event.Outcome, event.Fields)
 				var validation *ValidationError
+
 				if !errors.As(err, &validation) {
 					t.Fatalf("error = %T %v, want *ValidationError", err, err)
 				}
+
 				if validation.Field != field {
 					t.Fatalf("field = %q, want %q", validation.Field, field)
 				}
+
 				if strings.Contains(err.Error(), fixture) {
 					t.Fatalf("validation error exposed rejected value: %v", err)
 				}
@@ -130,12 +145,16 @@ func TestIdentifierPolicyAllowsOneCategoryAppropriateIdentifier(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewDiagnostic() error = %v", err)
 			}
+
 			var output bytes.Buffer
+
 			NewJSONSink(&output).Emit(context.Background(), event)
 			var record map[string]any
+
 			if err := json.Unmarshal(output.Bytes(), &record); err != nil {
 				t.Fatalf("decode diagnostic: %v", err)
 			}
+
 			if _, exists := record[tt.key]; !exists {
 				t.Fatalf("expected %q in %s", tt.key, output.String())
 			}
@@ -171,6 +190,7 @@ func TestIdentifierPolicyRejectsExcessiveAndWrongCategoryIdentifiers(t *testing.
 			}{name: string(category) + " user", category: category, fields: SafeFields{UserID: 101}, field: "user_id"},
 		)
 	}
+
 	for _, category := range []EventCategory{CategoryStartup, CategoryReconciliation, CategoryScheduler, CategoryStorage, CategoryHealth, CategoryShutdown} {
 		for _, identifier := range []struct {
 			name   string
@@ -189,19 +209,25 @@ func TestIdentifierPolicyRejectsExcessiveAndWrongCategoryIdentifiers(t *testing.
 			}{name: string(category) + " " + identifier.name, category: category, fields: identifier.fields, field: identifier.field})
 		}
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			direct := Diagnostic{Category: tt.category, CorrelationID: correlationID, Operation: "state_change", Outcome: "ok", Fields: tt.fields}
 			var output bytes.Buffer
+
 			NewJSONSink(&output).Emit(context.Background(), direct)
+
 			if output.Len() != 0 {
 				t.Fatalf("invalid directly-built event emitted: %s", output.String())
 			}
+
 			_, err := NewDiagnostic(direct.Category, direct.CorrelationID, direct.Operation, direct.Outcome, direct.Fields)
 			var validation *ValidationError
+
 			if !errors.As(err, &validation) {
 				t.Fatalf("error = %T %v, want *ValidationError", err, err)
 			}
+
 			if validation.Field != tt.field {
 				t.Fatalf("field = %q, want %q", validation.Field, tt.field)
 			}
@@ -223,6 +249,7 @@ func TestDeclaredOperationalVocabularyIsAccepted(t *testing.T) {
 			t.Errorf("operation %q rejected: %v", operation, err)
 		}
 	}
+
 	outcomes := []string{
 		OutcomeOK, OutcomeAccepted, OutcomeCompleted, OutcomeIgnored, OutcomeSkipped,
 		OutcomeFailed, OutcomeRetryable, OutcomeIndeterminate, OutcomePermanentFailure,
@@ -233,6 +260,7 @@ func TestDeclaredOperationalVocabularyIsAccepted(t *testing.T) {
 			t.Errorf("outcome %q rejected: %v", outcome, err)
 		}
 	}
+
 	states := []string{
 		StateStarting, StateRecovering, StateReady, StateDraining, StateStopped,
 		StatePending, StateAttempting, StateClaimed, StateRetrying,
@@ -248,6 +276,7 @@ func TestDeclaredOperationalVocabularyIsAccepted(t *testing.T) {
 
 func TestJSONSinkSupportsEveryCategoryAndOmitsUnsetFields(t *testing.T) {
 	var output bytes.Buffer
+
 	sink := NewJSONSink(&output)
 	categories := []EventCategory{
 		CategoryStartup,
@@ -266,20 +295,27 @@ func TestJSONSinkSupportsEveryCategoryAndOmitsUnsetFields(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewDiagnostic(%q) error = %v", category, err)
 		}
+
 		sink.Emit(context.Background(), event)
 	}
+
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+
 	if len(lines) != len(categories) {
 		t.Fatalf("emitted %d records, want %d: %s", len(lines), len(categories), output.String())
 	}
+
 	for i, line := range lines {
 		var record map[string]any
+
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
 			t.Fatalf("decode line %d: %v", i, err)
 		}
+
 		if record["category"] != string(categories[i]) {
 			t.Fatalf("line %d category = %v, want %q", i, record["category"], categories[i])
 		}
+
 		for _, omitted := range []string{"duration_ms", "retry_at", "state", "update_id", "chat_id", "user_id"} {
 			if _, exists := record[omitted]; exists {
 				t.Fatalf("unset field %q emitted in %s", omitted, line)
@@ -330,20 +366,26 @@ func TestSensitiveOrInvalidValuesAreRejectedWithoutDisclosure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
+
 			sink := NewJSONSink(&output)
 			event := tt.event(tt.sensitive)
 			sink.Emit(context.Background(), event)
+
 			if output.Len() != 0 {
 				t.Fatalf("invalid event emitted: %s", output.String())
 			}
+
 			_, err := NewDiagnostic(event.Category, event.CorrelationID, event.Operation, event.Outcome, event.Fields)
 			var validation *ValidationError
+
 			if !errors.As(err, &validation) {
 				t.Fatalf("error = %T %v, want *ValidationError", err, err)
 			}
+
 			if validation.Field != tt.field {
 				t.Fatalf("field = %q, want %q", validation.Field, tt.field)
 			}
+
 			if tt.sensitive != "" && strings.Contains(err.Error(), tt.sensitive) {
 				t.Fatalf("validation error exposed rejected value: %v", err)
 			}
@@ -359,33 +401,41 @@ func TestGenerateCorrelationIDIsOpaqueNonemptyAndUnique(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GenerateCorrelationID() error = %v", err)
 		}
+
 		if !pattern.MatchString(string(id)) {
 			t.Fatalf("correlation ID %q has unexpected shape", id)
 		}
+
 		if _, exists := seen[id]; exists {
 			t.Fatalf("duplicate correlation ID %q", id)
 		}
+
 		seen[id] = struct{}{}
 	}
 }
 
 func TestJSONSinkIsSafeForConcurrentUse(t *testing.T) {
 	var output lockedBuffer
+
 	sink := NewJSONSink(&output)
 	event, err := NewDiagnostic(CategoryStorage, runtimecontract.CorrelationID("0123456789abcdef0123456789abcdef"), "transaction", "ok", SafeFields{Duration: time.Millisecond})
 	if err != nil {
 		t.Fatalf("NewDiagnostic() error = %v", err)
 	}
+
 	var workers sync.WaitGroup
+
 	for range 32 {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
+
 			for range 20 {
 				sink.Emit(context.Background(), event)
 			}
 		}()
 	}
+
 	workers.Wait()
 	if lines := strings.Count(strings.TrimSpace(output.String()), "\n") + 1; lines != 640 {
 		t.Fatalf("emitted %d records, want 640", lines)
@@ -402,11 +452,13 @@ type lockedBuffer struct {
 func (b *lockedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	return b.b.Write(p)
 }
 
 func (b *lockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	return b.b.String()
 }

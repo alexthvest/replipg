@@ -20,20 +20,25 @@ func TestDurableCountsAndPrivacy(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
 	migrations, err := persistence.RuntimeMigrations()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(ctx, migrations); err != nil {
 		t.Fatal(err)
 	}
+
 	source := NewWorkStatus(db)
 	empty, err := source.Snapshot(ctx)
 	if err != nil || empty != (WorkCounts{}) {
 		t.Fatalf("empty=%+v err=%v", empty, err)
 	}
+
 	for i, state := range []string{"pending", "attempting", "retrying", "reconciliation_required", "completed", "permanent_failure"} {
 		var next, terminal, reason any
+
 		if state == "pending" || state == "retrying" {
 			next = int64(100)
 		}
@@ -50,8 +55,10 @@ func TestDurableCountsAndPrivacy(t *testing.T) {
 			}
 		}
 	}
+
 	for i, state := range []string{"pending", "claimed", "retrying", "completed", "cancelled", "permanent_failure"} {
 		var next, terminal, reason, owner, correlation, lease any
+
 		if state == "retrying" {
 			next = int64(100)
 		}
@@ -73,21 +80,26 @@ func TestDurableCountsAndPrivacy(t *testing.T) {
 			}
 		}
 	}
+
 	got, err := source.Snapshot(ctx)
 	want := WorkCounts{Deliveries: DeliveryCounts{Pending: 1, Attempting: 2, Retrying: 3, ReconciliationRequired: 4, Completed: 5, PermanentFailure: 6}, Jobs: JobCounts{Pending: 1, Claimed: 2, Retrying: 3, Completed: 4, Cancelled: 5, PermanentFailure: 6}}
 	if err != nil || got != want {
 		t.Fatalf("counts=%+v want=%+v err=%v", got, want, err)
 	}
+
 	body, err := json.Marshal(got)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if strings.Contains(string(body), "private") || strings.Contains(string(body), "123") {
 		t.Fatalf("unsafe output: %s", body)
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	got, err = source.Snapshot(ctx)
 	if !errors.Is(err, ErrWorkStatusUnavailable) || got != (WorkCounts{}) {
 		t.Fatalf("failure=%+v %v", got, err)

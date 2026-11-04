@@ -14,6 +14,7 @@ func TestEquipmentRuleSlotCategories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, slot := range []contract.Slot{contract.SlotWeapon, contract.SlotArmor} {
 		for _, item := range catalog.Items() {
 			t.Run(string(slot)+"/"+string(item.Category), func(t *testing.T) {
@@ -29,6 +30,7 @@ func TestEquipmentRuleSlotCategories(t *testing.T) {
 				} else if !errors.Is(err, contract.ErrIncompatibleSlot) || changed {
 					t.Fatalf("changed=%v err=%v", changed, err)
 				}
+
 				if !reflect.DeepEqual(snapshot, before) {
 					t.Fatal("rule mutated ownership or assignments")
 				}
@@ -42,6 +44,7 @@ func TestEquipmentRuleTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, tt := range []struct {
 		name                string
 		slot                contract.Slot
@@ -74,6 +77,7 @@ func TestEquipmentRuleTransitions(t *testing.T) {
 			if changed != tt.changed || !errors.Is(err, tt.want) {
 				t.Fatalf("changed=%v err=%v; want %v %v", changed, err, tt.changed, tt.want)
 			}
+
 			if !reflect.DeepEqual(snapshot, before) {
 				t.Fatal("rule mutated snapshot")
 			}
@@ -113,6 +117,7 @@ func TestEffectiveStatsServicePort(t *testing.T) {
 	var port interface {
 		EffectiveStats(int64, int64, contract.Modifiers) (contract.CombatStats, error)
 	} = &Service{}
+
 	stats, err := port.EffectiveStats(10, 5, contract.Modifiers{Attack: 2, Defense: 3})
 	if err != nil || stats.Attack != 12 || stats.Defense != 8 {
 		t.Fatalf("consumer service port %+v %v", stats, err)

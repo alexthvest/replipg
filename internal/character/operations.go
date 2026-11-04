@@ -14,9 +14,11 @@ func checkOperation(ctx context.Context, tx runtimecontract.DBTX, change contrac
 	if err := change.Validate(); err != nil {
 		return 0, false, err
 	}
+
 	if tx == nil {
 		return 0, false, &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "transaction"}
 	}
+
 	rows, queryErr := tx.QueryContext(ctx, `SELECT character_id,kind,amount,applied_revision FROM character_operations WHERE operation_id=?`, change.OperationID)
 	if queryErr != nil {
 		return 0, false, contract.NewStorageError(queryErr)
@@ -27,27 +29,35 @@ func checkOperation(ctx context.Context, tx runtimecontract.DBTX, change contrac
 			err = contract.NewStorageError(errors.Join(err, closeErr))
 		}
 	}()
+
 	if !rows.Next() {
 		if rowErr := rows.Err(); rowErr != nil {
 			return 0, false, contract.NewStorageError(rowErr)
 		}
+
 		return 0, false, nil
 	}
+
 	var characterID contract.ID
 	var kind contract.HealthKind
 	var amount int64
+
 	if scanErr := rows.Scan(&characterID, &kind, &amount, &revision); scanErr != nil {
 		return 0, false, contract.NewStorageError(scanErr)
 	}
+
 	if rows.Next() {
 		return 0, false, contract.NewStorageError(errors.New("character operation identity invariant failed"))
 	}
+
 	if rowErr := rows.Err(); rowErr != nil {
 		return 0, false, contract.NewStorageError(rowErr)
 	}
+
 	if characterID != change.CharacterID || kind != change.Kind || amount != change.Amount {
 		return 0, false, &contract.DomainError{Kind: contract.ErrorOperationConflict}
 	}
+
 	return revision, true, nil
 }
 
@@ -57,15 +67,19 @@ func recordOperation(ctx context.Context, tx runtimecontract.DBTX, change contra
 	if err := change.Validate(); err != nil {
 		return err
 	}
+
 	if tx == nil {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "transaction"}
 	}
+
 	if appliedRevision < 1 {
 		return &contract.DomainError{Kind: contract.ErrorInvalidInput, Field: "applied_revision"}
 	}
+
 	_, err := tx.ExecContext(ctx, `INSERT INTO character_operations(operation_id,character_id,kind,amount,applied_revision) VALUES(?,?,?,?,?)`, change.OperationID, change.CharacterID, change.Kind, change.Amount, appliedRevision)
 	if err != nil {
 		return contract.NewStorageError(err)
 	}
+
 	return nil
 }

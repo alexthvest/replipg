@@ -21,9 +21,13 @@ import (
 )
 
 const retentionOtherKind runtimecontract.DeliveryKind = "retention_unrelated"
+
 const retentionBody = "private-retention-body-sentinel"
+
 const retentionUsername = "private_retention_username"
+
 const retentionCredential = "123456:private-retention-credential"
+
 const retentionQuery = "private-retention-callback"
 
 // This adapter has the same narrow kind allowlist as production. All inspection
@@ -35,6 +39,7 @@ func (l retentionLedger) Purge(ctx context.Context, tx runtimecontract.DBTX, kin
 	if kind != PublicKind && kind != FeedbackKind {
 		return false, errors.New("sharing: unsupported cleanup kind")
 	}
+
 	return l.store.PurgeResolved(ctx, tx, kind, id, cutoff)
 }
 
@@ -67,12 +72,15 @@ func newSharingRetention(t *testing.T) *sharingRetention {
 			t.Fatal(err)
 		}
 	}
+
 	f.store.Seal()
 	var err error
+
 	f.worker, err = outbox.NewWorker(f.store, outbox.WorkerOptions{Delivery: retentionTransport{f.transport}, Sleep: f.clock.Sleep})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	f.ledger = retentionLedger{recoveryLedger{f.store}}
 	resolve := func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return f.locale, nil
@@ -81,15 +89,18 @@ func newSharingRetention(t *testing.T) *sharingRetention {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	f.registry = interaction.NewRegistry()
 	if err = Register(f.registry, f.service, f.ledger, f.projector.Refresh, resolve); err != nil {
 		t.Fatal(err)
 	}
+
 	f.registry.Seal()
 	f.router = interaction.NewRouter(f.registry, f.db, f.db, f.store, nil, interaction.RouterOptions{Now: f.clock.Now, Diagnostics: observability.NewJSONSink(&f.diagnostics)})
 	f.selectView('b', contract.CharacterSummary)
 	return f
 }
+
 func (f *sharingRetention) selectView(letter byte, kind contract.ViewKind) {
 	f.t.Helper()
 	token := strings.Repeat(string(letter), 32)
@@ -110,6 +121,7 @@ func (f *sharingRetention) selectView(letter byte, kind contract.ViewKind) {
 	f.cb.ActorUsername = retentionUsername
 	f.cb.QueryID = retentionQuery
 }
+
 func (f *sharingRetention) dispatchRetention(id runtimecontract.UpdateID) interaction.DispatchOutcome {
 	f.t.Helper()
 	cb := f.cb
@@ -120,6 +132,7 @@ func (f *sharingRetention) dispatchRetention(id runtimecontract.UpdateID) intera
 	}
 	return r
 }
+
 func (f *sharingRetention) rows(id runtimecontract.DeliveryID, wantDelivery, wantAttempts int) {
 	f.t.Helper()
 	for _, check := range []struct {
@@ -127,6 +140,7 @@ func (f *sharingRetention) rows(id runtimecontract.DeliveryID, wantDelivery, wan
 		want  int
 	}{{`SELECT count(*) FROM outbound_deliveries WHERE id=?`, wantDelivery}, {`SELECT count(*) FROM outbound_attempts WHERE delivery_id=?`, wantAttempts}} {
 		var n int
+
 		if err := f.db.QueryRowContext(context.Background(), check.query, id).Scan(&n); err != nil {
 			f.t.Fatal(err)
 		}
@@ -135,23 +149,28 @@ func (f *sharingRetention) rows(id runtimecontract.DeliveryID, wantDelivery, wan
 		}
 	}
 }
+
 func (f *sharingRetention) advanceTo(at time.Time) {
 	f.t.Helper()
 	f.clock.Advance(at.Sub(f.clock.Now()))
 }
+
 func (f *sharingRetention) outcome(kind runtimecontract.DeliveryOutcomeKind) {
 	f.t.Helper()
 	f.transport.configure(kind, nil, nil)
 	var want error
+
 	if kind != runtimecontract.DeliveryAccepted {
 		want = outbox.ErrDeliveryNotCompleted
 	}
 	f.run(want)
 }
+
 func (f *sharingRetention) assertPrivate(values ...any) {
 	f.t.Helper()
 	// Hashes must not leak in the common byte/string JSON encodings either.
 	var hash []byte
+
 	if err := f.db.QueryRowContext(context.Background(), `SELECT body_hash FROM sharing_views WHERE token=?`, strings.TrimPrefix(f.cb.Data, sharePrefix)).Scan(&hash); err != nil {
 		f.t.Fatal(err)
 	}
@@ -182,54 +201,70 @@ func TestSharingRetentionIndependentOutcomes(t *testing.T) {
 			f := newSharingRetention(t)
 			f.dispatchRetention(1)
 			accepted := f.action(1)
+
 			if !bytes.Contains(f.payload(accepted.PublicDeliveryID), []byte(retentionBody)) {
 				t.Fatal("missing frozen private payload")
 			}
+
 			f.outcome(tc.public)
 			f.clock.Advance(time.Second)
 			f.project()
 			public := f.action(1)
+
 			if public.PublicState != tc.publicState || public.FeedbackState != "queued" || public.CallbackQueryID != "" || !public.CallbackDeadline.IsZero() {
 				t.Fatal("public projection or action authorization erasure failed")
 			}
+
 			// Feedback owns both an explicit JSON authorization copy and outbox columns.
 			if !bytes.Contains(f.payload(public.FeedbackDeliveryID), []byte(retentionQuery)) {
 				t.Fatal("missing original feedback authorization")
 			}
+
 			var query string
 			var expiry int64
+
 			if err := f.db.QueryRowContext(context.Background(), `SELECT callback_query_id,authorization_expires_at FROM outbound_deliveries WHERE id=?`, public.FeedbackDeliveryID).Scan(&query, &expiry); err != nil {
 				t.Fatal(err)
 			}
+
 			if query != retentionQuery || expiry != time.Unix(115, 0).UnixMilli() {
 				t.Fatal("feedback authorization changed")
 			}
+
 			f.clock.Advance(time.Second)
 			f.outcome(tc.feedback)
 			f.clock.Advance(time.Second)
 			f.project()
 			projected := f.action(1)
+
 			if projected.FeedbackState != tc.feedbackState || !projected.FeedbackPurgeAfter.After(public.PublicPurgeAfter) {
 				t.Fatal("feedback retention not independent")
 			}
+
 			for _, id := range []runtimecontract.DeliveryID{public.PublicDeliveryID, public.FeedbackDeliveryID} {
 				status, err := f.store.Status(context.Background(), id)
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				var reason string
+
 				if err := f.db.QueryRowContext(context.Background(), `SELECT coalesce(reason_code,'') FROM outbound_attempts WHERE delivery_id=?`, id).Scan(&reason); err != nil {
 					t.Fatal(err)
 				}
+
 				f.assertPrivate(status, reason)
 			}
+
 			if err := f.store.ReconcilePending(context.Background(), time.Second); err != nil {
 				t.Fatal(err)
 			}
+
 			// A trigger proves attempts are physically removed BEFORE their parent.
 			if _, err := f.db.ExecContext(context.Background(), `CREATE TRIGGER check_retention_delete_order BEFORE DELETE ON outbound_deliveries WHEN EXISTS(SELECT 1 FROM outbound_attempts WHERE delivery_id=OLD.id) BEGIN SELECT RAISE(ABORT,'attempts must be deleted first'); END`); err != nil {
 				t.Fatal(err)
 			}
+
 			f.advanceTo(public.PublicPurgeAfter.Add(-time.Millisecond))
 			f.project()
 			f.rows(public.PublicDeliveryID, 1, 1)
@@ -239,23 +274,30 @@ func TestSharingRetentionIndependentOutcomes(t *testing.T) {
 			partial := f.action(1)
 			f.rows(public.PublicDeliveryID, 0, 0)
 			f.rows(public.FeedbackDeliveryID, 1, 1)
+
 			if !partial.PublicPurged || partial.FeedbackPurged || !partial.NextCheckAt.Equal(projected.FeedbackPurgeAfter) {
 				t.Fatal("partial cleanup lost remaining due work")
 			}
+
 			f.advanceTo(projected.FeedbackPurgeAfter)
 			f.project()
 			f.rows(public.FeedbackDeliveryID, 0, 0)
 			done := f.action(1)
+
 			if !done.PublicPurged || !done.FeedbackPurged || !done.NextCheckAt.IsZero() || done.PublicState != tc.publicState || done.FeedbackState != tc.feedbackState || done.PublicDeliveryID != accepted.PublicDeliveryID {
 				t.Fatal("cleanup changed action tombstone")
 			}
+
 			var authCount int
+
 			if err := f.db.QueryRowContext(context.Background(), `SELECT count(*) FROM outbound_deliveries WHERE callback_query_id=? OR authorization_expires_at IS NOT NULL`, retentionQuery).Scan(&authCount); err != nil {
 				t.Fatal(err)
 			}
+
 			if authCount != 0 {
 				t.Fatal("private authorization survived cleanup")
 			}
+
 			// Router dedupe survives storage reopen; independently exercise the action
 			// tombstone by deleting only runtime dedupe evidence in this isolated fixture.
 			f.restart()
@@ -264,29 +306,39 @@ func TestSharingRetentionIndependentOutcomes(t *testing.T) {
 			if _, err := f.db.ExecContext(context.Background(), `DELETE FROM processed_updates WHERE update_id=1`); err != nil {
 				t.Fatal(err)
 			}
+
 			f.dispatchRetention(1)
 			f.project()
 			f.run(nil)
+
 			if f.count(PublicKind) != 0 || f.count(FeedbackKind) != 0 || len(f.transport.sent()) != 2 {
 				t.Fatal("replay or cleanup resent purged delivery")
 			}
+
 			view := func() viewRecord {
 				var v viewRecord
+
 				mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 					var err error
+
 					v, err = readView(ctx, tx, strings.TrimPrefix(f.cb.Data, sharePrefix))
 					return err
 				})
 				return v
 			}()
+
 			if view.Retired || len(view.BodyHash) != 32 || !view.UsableUntil.IsZero() {
 				t.Fatal("cleanup expired usable character metadata")
 			}
+
 			f.dispatchRetention(2)
+
 			if f.count(PublicKind) != 1 || f.action(2).PublicDeliveryID == accepted.PublicDeliveryID || len(f.transport.sent()) != 2 {
 				t.Fatal("usable character control did not accept a new deliberate share after cleanup")
 			}
+
 			f.assertPrivate()
+
 			if f.diagnostics.Len() == 0 {
 				t.Fatal("privacy assertion captured no real router diagnostics")
 			}
@@ -309,31 +361,40 @@ func TestSharingRetentionRollbackKeepsPayloadAndTombstoneAtomic(t *testing.T) {
 	if _, err := f.db.ExecContext(context.Background(), `CREATE TRIGGER interrupt_retention BEFORE UPDATE ON sharing_actions WHEN NEW.public_purged=1 BEGIN SELECT RAISE(ABORT,'private-retention-body-sentinel private_retention_username 123456:private-retention-credential private-retention-callback'); END`); err != nil {
 		t.Fatal(err)
 	}
+
 	f.advanceTo(a.FeedbackPurgeAfter)
 	worked, err := f.projector.RunOnce(context.Background())
 	if err == nil || worked {
 		t.Fatal("injected cleanup storage failure ignored")
 	}
+
 	f.assertPrivate(err)
 	f.rows(a.PublicDeliveryID, 1, 1)
 	f.rows(a.FeedbackDeliveryID, 1, 1)
 	after := f.action(1)
+
 	if after.PublicPurged || after.FeedbackPurged || after.Revision != a.Revision || !bytes.Equal(publicPayload, f.payload(a.PublicDeliveryID)) || !bytes.Equal(feedbackPayload, f.payload(a.FeedbackDeliveryID)) {
 		t.Fatal("cleanup rollback lost content, attempts or tombstone state")
 	}
+
 	f.dispatchRetention(1)
+
 	if f.count(PublicKind) != 1 || len(f.transport.sent()) != 2 {
 		t.Fatal("rollback replay requested compensating publication")
 	}
+
 	if _, err = f.db.ExecContext(context.Background(), `DROP TRIGGER interrupt_retention`); err != nil {
 		t.Fatal(err)
 	}
+
 	f.project()
 	f.rows(a.PublicDeliveryID, 0, 0)
 	f.rows(a.FeedbackDeliveryID, 0, 0)
+
 	if !f.action(1).PublicPurged || !f.action(1).FeedbackPurged {
 		t.Fatal("cleanup did not recover")
 	}
+
 	f.assertPrivate()
 }
 
@@ -348,6 +409,7 @@ func TestSharingRetentionGuardsPreserveUnresolvedAndUnrelatedWork(t *testing.T) 
 	if err != nil || claim == nil {
 		t.Fatal("feedback claim failed", err)
 	}
+
 	f.status(first.FeedbackDeliveryID, outbox.StateAttempting)
 	// A completed public attempt is deliberately left unprojected for a day.
 	f.selectView('c', contract.CharacterSummary)
@@ -360,10 +422,13 @@ func TestSharingRetentionGuardsPreserveUnresolvedAndUnrelatedWork(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	request.Kind = retentionOtherKind
 	var unrelated runtimecontract.DeliveryID
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		var err error
+
 		unrelated, err = f.store.Enqueue(ctx, tx, request)
 		return err
 	})
@@ -376,13 +441,16 @@ func TestSharingRetentionGuardsPreserveUnresolvedAndUnrelatedWork(t *testing.T) 
 	request.Kind = PublicKind
 	request.Retry.MaxAttempts = 2
 	var retrying runtimecontract.DeliveryID
+
 	// Claim the pending publication so the retrying fixture is next in FIFO.
 	pendingClaim, err := f.worker.ClaimDue(context.Background())
 	if err != nil || pendingClaim == nil {
 		t.Fatal("public claim failed", err)
 	}
+
 	mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		var err error
+
 		retrying, err = f.store.Enqueue(ctx, tx, request)
 		return err
 	})
@@ -395,6 +463,7 @@ func TestSharingRetentionGuardsPreserveUnresolvedAndUnrelatedWork(t *testing.T) 
 	for _, id := range []runtimecontract.DeliveryID{first.FeedbackDeliveryID, unprojected.PublicDeliveryID, pending.PublicDeliveryID, retrying, neverAttempted.PublicDeliveryID} {
 		before[id] = f.payload(id)
 	}
+
 	f.advanceTo(first.PublicPurgeAfter)
 	// Even an overly broad requested cutoff cannot remove active states. The
 	// composition allowlist must reject a registered, old unrelated kind.
@@ -408,34 +477,43 @@ func TestSharingRetentionGuardsPreserveUnresolvedAndUnrelatedWork(t *testing.T) 
 			if err != nil {
 				return err
 			}
+
 			if purged {
 				t.Fatal("active delivery purged")
 			}
 		}
+
 		if purged, err := f.ledger.Purge(ctx, tx, retentionOtherKind, unrelated, f.clock.Now()); err == nil || purged {
 			t.Fatal("cleanup accepted unrelated registered kind")
 		}
+
 		return nil
 	})
 	f.project()
 	f.rows(first.PublicDeliveryID, 0, 0)
 	f.rows(first.FeedbackDeliveryID, 1, 1)
 	after := f.action(1)
+
 	if !after.PublicPurged || after.FeedbackPurged || after.FeedbackState != "queued" || after.NextCheckAt.IsZero() {
 		t.Fatal("active feedback lost independent retention work")
 	}
+
 	projectedLate := f.action(2)
+
 	if projectedLate.PublicState != "succeeded" || projectedLate.PublicPurged || !projectedLate.PublicPurgeAfter.Equal(f.clock.Now().Add(24*time.Hour)) {
 		t.Fatal("unprojected work purged using old terminal time")
 	}
+
 	for id, payload := range before {
 		if !bytes.Equal(payload, f.payload(id)) {
 			t.Fatal("guarded work content changed")
 		}
 	}
+
 	if !bytes.Equal(unrelatedPayload, f.payload(unrelated)) {
 		t.Fatal("unrelated payload changed")
 	}
+
 	f.rows(unrelated, 1, 1)
 	f.rows(neverAttempted.PublicDeliveryID, 1, 0)
 	f.status(pending.PublicDeliveryID, outbox.StateAttempting)
@@ -446,12 +524,15 @@ func TestSharingRetentionGuardsPreserveUnresolvedAndUnrelatedWork(t *testing.T) 
 	if err := f.store.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	f.clock.Advance(time.Second)
 	f.project()
 	unknown := f.action(1)
+
 	if unknown.FeedbackState != "unknown" || unknown.FeedbackPurged || !unknown.FeedbackPurgeAfter.Equal(f.clock.Now().Add(24*time.Hour)) {
 		t.Fatal("unprojected quarantine was prematurely removed")
 	}
+
 	f.rows(first.FeedbackDeliveryID, 1, 1)
 	f.assertPrivate()
 }
@@ -467,8 +548,10 @@ func TestSharingRetentionRetiresInventoryAfterProjectionKeepsCharacterUsable(t *
 	f.project()
 	read := func(token string) viewRecord {
 		var v viewRecord
+
 		mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 			var err error
+
 			v, err = readView(ctx, tx, token)
 			return err
 		})
@@ -477,32 +560,40 @@ func TestSharingRetentionRetiresInventoryAfterProjectionKeepsCharacterUsable(t *
 	if v := read(inventoryToken); v.Retired || len(v.BodyHash) != 32 {
 		t.Fatal("expired inventory retired before outstanding public projection")
 	}
+
 	f.outcome(runtimecontract.DeliveryAccepted)
 	f.clock.Advance(time.Second)
 	f.project()
 	projected := f.action(1)
+
 	if projected.FeedbackState != "skipped" || !projected.FeedbackPurged || projected.CallbackQueryID != "" || !projected.CallbackDeadline.IsZero() {
 		t.Fatal("expired original authorization retained or renewed")
 	}
+
 	if v := read(inventoryToken); !v.Retired || v.BodyHash != nil {
 		t.Fatal("expired resolved inventory fingerprint survived retirement")
 	}
+
 	f.advanceTo(projected.PublicPurgeAfter)
 	f.project()
 	f.rows(a.PublicDeliveryID, 0, 0)
 	f.dispatchRetention(1)
 	f.dispatchRetention(2)
+
 	if f.count(PublicKind) != 0 || f.action(1).PublicDeliveryID != a.PublicDeliveryID || len(f.transport.sent()) != 1 {
 		t.Fatal("retired replay recreated publication")
 	}
+
 	if v := read(characterToken); v.Retired || len(v.BodyHash) != 32 || !v.UsableUntil.IsZero() {
 		t.Fatal("inventory cleanup retired character metadata")
 	}
+
 	f.assertPrivate()
 	// The operational tombstone contains no body or callback authorization.
 	tombstone, err := json.Marshal(f.action(1))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	f.assertPrivate(string(tombstone))
 }

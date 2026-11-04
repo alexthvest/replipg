@@ -15,9 +15,11 @@ import (
 type commandScope struct{ tx runtimecontract.DBTX }
 
 func (s commandScope) DBTX() runtimecontract.DBTX { return s.tx }
+
 func (commandScope) EnqueueDelivery(context.Context, runtimecontract.DeliveryRequest) (runtimecontract.DeliveryID, error) {
 	panic("unexpected durable response")
 }
+
 func (commandScope) Schedule(context.Context, runtimecontract.JobRequest) (runtimecontract.JobID, error) {
 	panic("unexpected scheduled work")
 }
@@ -40,6 +42,7 @@ var commandNow = time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
 func authorizedCommand() interaction.Command {
 	return interaction.Command{Identity: interaction.Identity{Update: 1, Chat: -100, User: 7, ChatKind: runtimecontract.ChatKindSupergroup}, Name: "character", EphemeralMessageID: 23, SentAt: commandNow}
 }
+
 func TestCharacterCommandAuthorization(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -65,29 +68,38 @@ func TestCharacterCommandAuthorization(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if !tc.want {
 				if service.calls != 0 || len(result.ImmediateResponses) != 0 {
 					t.Fatal("unauthorized effects")
 				}
+
 				return
 			}
+
 			if service.calls != 1 || service.user != 7 || len(result.ImmediateResponses) != 1 {
 				t.Fatal("missing actor operation")
 			}
+
 			response, ok := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 			if !ok || response.TargetUserID != 7 || response.Destination.ChatID != -100 {
 				t.Fatal("unrestricted response")
 			}
+
 			auth, ok := response.Authorization.(runtimecontract.IncomingEphemeralAuthorization)
+
 			if !ok || auth.EphemeralMessageID != 23 || !auth.ValidUntil.Equal(cmd.SentAt.Add(15*time.Second)) {
 				t.Fatal("incorrect authorization")
 			}
+
 			if err := runtimecontract.ValidateResponseAt(response, commandNow); err != nil {
 				t.Fatal(err)
 			}
 		})
 	}
 }
+
 func TestCharacterUsageAndFailures(t *testing.T) {
 	service := &fakeInspector{}
 	h := commandHandler{service: service, now: func() time.Time { return commandNow }, presentation: englishPresentation(t)}
@@ -97,10 +109,13 @@ func TestCharacterUsageAndFailures(t *testing.T) {
 	if err != nil || service.calls != 0 || len(result.ImmediateResponses) != 1 {
 		t.Fatal("usage")
 	}
+
 	response := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
+
 	if strings.Contains(response.Content.Text, cmd.Arguments) {
 		t.Fatal("leaked argument")
 	}
+
 	cmd.Arguments = ""
 	service.err = contract.NewStorageError(errors.New("private SQL"))
 	result, err = h.Handle(context.Background(), commandScope{}, cmd)

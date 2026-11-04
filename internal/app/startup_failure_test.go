@@ -41,9 +41,11 @@ func TestStartupInvalidConfigurationPreventsAcquisition(t *testing.T) {
 		},
 	})
 	var invalid *config.ConfigError
+
 	if !errors.As(err, &invalid) || invalid.Setting != config.EnvStorageDir {
 		t.Fatalf("expected typed storage setting failure, got %v", err)
 	}
+
 	if called || strings.Contains(err.Error(), startupPrivateFixture) || strings.Contains(err.Error(), cfg.BotToken()) {
 		t.Fatal("invalid configuration acquired resources or exposed a sensitive value")
 	}
@@ -89,9 +91,11 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 			cfg := testConfig(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+
 			var db *persistence.DB
 			var listener *startupListener
 			var diagnostics bytes.Buffer
+
 			requestCount, registrations, listens := 0, 0, 0
 			options := Options{
 				Diagnostics:     observability.NewJSONSink(&diagnostics),
@@ -101,17 +105,21 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 					if tc.name == "identity" || tc.name == "webhook" && strings.HasSuffix(req.URL.Path, "/deleteWebhook") {
 						return nil, errors.New(startupPrivateFixture)
 					}
+
 					return startupResponse(req), nil
 				})},
 				Open: func(ctx context.Context, opts persistence.Options) (*persistence.DB, error) {
 					if tc.name == "storage" {
 						return nil, errors.New(startupPrivateFixture)
 					}
+
 					var err error
+
 					db, err = persistence.Open(ctx, opts)
 					if err != nil {
 						return nil, err
 					}
+
 					if tc.migrate {
 						migrateStartupFixture(t, ctx, db)
 					}
@@ -127,10 +135,12 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 					if tc.name == "listener" {
 						return nil, errors.New(startupPrivateFixture)
 					}
+
 					ln, err := net.Listen("tcp", "127.0.0.1:0")
 					if err != nil {
 						return nil, err
 					}
+
 					listener = &startupListener{Listener: ln, db: db}
 					return listener, nil
 				},
@@ -139,9 +149,11 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 					if tc.name == "registration" {
 						return errors.New(startupPrivateFixture)
 					}
+
 					if tc.name == "reconciliation" {
 						return registrationsForStartup.Outbox.RegisterReconciler("feature", 1, startupReconciler{})
 					}
+
 					return nil
 				},
 			}
@@ -149,32 +161,41 @@ func TestStartupFailuresUnwindAcquiredResources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			err = app.Run(ctx)
 			assertStartupFailure(t, app, err, tc.stage, diagnostics.String(), cfg)
+
 			if requestCount != tc.requests {
 				t.Fatalf("Telegram requests = %d, want %d", requestCount, tc.requests)
 			}
+
 			if tc.stage == "storage" || tc.stage == "migrations" {
 				if listens != 0 {
 					t.Fatal("listener acquired after storage failure")
 				}
 			}
+
 			if tc.stage == "storage" || tc.stage == "migrations" || tc.stage == "health_listener" || strings.HasSuffix(tc.stage, "_recovery") {
 				if registrations != 0 {
 					t.Fatal("registration ran after earlier failure")
 				}
 			}
+
 			assertStartupResourcesClosed(t, cfg, db, listener)
+
 			if tc.name == "failing_migration" {
 				reopened, err := persistence.Open(ctx, persistence.Options{StorageDir: cfg.StorageDir, StorageFilesystem: cfg.StorageFilesystem, BusyTimeout: cfg.BusyTimeout})
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer func() { _ = reopened.Close() }()
+
 				var count int
+
 				if err := reopened.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE name IN ('runtime_cursors','schema_migrations')`).Scan(&count); err != nil {
 					t.Fatal(err)
 				}
+
 				if count != 0 {
 					t.Fatal("failed migration left partial schema")
 				}
@@ -212,8 +233,10 @@ type startupListener struct {
 func (l *startupListener) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	l.closed = true
 	var value int
+
 	l.closeErr = l.db.QueryRowContext(context.Background(), "SELECT 1").Scan(&value)
 	return l.Listener.Close()
 }
@@ -224,6 +247,7 @@ func migrateStartupFixture(t *testing.T, ctx context.Context, db *persistence.DB
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(ctx, migrations); err != nil {
 		t.Fatal(err)
 	}
@@ -232,25 +256,31 @@ func migrateStartupFixture(t *testing.T, ctx context.Context, db *persistence.DB
 func assertStartupFailure(t *testing.T, app *Runtime, err error, stage, diagnostics string, cfg config.Config) {
 	t.Helper()
 	var failure *StartupError
+
 	if !errors.As(err, &failure) || failure.Stage != stage || failure.CorrelationID == "" {
 		t.Fatalf("failure = %v, want stage %s with correlation", err, stage)
 	}
+
 	if !strings.Contains(diagnostics, string(failure.CorrelationID)) || !strings.Contains(diagnostics, `"category":"startup"`) || !strings.Contains(diagnostics, `"outcome":"failed"`) {
 		t.Fatalf("missing categorized correlated startup failure: %s", diagnostics)
 	}
+
 	for _, private := range []string{startupPrivateFixture, cfg.BotToken(), cfg.StorageDir} {
 		if strings.Contains(err.Error()+diagnostics, private) {
 			t.Fatal("startup error or diagnostic exposed sensitive fixture")
 		}
 	}
+
 	if strings.Contains(diagnostics, `"state":"ready"`) {
 		t.Fatal("startup failure transiently reported ready")
 	}
+
 	select {
 	case <-app.Ready():
 		t.Fatal("failed startup closed Ready")
 	default:
 	}
+
 	if state := app.State().Snapshot(); state.Ready || state.Lifecycle != health.Stopped {
 		t.Fatalf("failed startup state = %+v", state)
 	}
@@ -258,6 +288,7 @@ func assertStartupFailure(t *testing.T, app *Runtime, err error, stage, diagnost
 
 func assertStartupResourcesClosed(t *testing.T, cfg config.Config, db *persistence.DB, listener *startupListener) {
 	t.Helper()
+
 	if listener != nil {
 		listener.mu.Lock()
 		closed, closeErr := listener.closed, listener.closeErr
@@ -265,26 +296,33 @@ func assertStartupResourcesClosed(t *testing.T, cfg config.Config, db *persisten
 		if !closed || closeErr != nil {
 			t.Fatalf("listener must close before database: closed=%v db query=%v", closed, closeErr)
 		}
+
 		conn, err := net.DialTimeout("tcp", listener.Addr().String(), time.Second)
 		if err == nil {
 			_ = conn.Close()
 			t.Fatal("health listener still accepts connections")
 		}
 	}
+
 	if db == nil {
 		return
 	}
+
 	var value int
+
 	if err := db.QueryRowContext(context.Background(), "SELECT 1").Scan(&value); err == nil {
 		t.Fatal("runtime database still open")
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	reopened, err := persistence.Open(ctx, persistence.Options{StorageDir: cfg.StorageDir, StorageFilesystem: cfg.StorageFilesystem, BusyTimeout: cfg.BusyTimeout})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = reopened.Close() }()
+
 	if err := reopened.WithinTransaction(ctx, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		_, err := tx.ExecContext(ctx, `CREATE TABLE startup_unwind_probe(value INTEGER)`)
 		return err
@@ -299,16 +337,19 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 			cfg := testConfig(t)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
 			entered, exited := make(chan struct{}), make(chan struct{})
 			var db *persistence.DB
 			var listener *startupListener
 			var diagnostics bytes.Buffer
+
 			app, err := New(cfg, Options{
 				Diagnostics: observability.NewJSONSink(&diagnostics), TelegramBaseURL: "http://telegram.invalid",
 				HTTPClient: &http.Client{Transport: startupTransport(func(req *http.Request) (*http.Response, error) {
 					if stage == "webhook" && strings.HasSuffix(req.URL.Path, "/getMe") {
 						return startupResponse(req), nil
 					}
+
 					close(entered)
 					<-req.Context().Done()
 					close(exited)
@@ -316,6 +357,7 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 				})},
 				Open: func(ctx context.Context, opts persistence.Options) (*persistence.DB, error) {
 					var err error
+
 					db, err = persistence.Open(ctx, opts)
 					return db, err
 				},
@@ -324,6 +366,7 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 					if err != nil {
 						return nil, err
 					}
+
 					listener = &startupListener{Listener: ln, db: db}
 					return listener, nil
 				},
@@ -331,6 +374,7 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			done := make(chan error, 1)
 			go func() { done <- app.Run(ctx) }()
 			select {
@@ -338,17 +382,20 @@ func TestStartupCancellationJoinsBlockedTelegramRequest(t *testing.T) {
 			case <-time.After(3 * time.Second):
 				t.Fatal("request did not start")
 			}
+
 			cancel()
 			select {
 			case err = <-done:
 			case <-time.After(3 * time.Second):
 				t.Fatal("cancelled startup did not join owned resources")
 			}
+
 			select {
 			case <-exited:
 			default:
 				t.Fatal("HTTP request still running after Run returned")
 			}
+
 			wantStage := "telegram_identity"
 			if stage == "webhook" {
 				wantStage = "intake_initialization"

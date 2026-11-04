@@ -119,6 +119,7 @@ func validCatalogText(text string, limit int) bool {
 	if strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > limit {
 		return false
 	}
+
 	for _, r := range text {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 			return false
@@ -151,6 +152,7 @@ func strictJSON(data []byte) bool {
 	if !scanJSONValue(decoder, 0) {
 		return false
 	}
+
 	_, err := decoder.Token()
 	return errors.Is(err, io.EOF)
 }
@@ -159,14 +161,17 @@ func scanJSONValue(decoder *json.Decoder, depth int) bool {
 	if depth > 8 {
 		return false
 	}
+
 	token, err := decoder.Token()
 	if err != nil || token == nil {
 		return false
 	}
+
 	delimiter, ok := token.(json.Delim)
 	if !ok {
 		return true
 	}
+
 	switch delimiter {
 	case '{':
 		seen := make(map[string]bool)
@@ -176,6 +181,7 @@ func scanJSONValue(decoder *json.Decoder, depth int) bool {
 			if err != nil || !ok || seen[key] || !validJSONKey(key) {
 				return false
 			}
+
 			seen[key] = true
 			if !scanJSONValue(decoder, depth+1) {
 				return false
@@ -190,6 +196,7 @@ func scanJSONValue(decoder *json.Decoder, depth int) bool {
 	default:
 		return false
 	}
+
 	closing, err := decoder.Token()
 	return err == nil && ((delimiter == '{' && closing == json.Delim('}')) || (delimiter == '[' && closing == json.Delim(']')))
 }
@@ -198,6 +205,7 @@ func validJSONKey(key string) bool {
 	if key == "" {
 		return false
 	}
+
 	for i := range len(key) {
 		if (key[i] < 'a' || key[i] > 'z') && key[i] != '_' {
 			return false
@@ -211,5 +219,6 @@ func ValidateItemText(text localization.ItemText) error {
 	if !validCatalogText(text.Name, 80) || !validCatalogText(text.Description, 400) {
 		return invalidCatalog("text")
 	}
+
 	return nil
 }

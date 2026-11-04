@@ -18,15 +18,19 @@ func (s *Store) PurgeResolved(ctx context.Context, tx runtimecontract.DBTX, kind
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
+
 	if isNilDBTX(tx) {
 		return false, invalid("transaction", runtimecontract.ReasonRequired)
 	}
+
 	if kind == "" {
 		return false, invalid("delivery.kind", runtimecontract.ReasonRequired)
 	}
+
 	if id == "" {
 		return false, invalid("delivery.id", runtimecontract.ReasonRequired)
 	}
+
 	s.mu.RLock()
 	registered := false
 	for key := range s.decoders {
@@ -35,21 +39,27 @@ func (s *Store) PurgeResolved(ctx context.Context, tx runtimecontract.DBTX, kind
 			break
 		}
 	}
+
 	s.mu.RUnlock()
 	if !registered {
 		return false, &UnsupportedVersionError{}
 	}
+
 	var storedKind runtimecontract.DeliveryKind
+
 	err := tx.QueryRowContext(ctx, `SELECT kind FROM outbound_deliveries WHERE id=?`, id).Scan(&storedKind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return true, nil
 	}
+
 	if err != nil {
 		return false, storageError(ctx, err)
 	}
+
 	if storedKind != kind {
 		return false, &ConflictError{}
 	}
+
 	// Repeat eligibility in both writes so stale observations cannot remove
 	// attempts or a delivery that has returned to active work. SQLite serializes
 	// writes within the supplied transaction, including worker claims/resolution.
@@ -61,6 +71,7 @@ func (s *Store) PurgeResolved(ctx context.Context, tx runtimecontract.DBTX, kind
 	if err != nil {
 		return false, storageError(ctx, err)
 	}
+
 	result, err := tx.ExecContext(ctx, `DELETE FROM outbound_deliveries WHERE id=? AND kind=? AND (
   (state IN ('completed','permanent_failure') AND terminal_at<=?) OR
   (state='reconciliation_required' AND updated_at<=?)
@@ -68,9 +79,11 @@ func (s *Store) PurgeResolved(ctx context.Context, tx runtimecontract.DBTX, kind
 	if err != nil {
 		return false, storageError(ctx, err)
 	}
+
 	count, err := result.RowsAffected()
 	if err != nil {
 		return false, storageError(ctx, err)
 	}
+
 	return count == 1, nil
 }

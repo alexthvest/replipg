@@ -29,16 +29,20 @@ func (d *Delivery) SendPublic(ctx context.Context, req runtimecontract.PublicRes
 	if err := runtimecontract.ValidateResponse(req); err != nil {
 		return runtimecontract.DeliveryReceipt{}, err
 	}
+
 	params := publicParams(req)
 	var receipt runtimecontract.DeliveryReceipt
+
 	err := d.client.call(ctx, true, func(ctx context.Context) error {
 		message, err := d.client.bot.SendMessage(ctx, params)
 		if err != nil {
 			return err
 		}
+
 		if message == nil || message.ID <= 0 || message.Chat.ID != int64(req.Destination.ChatID) || message.EphemeralMessageID != 0 {
 			return &APIError{Kind: ErrorIndeterminate}
 		}
+
 		receipt = runtimecontract.DeliveryReceipt{ChatID: req.Destination.ChatID, MessageID: int64(message.ID)}
 		return nil
 	})
@@ -50,6 +54,7 @@ func publicParams(req runtimecontract.PublicResponse) *bot.SendMessageParams {
 	for _, entity := range req.Content.Entities {
 		params.Entities = append(params.Entities, models.MessageEntity{Type: models.MessageEntityType(entity.Kind), Offset: entity.Offset, Length: entity.Length, URL: entity.URL})
 	}
+
 	if len(req.Content.Buttons) > 0 {
 		markup := &models.InlineKeyboardMarkup{InlineKeyboard: make([][]models.InlineKeyboardButton, len(req.Content.Buttons))}
 		for i, row := range req.Content.Buttons {
@@ -58,6 +63,7 @@ func publicParams(req runtimecontract.PublicResponse) *bot.SendMessageParams {
 				markup.InlineKeyboard[i][j] = models.InlineKeyboardButton{Text: button.Text, CallbackData: button.CallbackData}
 			}
 		}
+
 		params.ReplyMarkup = markup
 	}
 	return params
@@ -68,14 +74,17 @@ func (d *Delivery) AcknowledgeCallback(ctx context.Context, req runtimecontract.
 	if err := runtimecontract.ValidateResponse(req); err != nil {
 		return err
 	}
+
 	return d.client.call(ctx, true, func(ctx context.Context) error {
 		accepted, err := d.client.bot.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: req.CallbackQueryID})
 		if err != nil {
 			return err
 		}
+
 		if !accepted {
 			return &APIError{Kind: ErrorIndeterminate}
 		}
+
 		return nil
 	})
 }
@@ -86,17 +95,22 @@ func Outcome(receipt runtimecontract.DeliveryReceipt, err error) runtimecontract
 	if err == nil {
 		return runtimecontract.DeliveryOutcome{Kind: runtimecontract.DeliveryAccepted, Receipt: &receipt}
 	}
+
 	outcome := runtimecontract.DeliveryOutcome{Kind: runtimecontract.DeliveryIndeterminate, ReasonCode: string(ErrorIndeterminate)}
 	var validation *runtimecontract.ValidationError
+
 	if errors.As(err, &validation) {
 		outcome.Kind = runtimecontract.DeliveryPermanentFailure
 		outcome.ReasonCode = string(ErrorValidation)
 		return outcome
 	}
+
 	var safe *APIError
+
 	if !errors.As(err, &safe) {
 		return outcome
 	}
+
 	switch safe.Kind {
 	case ErrorValidation, ErrorAuthorization, ErrorConflict, ErrorPermanent:
 		outcome.Kind = runtimecontract.DeliveryPermanentFailure
@@ -109,6 +123,7 @@ func Outcome(receipt runtimecontract.DeliveryReceipt, err error) runtimecontract
 	default:
 		return outcome
 	}
+
 	outcome.ReasonCode = string(safe.Kind)
 	return outcome
 }

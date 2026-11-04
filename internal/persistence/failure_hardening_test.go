@@ -57,11 +57,14 @@ func TestCancellationInterruptsImmediateLockWait(t *testing.T) {
 			close(release)
 			t.Fatalf("WithinTransaction() error = %v, want cancellation only", err)
 		}
+
 		var transactionErr *TransactionError
+
 		if !errors.As(err, &transactionErr) || transactionErr.Stage != TransactionStageBegin {
 			close(release)
 			t.Fatalf("WithinTransaction() error = %#v, want begin TransactionError", err)
 		}
+
 		if elapsed := time.Since(cancelledAt); elapsed > 500*time.Millisecond {
 			close(release)
 			t.Fatalf("cancellation took %v, want prompt lock interruption", elapsed)
@@ -75,6 +78,7 @@ func TestCancellationInterruptsImmediateLockWait(t *testing.T) {
 	if err := <-holderDone; err != nil {
 		t.Fatalf("holder transaction error = %v", err)
 	}
+
 	if err := contender.WithinTransaction(context.Background(), func(context.Context, runtimecontract.DBTX) error { return nil }); err != nil {
 		t.Fatalf("transaction after cancellation error = %v", err)
 	}
@@ -87,12 +91,15 @@ func TestCloseIsIdempotentAndPublicOperationsFailSafely(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RuntimeMigrations() error = %v", err)
 	}
+
 	if err := db.Migrate(context.Background(), set); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatalf("second Close() error = %v", err)
 	}
@@ -116,6 +123,7 @@ func TestCloseIsIdempotentAndPublicOperationsFailSafely(t *testing.T) {
 			if !errors.Is(err, ErrPersistenceClosed) {
 				t.Fatalf("operation error = %v (%T), want ErrPersistenceClosed", err, err)
 			}
+
 			for _, unsafe := range []string{dir, databaseFilename, "SELECT", "runtime_cursors", "processed_updates"} {
 				if strings.Contains(err.Error(), unsafe) {
 					t.Fatalf("closed error exposed private storage detail %q: %v", unsafe, err)
@@ -123,7 +131,9 @@ func TestCloseIsIdempotentAndPublicOperationsFailSafely(t *testing.T) {
 			}
 		})
 	}
+
 	var value int
+
 	if err := db.QueryRowContext(context.Background(), `SELECT 1`).Scan(&value); err == nil {
 		t.Fatal("QueryRowContext() after Close() error = nil")
 	} else {
@@ -151,9 +161,11 @@ func TestFailedMigrationCanRetryWithoutPartialStateOrPoolLeak(t *testing.T) {
 		if !errors.Is(err, ErrMigration) {
 			t.Fatalf("failed Migrate() error = %v, want ErrMigration", err)
 		}
+
 		if got := db.sql.Stats().InUse; got != 0 {
 			t.Fatalf("connections in use after failed migration = %d, want 0", got)
 		}
+
 		assertTableExists(t, db, "retry_partial", false)
 		assertLedgerVersions(t, db, []int{1})
 	}
@@ -161,9 +173,11 @@ func TestFailedMigrationCanRetryWithoutPartialStateOrPoolLeak(t *testing.T) {
 	if err := db.Migrate(context.Background(), working); err != nil {
 		t.Fatalf("retry Migrate() error = %v", err)
 	}
+
 	assertTableExists(t, db, "retry_complete", true)
 	assertLedgerVersions(t, db, []int{1, 2})
 	stats := db.sql.Stats()
+
 	if stats.InUse != 0 || stats.OpenConnections > maxOpenConnections {
 		t.Fatalf("pool stats after retry = %+v, want no in-use or excess connections", stats)
 	}
@@ -180,5 +194,6 @@ func openPersistenceWithTimeout(t *testing.T, dir string, timeout time.Duration)
 		t.Fatalf("Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
 	return db
 }

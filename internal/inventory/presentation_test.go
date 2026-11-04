@@ -18,6 +18,7 @@ func englishPresentation(t *testing.T) Presentation {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return Presentation{Catalog: c, Resolve: func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
 		return localization.English, nil
 	}}
@@ -32,23 +33,28 @@ func presentationWithItemText(t *testing.T, items map[string]localization.ItemTe
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		values := map[string]string{}
 		if err := json.Unmarshal(data, &values); err != nil {
 			t.Fatal(err)
 		}
+
 		for id, item := range items {
 			values["items."+id+".name"] = item.Name
 			values["items."+id+".description"] = item.Description
 		}
+
 		resources[locale], err = json.Marshal(values)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	c, err := localization.Parse(resources["en"], resources["ru"])
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	p := englishPresentation(t)
 	p.Catalog = c
 	return p
@@ -71,6 +77,7 @@ func TestRegistrationRequiresPresentation(t *testing.T) {
 			if err := register(registry, p); err == nil {
 				t.Fatal("missing presentation dependency accepted")
 			}
+
 			if err := register(registry, valid); err != nil {
 				t.Fatalf("failed validation reserved routes: %v", err)
 			}

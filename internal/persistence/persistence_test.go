@@ -23,13 +23,16 @@ func TestOpenConfiguresAndPersistsBoundedLocalSQLite(t *testing.T) {
 	if _, err := db.ExecContext(context.Background(), `CREATE TABLE task_2_1_probe (value TEXT NOT NULL)`); err != nil {
 		t.Fatalf("create probe table: %v", err)
 	}
+
 	if _, err := db.ExecContext(context.Background(), `INSERT INTO task_2_1_probe(value) VALUES (?)`, "survives"); err != nil {
 		t.Fatalf("insert probe value: %v", err)
 	}
+
 	assertSidecars(t, dir)
 	if err := db.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
+
 	if err := db.Close(); err != nil {
 		t.Fatalf("second Close() error = %v", err)
 	}
@@ -44,10 +47,13 @@ func TestOpenConfiguresAndPersistsBoundedLocalSQLite(t *testing.T) {
 			t.Errorf("rows Close() error = %v", err)
 		}
 	}()
+
 	if !rows.Next() {
 		t.Fatalf("reopened row missing: %v", rows.Err())
 	}
+
 	var value string
+
 	if err := rows.Scan(&value); err != nil || value != "survives" {
 		t.Fatalf("reopened value = %q, err = %v", value, err)
 	}
@@ -62,14 +68,17 @@ func TestOpenAppliesConnectionLocalPragmasToPool(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Conn() error = %v", err)
 		}
+
 		connections = append(connections, conn)
 		assertPragmasOn(t, conn, int(testBusyTimeout.Milliseconds()))
 	}
+
 	for _, conn := range connections {
 		if err := conn.Close(); err != nil {
 			t.Errorf("connection Close() error = %v", err)
 		}
 	}
+
 	if got := db.sql.Stats().MaxOpenConnections; got != maxOpenConnections {
 		t.Fatalf("MaxOpenConnections = %d, want %d", got, maxOpenConnections)
 	}
@@ -83,6 +92,7 @@ func TestImmediateWritesReturnTypedContentionWithinBound(t *testing.T) {
 	if _, err := holder.ExecContext(context.Background(), `CREATE TABLE task_2_1_lock (value INTEGER)`); err != nil {
 		t.Fatalf("create lock table: %v", err)
 	}
+
 	tx, err := holder.sql.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
@@ -95,10 +105,13 @@ func TestImmediateWritesReturnTypedContentionWithinBound(t *testing.T) {
 	if !errors.Is(err, ErrContention) {
 		t.Fatalf("ExecContext() error = %v, want ErrContention", err)
 	}
+
 	var contention *ContentionError
+
 	if !errors.As(err, &contention) {
 		t.Fatalf("ExecContext() error type = %T, want *ContentionError", err)
 	}
+
 	if elapsed > testBusyTimeout+500*time.Millisecond {
 		t.Fatalf("contention elapsed = %v, exceeds bounded tolerance", elapsed)
 	}
@@ -117,6 +130,7 @@ func TestOpenRejectsUnsafeStorageBeforeCreatingDatabase(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	missing := filepath.Join(dir, "missing")
 	tests := []struct {
 		name string
@@ -136,15 +150,19 @@ func TestOpenRejectsUnsafeStorageBeforeCreatingDatabase(t *testing.T) {
 			if err == nil {
 				t.Fatal("Open() error = nil")
 			}
+
 			var optionsErr *OptionsError
+
 			if !errors.As(err, &optionsErr) {
 				t.Fatalf("Open() error type = %T, want *OptionsError", err)
 			}
+
 			if strings.Contains(err.Error(), tt.opts.StorageDir) {
 				t.Fatalf("Open() error exposes storage path: %v", err)
 			}
 		})
 	}
+
 	if _, err := os.Stat(filepath.Join(missing, databaseFilename)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("unsafe open created database or directory: %v", err)
 	}
@@ -161,6 +179,7 @@ func assertPragmas(t *testing.T, db *DB, busyTimeoutMS int) {
 			t.Errorf("connection Close() error = %v", err)
 		}
 	}()
+
 	assertPragmasOn(t, conn, busyTimeoutMS)
 }
 
@@ -177,11 +196,14 @@ func assertPragmasOn(t *testing.T, conn interface {
 		{pragma: "busy_timeout", want: busyTimeoutMS},
 	}
 	var journal string
+
 	if err := conn.QueryRowContext(context.Background(), `PRAGMA journal_mode`).Scan(&journal); err != nil || strings.ToLower(journal) != "wal" {
 		t.Fatalf("journal_mode = %q, err = %v", journal, err)
 	}
+
 	for _, check := range checks {
 		var got int
+
 		if err := conn.QueryRowContext(context.Background(), `PRAGMA `+check.pragma).Scan(&got); err != nil || got != check.want {
 			t.Fatalf("%s = %d, want %d, err = %v", check.pragma, got, check.want, err)
 		}
@@ -213,5 +235,6 @@ func openTestDB(t *testing.T, dir string, timeout time.Duration) *DB {
 			t.Errorf("DB Close() error = %v", err)
 		}
 	})
+
 	return db
 }

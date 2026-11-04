@@ -47,11 +47,13 @@ func TestExecuteRejectsConfigurationBeforeConstruction(t *testing.T) {
 			env[tc.setting] = tc.value
 
 			var output bytes.Buffer
+
 			constructed := false
 			code := execute(context.Background(), commandLookup(env), func(config.Config) (runtimeRunner, error) {
 				constructed = true
 				return fakeRuntime{}, nil
 			}, &output)
+
 			if code == 0 || constructed {
 				t.Fatalf("invalid configuration: exit = %d, constructed = %v", code, constructed)
 			}
@@ -78,6 +80,7 @@ func TestExecuteMapsRuntimeOutcomes(t *testing.T) {
 			ctx := context.WithValue(context.Background(), commandContextKey{}, "preserved")
 
 			var output bytes.Buffer
+
 			constructions, runs := 0, 0
 			code := execute(ctx, commandLookup(env), func(cfg config.Config) (runtimeRunner, error) {
 				constructions++
@@ -96,6 +99,7 @@ func TestExecuteMapsRuntimeOutcomes(t *testing.T) {
 					return tc.runErr
 				}}, tc.constructErr
 			}, &output)
+
 			if code != tc.wantCode || constructions != 1 || runs != tc.wantRuns {
 				t.Fatalf("exit = %d, constructions = %d, runs = %d", code, constructions, runs)
 			}
@@ -119,6 +123,7 @@ func TestExecutePassesCancellationToRuntimeAndWaitsForReturn(t *testing.T) {
 	returned := false
 
 	var output bytes.Buffer
+
 	code := execute(ctx, commandLookup(commandEnvironment()), func(config.Config) (runtimeRunner, error) {
 		return fakeRuntime{run: func(ctx context.Context) error {
 			if !errors.Is(ctx.Err(), context.Canceled) {
@@ -130,6 +135,7 @@ func TestExecutePassesCancellationToRuntimeAndWaitsForReturn(t *testing.T) {
 			return nil
 		}}, nil
 	}, &output)
+
 	if code != 0 || !returned || output.Len() != 0 {
 		t.Fatalf("graceful cancelled runtime: exit = %d, returned = %v, diagnostic = %q", code, returned, output.String())
 	}
@@ -141,15 +147,18 @@ func TestExecutePreservesSafeStartupErrorMetadata(t *testing.T) {
 			safeErr := &app.StartupError{Stage: "identity", CorrelationID: "command-test-correlation"}
 			wrappedErr := fmt.Errorf("SECRET raw wrapper: %w", safeErr)
 			var output bytes.Buffer
+
 			code := execute(context.Background(), commandLookup(commandEnvironment()), func(config.Config) (runtimeRunner, error) {
 				if construction {
 					return nil, wrappedErr
 				}
+
 				return fakeRuntime{run: func(context.Context) error { return wrappedErr }}, nil
 			}, &output)
 			if code == 0 || !strings.Contains(output.String(), safeErr.Stage) || !strings.Contains(output.String(), string(safeErr.CorrelationID)) {
 				t.Fatalf("startup error lost safe diagnostic metadata: exit = %d, diagnostic = %q", code, output.String())
 			}
+
 			if strings.Contains(output.String(), "SECRET") {
 				t.Fatalf("startup error exposed raw wrapper: %q", output.String())
 			}
@@ -163,13 +172,16 @@ func TestProductionSmokeRequiresExplicitEnablement(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if options.Register == nil {
 			t.Fatal("explicit smoke enablement ignored")
 		}
+
 		registry := interaction.NewRegistry()
 		if err := options.Register(sharingTestRegistrations(t, registry)); err != nil {
 			t.Fatal(err)
 		}
+
 		registry.Seal()
 		identity := interaction.Identity{Update: 1, Chat: -100, User: 8, ChatKind: runtimecontract.ChatKindSupergroup}
 		for _, event := range []interaction.Event{interaction.Command{Identity: identity, Name: "dev_smoke"}, interaction.Command{Identity: identity, Name: "dev_smoke_ephemeral"}, interaction.Callback{Identity: identity, Data: "dev_smoke:reply"}, interaction.GroupMessage{Identity: identity}} {

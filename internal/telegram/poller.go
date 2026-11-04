@@ -69,6 +69,7 @@ func NewPoller(api PollingAPI, cursor CompletedCursor, options PollerOptions) (*
 	if nilPollingDependency(api) || nilPollingDependency(cursor) || options.TimeoutSeconds < 0 {
 		return nil, ErrInvalidPoller
 	}
+
 	return &Poller{api: api, cursor: cursor, options: options, started: make(chan struct{}), running: make(chan struct{})}, nil
 }
 
@@ -84,6 +85,7 @@ func (p *Poller) Initialize(ctx context.Context) (err error) {
 		p.mu.Unlock()
 		return ErrPollerState
 	}
+
 	p.state = pollerInitializing
 	p.mu.Unlock()
 	defer func() {
@@ -93,36 +95,46 @@ func (p *Poller) Initialize(ctx context.Context) (err error) {
 			p.mu.Unlock()
 		}
 	}()
+
 	if err = ctx.Err(); err != nil {
 		return err
 	}
+
 	if err = p.api.DeleteWebhook(ctx, false); err != nil {
 		return fmt.Errorf("telegram: initialize webhook: %w", err)
 	}
+
 	if err = ctx.Err(); err != nil {
 		return err
 	}
+
 	p.mu.Lock()
 	stopped := p.state != pollerInitializing
 	p.mu.Unlock()
 	if stopped {
 		return ErrPollerState
 	}
+
 	completed, err := p.cursor.CompletedUpdate(ctx)
 	if err != nil {
 		return fmt.Errorf("telegram: initialize cursor: %w", err)
 	}
+
 	if completed < 0 || completed == runtimecontract.UpdateID(math.MaxInt64) {
 		return ErrInvalidCursor
 	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	if err = ctx.Err(); err != nil {
 		return err
 	}
+
 	if p.state != pollerInitializing {
 		return ErrPollerState
 	}
+
 	p.request = GetUpdatesRequest{Offset: int64(completed) + 1, Limit: 1, Timeout: p.options.TimeoutSeconds, AllowedUpdates: []string{"message", "callback_query"}}
 	p.state = pollerInitialized
 	close(p.started)
@@ -134,9 +146,11 @@ func (p *Poller) Initialize(ctx context.Context) (err error) {
 func (p *Poller) NextRequest() (GetUpdatesRequest, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	if p.state != pollerInitialized {
 		return GetUpdatesRequest{}, ErrPollerState
 	}
+
 	request := p.request
 	request.AllowedUpdates = append([]string(nil), request.AllowedUpdates...)
 	return request, nil
@@ -158,6 +172,7 @@ func nilPollingDependency(value any) bool {
 	if value == nil {
 		return true
 	}
+
 	v := reflect.ValueOf(value)
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:

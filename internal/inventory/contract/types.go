@@ -119,6 +119,7 @@ func (id OperationID) Validate() error {
 	if len(id) == 0 || len(id) > 128 {
 		return invalid("operation_id")
 	}
+
 	return nil
 }
 
@@ -153,9 +154,11 @@ func validateTarget(operation OperationID, character charactercontract.ID) error
 	if err := operation.Validate(); err != nil {
 		return err
 	}
+
 	if err := character.Validate(); err != nil {
 		return invalid("character_id")
 	}
+
 	return nil
 }
 
@@ -164,9 +167,11 @@ func (l GrantLine) Validate() error {
 	if err := l.ItemID.Validate(); err != nil {
 		return err
 	}
+
 	if l.Quantity <= 0 {
 		return invalid("quantity")
 	}
+
 	return nil
 }
 
@@ -176,9 +181,11 @@ func (r GrantRequest) Validate() error {
 	if err := validateTarget(r.OperationID, r.CharacterID); err != nil {
 		return err
 	}
+
 	if len(r.Items) == 0 {
 		return invalid("items")
 	}
+
 	for _, line := range r.Items {
 		if err := line.Validate(); err != nil {
 			return err
@@ -192,15 +199,19 @@ func (r EquipmentChange) Validate() error {
 	if err := validateTarget(r.OperationID, r.CharacterID); err != nil {
 		return err
 	}
+
 	if !r.Slot.Valid() {
 		return invalid("slot")
 	}
+
 	if r.ExpectedRevision < 1 {
 		return invalid("expected_revision")
 	}
+
 	if r.ItemID != "" {
 		return r.ItemID.Validate()
 	}
+
 	return nil
 }
 
@@ -223,5 +234,6 @@ func (e EffectDefinition) Validate() error {
 	if e.HealingHP <= 0 {
 		return invalid("healing_hp")
 	}
+
 	return nil
 }

@@ -29,6 +29,7 @@ func RegisterDevelopment(registry *interaction.Registry, service *Service, now f
 	if err := registry.RegisterCommand("dev_inventory_grant", h); err != nil {
 		return err
 	}
+
 	return registry.RegisterCommand("dev_inventory_heal", h)
 }
 
@@ -47,16 +48,19 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 	if !ok || !authorizedInventoryCommand(command, h.now()) || (command.Name != "dev_inventory_grant" && command.Name != "dev_inventory_heal") {
 		return interaction.HandlerResult{}, nil
 	}
+
 	locale, err := h.presentation.Resolve(ctx, scope.DBTX(), command.Chat)
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	auth := runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(command.EphemeralMessageID), ValidUntil: command.SentAt.Add(15 * time.Second)}
 	respond := func(key localization.Key) (interaction.HandlerResult, error) {
 		text, err := h.presentation.Catalog.Text(locale, key, nil)
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		return inventoryResponse(command.Identity, auth, runtimecontract.MessageContent{Text: text})
 	}
 	fields := strings.Fields(command.Arguments)
@@ -74,6 +78,7 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 	if item.Validate() != nil {
 		return respond(usage)
 	}
+
 	quantity := int64(1)
 	if grant {
 		for _, r := range fields[1] {
@@ -81,29 +86,37 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 				return respond(usage)
 			}
 		}
+
 		var err error
+
 		quantity, err = strconv.ParseInt(fields[1], 10, 64)
 		if err != nil || quantity <= 0 {
 			return respond(usage)
 		}
 	}
 	var id charactercontract.ID
+
 	err = queryInventoryRows(ctx, scope.DBTX(), `SELECT id,user_id FROM characters WHERE user_id=?`, []any{command.User}, func(rows *sql.Rows) error {
 		var owner runtimecontract.UserID
+
 		if err := rows.Scan(&id, &owner); err != nil {
 			return err
 		}
+
 		if owner != command.User {
 			return errCharacterIdentity
 		}
+
 		return nil
 	})
 	if err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	if id == "" {
 		return respond("inventory.prepare")
 	}
+
 	operation := contract.OperationID(fmt.Sprintf("inventory:dev:%s:%d:%d", command.Name, command.User, command.Update))
 	if grant {
 		_, err = h.service.Grant(ctx, scope.DBTX(), contract.GrantRequest{OperationID: operation, CharacterID: id, Items: []contract.GrantLine{{ItemID: item, Quantity: quantity}}})
@@ -112,9 +125,11 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 	}
 	if err != nil {
 		var storage runtimecontract.StorageFailure
+
 		if errors.As(err, &storage) {
 			return interaction.HandlerResult{}, err
 		}
+
 		switch {
 		case errors.Is(err, contract.ErrOperationConflict):
 			return respond("inventory.conflict")
@@ -137,5 +152,6 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 	if grant {
 		return respond("inventory.granted")
 	}
+
 	return respond("inventory.healed")
 }

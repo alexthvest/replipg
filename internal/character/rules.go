@@ -14,15 +14,19 @@ func normalizeRecovery(snapshot contract.Snapshot, recoveryHealth int64, now tim
 	if err := validateRuleState(snapshot, recoveryHealth); err != nil {
 		return snapshot, recoveryHealth, false, err
 	}
+
 	if _, err := storageMilliseconds(now); err != nil {
 		return snapshot, recoveryHealth, false, err
 	}
+
 	if snapshot.State == contract.StateActive || now.Before(snapshot.RecoverAt) {
 		return snapshot, recoveryHealth, false, nil
 	}
+
 	if snapshot.Revision == math.MaxInt64 {
 		return snapshot, recoveryHealth, false, ruleError(contract.ErrorExhausted, "revision")
 	}
+
 	snapshot.Health = recoveryHealth
 	snapshot.State = contract.StateActive
 	snapshot.RecoverAt = time.Time{}
@@ -36,18 +40,23 @@ func applyHealthRule(snapshot contract.Snapshot, recoveryHealth int64, kind cont
 	if !kind.Valid() || amount < 0 {
 		return snapshot, recoveryHealth, false, ruleError(contract.ErrorInvalidInput, "health_change")
 	}
+
 	if err := validateRuleState(snapshot, recoveryHealth); err != nil {
 		return snapshot, recoveryHealth, false, err
 	}
+
 	if cfg.maxHealth <= 0 || cfg.attack < 0 || cfg.defense < 0 || cfg.incapacitationDuration <= 0 || !decimalPercent(cfg.recoveryPercent) {
 		return snapshot, recoveryHealth, false, ruleError(contract.ErrorInvalidConfig, "config")
 	}
+
 	if _, err := storageMilliseconds(now); err != nil {
 		return snapshot, recoveryHealth, false, err
 	}
+
 	if snapshot.State == contract.StateIncapacitated {
 		return snapshot, recoveryHealth, false, ruleError(contract.ErrorIncapacitated, "state")
 	}
+
 	health := snapshot.Health
 	switch kind {
 	case contract.HealthDamage:
@@ -55,12 +64,15 @@ func applyHealthRule(snapshot contract.Snapshot, recoveryHealth int64, kind cont
 	case contract.HealthHeal:
 		health += min(amount, snapshot.MaxHealth-health)
 	}
+
 	if health == snapshot.Health {
 		return snapshot, recoveryHealth, false, nil
 	}
+
 	if snapshot.Revision == math.MaxInt64 {
 		return snapshot, recoveryHealth, false, ruleError(contract.ErrorExhausted, "revision")
 	}
+
 	next := snapshot
 	next.Health = health
 	next.Revision++
@@ -69,6 +81,7 @@ func applyHealthRule(snapshot contract.Snapshot, recoveryHealth int64, kind cont
 		if err != nil {
 			return snapshot, recoveryHealth, false, err
 		}
+
 		next.State = contract.StateIncapacitated
 		next.RecoverAt = deadline
 		recoveryHealth = exactRecoveryHealth(snapshot.MaxHealth, cfg.recoveryPercent)
@@ -94,6 +107,7 @@ func validateRuleState(snapshot contract.Snapshot, recoveryHealth int64) error {
 	if snapshot.MaxHealth <= 0 || snapshot.Health < 0 || snapshot.Health > snapshot.MaxHealth || snapshot.Attack < 0 || snapshot.Defense < 0 || snapshot.Revision < 1 {
 		return ruleError(contract.ErrorInvalidInput, "state")
 	}
+
 	switch snapshot.State {
 	case contract.StateActive:
 		if snapshot.Health == 0 || !snapshot.RecoverAt.IsZero() || recoveryHealth != 0 {
@@ -103,9 +117,11 @@ func validateRuleState(snapshot contract.Snapshot, recoveryHealth int64) error {
 		if snapshot.Health != 0 || snapshot.RecoverAt.IsZero() || recoveryHealth < 1 || recoveryHealth > snapshot.MaxHealth {
 			return ruleError(contract.ErrorInvalidInput, "state")
 		}
+
 		if _, err := storageMilliseconds(snapshot.RecoverAt); err != nil {
 			return err
 		}
+
 		if snapshot.RecoverAt.Nanosecond()%int(time.Millisecond) != 0 {
 			return ruleError(contract.ErrorInvalidInput, "recover_at")
 		}
@@ -126,11 +142,13 @@ func storageMilliseconds(value time.Time) (int64, error) {
 	if !time.Unix(seconds, int64(value.Nanosecond())).Equal(value) {
 		return 0, ruleError(contract.ErrorExhausted, "time")
 	}
+
 	milliseconds := new(big.Int).Mul(big.NewInt(seconds), big.NewInt(1000))
 	milliseconds.Add(milliseconds, big.NewInt(int64(value.Nanosecond())/int64(time.Millisecond)))
 	if !milliseconds.IsInt64() {
 		return 0, ruleError(contract.ErrorExhausted, "time")
 	}
+
 	return milliseconds.Int64(), nil
 }
 
@@ -148,9 +166,11 @@ func recoveryDeadline(now time.Time, duration time.Duration) (time.Time, error) 
 	if !milliseconds.IsInt64() {
 		return time.Time{}, ruleError(contract.ErrorExhausted, "recover_at")
 	}
+
 	deadline := time.UnixMilli(milliseconds.Int64()).UTC()
 	if deadline.IsZero() || !deadline.After(now) {
 		return time.Time{}, ruleError(contract.ErrorExhausted, "recover_at")
 	}
+
 	return deadline, nil
 }

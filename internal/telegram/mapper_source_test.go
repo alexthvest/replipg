@@ -44,10 +44,13 @@ func TestDecodeCallbackSource(t *testing.T) {
 			if err != nil || got.Status != DecodeMapped {
 				t.Fatalf("callback routing changed: status=%s err=%v", got.Status, err)
 			}
+
 			callback, ok := got.Event.(interaction.Callback)
+
 			if !ok || callback.Data != "opaque:data" || callback.QueryID != "query" || callback.EphemeralMessageID != 9 {
 				t.Fatal("callback identity changed")
 			}
+
 			if !reflect.DeepEqual(callback.Source, tc.want) {
 				t.Fatal("source evidence differs from expected projection")
 			}
@@ -69,8 +72,10 @@ func TestDecodeCallbackSourceInaccessibleAndOrdinary(t *testing.T) {
 			if err != nil || got.Status != tc.status || got.CallbackQueryID != "query" {
 				t.Fatalf("callback routing changed: status=%s err=%v", got.Status, err)
 			}
+
 			if got.Event != nil {
 				callback, ok := got.Event.(interaction.Callback)
+
 				if !ok || callback.Source != nil {
 					t.Fatal("ordinary source must remain unavailable for sharing")
 				}

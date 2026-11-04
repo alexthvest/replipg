@@ -119,6 +119,7 @@ func TestLoaderRejectsInvalidSetting(t *testing.T) {
 			env[tt.setting] = tt.value
 
 			errText := assertConfigError(t, NewLoader(mapLookup(env)), tt.setting)
+
 			if tt.value != "" && strings.Contains(errText, tt.value) {
 				t.Fatalf("error exposed invalid input value: %s", errText)
 			}
@@ -198,6 +199,7 @@ func TestConfigErrorsNeverExposeInputValues(t *testing.T) {
 	}
 
 	var configErr *ConfigError
+
 	if !errors.As(err, &configErr) {
 		t.Fatalf("error type = %T, want *ConfigError", err)
 	}
@@ -241,6 +243,7 @@ func assertConfigError(t *testing.T, loader Loader, setting string) string {
 	}
 
 	var configErr *ConfigError
+
 	if !errors.As(err, &configErr) {
 		t.Fatalf("Load() error type = %T, want *ConfigError", err)
 	}
@@ -273,15 +276,19 @@ func TestOptionalDevSmokeConfiguration(t *testing.T) {
 				env[EnvDevSmoke] = tc.value
 			}
 			cfg, err := NewLoader(mapLookup(env)).Load()
+
 			if tc.invalid {
 				if err == nil || !strings.Contains(err.Error(), EnvDevSmoke) || strings.Contains(err.Error(), tc.value) && tc.value != "" {
 					t.Fatal("unsafe or missing optional setting error")
 				}
+
 				return
 			}
+
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if cfg.DevSmoke != tc.enabled || cfg.Redacted().DevSmoke != tc.enabled {
 				t.Fatal("unexpected smoke enablement")
 			}

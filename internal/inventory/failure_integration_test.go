@@ -23,16 +23,20 @@ import (
 var errInventoryFault = errors.New("sensitive SQL and inventory payload")
 
 type inventoryFaultDriver struct{}
+
 type inventoryFaultConn struct{ mode string }
+
 type inventoryFaultRows struct {
 	mode string
 	read bool
 }
 
 func init() { sql.Register("inventory_fault", inventoryFaultDriver{}) }
+
 func (inventoryFaultDriver) Open(mode string) (driver.Conn, error) {
 	return inventoryFaultConn{mode}, nil
 }
+
 func (inventoryFaultConn) Prepare(string) (driver.Stmt, error) { return nil, errInventoryFault }
 func (inventoryFaultConn) Begin() (driver.Tx, error)           { return nil, errInventoryFault }
 func (inventoryFaultConn) Close() error                        { return nil }
@@ -40,22 +44,29 @@ func (c inventoryFaultConn) QueryContext(context.Context, string, []driver.Named
 	if c.mode == "query" {
 		return nil, errInventoryFault
 	}
+
 	return &inventoryFaultRows{mode: c.mode}, nil
 }
+
 func (*inventoryFaultRows) Columns() []string { return []string{"id", "user_id"} }
+
 func (r *inventoryFaultRows) Close() error {
 	if r.mode == "close" {
 		return errInventoryFault
 	}
+
 	return nil
 }
+
 func (r *inventoryFaultRows) Next(values []driver.Value) error {
 	if r.mode == "iteration" {
 		return errInventoryFault
 	}
+
 	if r.read {
 		return io.EOF
 	}
+
 	r.read = true
 	values[0] = inventoryTestCharacter
 	values[1] = int64(42)
@@ -64,6 +75,7 @@ func (r *inventoryFaultRows) Next(values []driver.Value) error {
 	}
 	return nil
 }
+
 func TestInventoryReadFailureClassificationAndPrivacy(t *testing.T) {
 	_, catalog, clock, _ := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
@@ -74,16 +86,20 @@ func TestInventoryReadFailureClassificationAndPrivacy(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = raw.Close() }()
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
 			if mode == "cancel" {
 				cancel()
 			}
 			_, err = service.Inspect(ctx, raw, inventoryTestCharacter)
 			var storage runtimecontract.StorageFailure
+
 			if !errors.As(err, &storage) || !errors.Is(err, contract.ErrStorage) || strings.Contains(err.Error(), "sensitive") {
 				t.Fatalf("unsafe unclassified error %v", err)
 			}
+
 			if mode == "cancel" {
 				if !errors.Is(err, context.Canceled) {
 					t.Fatal("cancellation cause lost")
@@ -99,10 +115,12 @@ func TestInventoryBusyTransactionRemainsRetryable(t *testing.T) {
 	db, catalog, clock, dir := inventoryFixture(t)
 	service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
 	var id charactercontract.ID
+
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		if err := service.Prepare(ctx, tx); err != nil {
 			return err
 		}
+
 		opened, err := service.Open(ctx, tx, 42)
 		id = opened.Current.CharacterID
 		return err
@@ -112,11 +130,13 @@ func TestInventoryBusyTransactionRemainsRetryable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = lock.Close() }()
+
 	lock.SetMaxOpenConns(1)
 	if _, err := lock.ExecContext(context.Background(), `BEGIN IMMEDIATE`); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = lock.ExecContext(context.Background(), `ROLLBACK`) }()
+
 	request := contract.GrantRequest{OperationID: "fault:busy:grant", CharacterID: id, Items: []contract.GrantLine{{ItemID: "coin", Quantity: 1}}}
 	err = db.WithinTransaction(context.Background(), func(ctx context.Context, tx runtimecontract.DBTX) error {
 		_, err := service.Grant(ctx, tx, request)
@@ -125,24 +145,30 @@ func TestInventoryBusyTransactionRemainsRetryable(t *testing.T) {
 	if !errors.Is(err, persistence.ErrContention) || !persistence.IsStorageFailure(err) {
 		t.Fatalf("busy failure not retryable: %v", err)
 	}
+
 	if _, err := lock.ExecContext(context.Background(), `ROLLBACK`); err != nil {
 		t.Fatal(err)
 	}
+
 	inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 		quantity, err := ownedQuantity(ctx, tx, id, "coin")
 		if err != nil {
 			return err
 		}
+
 		if quantity != 10 {
 			t.Fatal("busy operation partially changed items")
 		}
+
 		result, err := service.Grant(ctx, tx, request)
 		if err != nil {
 			return err
 		}
+
 		if !result.Applied {
 			t.Fatal("busy failure consumed identity")
 		}
+
 		return nil
 	})
 }
@@ -169,8 +195,10 @@ func (tx inventoryCleanupFault) ExecContext(ctx context.Context, query string, a
 	if strings.HasPrefix(query, tx.stage) {
 		return nil, errInventoryFault
 	}
+
 	return tx.DBTX.ExecContext(ctx, query, args...)
 }
+
 func TestInventoryCallbackCleanupFailureRemainsRetryable(t *testing.T) {
 	for _, stage := range []string{"ROLLBACK TO SAVEPOINT", "RELEASE SAVEPOINT"} {
 		t.Run(stage, func(t *testing.T) {
@@ -178,14 +206,17 @@ func TestInventoryCallbackCleanupFailureRemainsRetryable(t *testing.T) {
 			service := inventoryService(t, catalog, inventoryCharacters(t, clock.Now), clock.Now)
 			var token string
 			var before contract.Snapshot
+
 			inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 				if err := service.Prepare(ctx, tx); err != nil {
 					return err
 				}
+
 				opened, err := service.Open(ctx, tx, 42)
 				if err != nil {
 					return err
 				}
+
 				before = opened.Current
 				token, err = createControl(ctx, tx, clock.Now(), inventoryControl{UserID: 42, ChatID: -1, CharacterID: before.CharacterID, Action: "equip", ItemID: "stick", Slot: contract.SlotWeapon, ExpectedRevision: before.Revision - 1})
 				return err
@@ -201,29 +232,38 @@ func TestInventoryCallbackCleanupFailureRemainsRetryable(t *testing.T) {
 			})); err != nil {
 				t.Fatal(err)
 			}
+
 			registry.Seal()
 			var diagnostics bytes.Buffer
+
 			router := interaction.NewRouter(registry, db, db, nil, nil, interaction.RouterOptions{Now: clock.Now, Diagnostics: observability.NewJSONSink(&diagnostics)})
 			event := interaction.Callback{EphemeralMessageID: 900, Identity: interaction.Identity{Update: 77, Chat: -1, User: 42, ChatKind: runtimecontract.ChatKindGroup}, QueryID: "callback-storage-failure", Data: token}
 			result, err := router.Dispatch(context.Background(), event)
 			var storage runtimecontract.StorageFailure
+
 			if err == nil || !errors.As(err, &storage) || len(result.ImmediateResponses) != 0 || result.Status != "" {
 				t.Fatalf("cleanup became completed personal response %+v err%v", result, err)
 			}
+
 			if diagnostics.Len() != 0 {
 				t.Fatal("storage failure emitted terminal diagnostics")
 			}
+
 			if _, found, err := db.TerminalOutcome(context.Background(), 77); err != nil || found {
 				t.Fatal("failed update marked terminal")
 			}
+
 			if cursor, err := db.CompletedUpdate(context.Background()); err != nil || cursor != 0 {
 				t.Fatal("failed update advanced cursor")
 			}
+
 			inventoryTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 				after, _, err := readInventory(ctx, tx, catalog, before.CharacterID)
+
 				if !reflect.DeepEqual(after, before) {
 					t.Fatal("cleanup failure altered state")
 				}
+
 				return err
 			})
 			fail = false

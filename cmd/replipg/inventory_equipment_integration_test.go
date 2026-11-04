@@ -19,14 +19,17 @@ func buildEquipmentBinary(t *testing.T, ctx context.Context) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	raw, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var catalog struct {
 		Items   []map[string]any `json:"items"`
 		Starter []map[string]any `json:"starter"`
 	}
+
 	if err = json.Unmarshal(raw, &catalog); err != nil {
 		t.Fatal(err)
 	}
@@ -36,30 +39,36 @@ func buildEquipmentBinary(t *testing.T, ctx context.Context) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	dir := t.TempDir()
 	replacement := filepath.Join(dir, "items.json")
 	if err = os.WriteFile(replacement, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
+
 	replacements := localizedItemOverlay(t, source, replacement, map[string][2]string{"sword": {"Sword", "Equipment replacement fixture."}})
 	overlay, err := json.Marshal(map[string]any{"Replace": replacements})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	path := filepath.Join(dir, "overlay.json")
 	if err = os.WriteFile(path, overlay, 0600); err != nil {
 		t.Fatal(err)
 	}
+
 	binary := filepath.Join(dir, "replipg")
 	if output, err := exec.CommandContext(ctx, "go", "build", "-overlay", path, "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build equipment executable: %v\n%s", err, output)
 	}
+
 	return binary
 }
 
 func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+
 	binary := buildEquipmentBinary(t, ctx)
 	dir := t.TempDir()
 	h := startInventoryBinary(t, ctx, binary, dir, 5, true)
@@ -80,14 +89,17 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 	base := call(-100, "/character", false)
 	db := inventoryBinaryDB(t, dir)
 	defer func() { _ = db.Close() }()
+
 	// Capture every persisted character field: inventory must not revise health,
 	// recovery or base combat attributes as a side effect of equipment changes.
 	characterState := func() string {
 		t.Helper()
 		var state string
+
 		if err := db.QueryRowContext(ctx, `SELECT json_array(id,user_id,max_health,health,attack,defense,recover_at_ms,recovery_health,revision) FROM characters WHERE user_id=7`).Scan(&state); err != nil {
 			t.Fatal(err)
 		}
+
 		return state
 	}
 	before := characterState()
@@ -104,6 +116,7 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 		t.Fatal("foreign equipment control disclosed inventory")
 	default:
 	}
+
 	assertText(call(-100, equipStick, true), "Owned: 1", "\nEquipped")
 	assertText(call(-200, stale, true), "Inventory changed")
 	page := call(-100, "/inventory", false)
@@ -124,6 +137,7 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 	if got := call(-100, "/character", false); got.text != base.text {
 		t.Fatal("equipment changed character UI")
 	}
+
 	h.stop(t)
 	next := startInventoryBinary(t, ctx, binary, dir, 5, false)
 	next.id = h.id
@@ -133,9 +147,11 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 	page = call(-200, "/inventory", false)
 	assertText(page, "Weapon: Empty", "Armor: Leather armor (+1 defense)", "Bonuses: +0 attack, +1 defense", "Stick (1)", "Sword (2)")
 	h.stop(t)
+
 	if characterState() != before {
 		t.Fatal("equipment altered persisted character base state")
 	}
+
 	for query, want := range map[string]int{
 		`SELECT count(*) FROM inventory_equipment WHERE slot='armor' AND item_id='cloth_armor'`: 1,
 		`SELECT count(*) FROM inventory_equipment`:                                              1,
@@ -145,6 +161,7 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 		`SELECT count(*) FROM inventory_items WHERE (item_id='coin' AND quantity=10) OR (item_id='stick' AND quantity=1) OR (item_id='cloth_armor' AND quantity=1) OR (item_id='healing_potion' AND quantity=3) OR (item_id='sword' AND quantity=2)`: 5,
 	} {
 		var got int
+
 		if err := db.QueryRowContext(ctx, query).Scan(&got); err != nil || got != want {
 			t.Fatalf("equipment persistence: got %d want %d err %v", got, want, err)
 		}

@@ -15,6 +15,7 @@ func (db *DB) WithinTransaction(ctx context.Context, fn func(context.Context, ru
 	if err := db.available(ctx); err != nil {
 		return err
 	}
+
 	if fn == nil {
 		return &TransactionError{Stage: TransactionStageCallback, cause: ErrNilTransactionCallback}
 	}
@@ -23,12 +24,14 @@ func (db *DB) WithinTransaction(ctx context.Context, fn func(context.Context, ru
 	if err != nil {
 		return transactionOperationError(TransactionStageBegin, ctx, err)
 	}
+
 	finalized := false
 	defer func() {
 		panicValue := recover()
 		if panicValue == nil {
 			return
 		}
+
 		if !finalized {
 			rollbackAfterPanic(tx)
 			finalized = true
@@ -44,18 +47,22 @@ func (db *DB) WithinTransaction(ctx context.Context, fn func(context.Context, ru
 		if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
 			return transactionOperationError(TransactionStageRollback, ctx, rollbackErr)
 		}
+
 		return callbackErr
 	}
+
 	err = tx.Commit()
 	finalized = true
 	if err != nil {
 		return transactionOperationError(TransactionStageCommit, ctx, err)
 	}
+
 	return nil
 }
 
 func rollbackAfterPanic(tx *sql.Tx) {
 	defer func() { _ = recover() }()
+
 	_ = tx.Rollback()
 }
 

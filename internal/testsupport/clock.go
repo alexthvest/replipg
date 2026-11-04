@@ -94,14 +94,17 @@ func (c *ManualClock) Advance(d time.Duration) {
 	c.now = c.now.Add(d)
 	now := c.now
 	var due []*ManualTimer
+
 	for timer, deadline := range c.timers {
 		if deadline.After(now) {
 			continue
 		}
+
 		delete(c.timers, timer)
 		timer.active = false
 		due = append(due, timer)
 	}
+
 	if len(due) > 0 {
 		c.signalChangeLocked()
 	}
@@ -129,6 +132,7 @@ func (c *ManualClock) WaitForTimers(ctx context.Context, count int) error {
 			c.mu.Unlock()
 			return nil
 		}
+
 		changed := c.changed
 		c.mu.Unlock()
 
@@ -160,6 +164,7 @@ func (t *ManualTimer) Stop() bool {
 	if !t.active {
 		return false
 	}
+
 	delete(c.timers, t)
 	t.active = false
 	c.signalChangeLocked()

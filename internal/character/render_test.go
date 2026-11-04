@@ -17,18 +17,22 @@ func TestRenderSummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, part := range []string{"Character created", "100/100", "Attack: 10", "Defense: 5", "active"} {
 		if !strings.Contains(first, part) {
 			t.Fatalf("missing %s", part)
 		}
 	}
+
 	again, err := renderLocalizedSummary(catalog, localization.English, snapshot, false)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if strings.Contains(again, "created") {
 		t.Fatal("repeat creation notice")
 	}
+
 	snapshot.Health = 0
 	snapshot.State = contract.StateIncapacitated
 	snapshot.RecoverAt = time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
@@ -36,15 +40,18 @@ func TestRenderSummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !strings.Contains(got, "incapacitated") || !strings.Contains(got, "2026-10-27T12:00:00Z") {
 		t.Fatal(got)
 	}
 }
+
 func TestRenderDomainError(t *testing.T) {
 	catalog := englishPresentation(t).Catalog
 	if got, err := renderLocalizedDomainError(catalog, localization.English, contract.ErrIncapacitated); err != nil || got == "" {
 		t.Fatal("missing rejection")
 	}
+
 	if got, err := renderLocalizedDomainError(catalog, localization.English, errors.New("private fixture")); err != nil || got != "" {
 		t.Fatal("unexpected error rendered")
 	}

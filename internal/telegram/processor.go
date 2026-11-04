@@ -39,6 +39,7 @@ func NewProcessor(router UpdateRouter, sender runtimecontract.Sender, options Pr
 	if nilPollingDependency(router) || nilPollingDependency(sender) {
 		return nil, ErrInvalidProcessor
 	}
+
 	if nilPollingDependency(options.Diagnostics) {
 		options.Diagnostics = observability.NewJSONSink(os.Stderr)
 	}
@@ -52,6 +53,7 @@ func (p *Processor) ProcessUpdate(ctx context.Context, update DecodedUpdate) err
 	if ctx.Err() != nil || update.UpdateID <= 0 {
 		return ErrUpdateProcessing
 	}
+
 	switch update.Status {
 	case DecodeMapped:
 		if nilPollingDependency(update.Event) || update.Event.UpdateID() != update.UpdateID {
@@ -61,12 +63,15 @@ func (p *Processor) ProcessUpdate(ctx context.Context, update DecodedUpdate) err
 	default:
 		return ErrUpdateProcessing
 	}
+
 	var ackErr error
+
 	if update.CallbackQueryID != "" {
 		ackErr = p.sender.AcknowledgeCallback(ctx, runtimecontract.CallbackAcknowledgement{CallbackQueryID: string(update.CallbackQueryID)})
 	}
 	var outcome interaction.DispatchOutcome
 	var err error
+
 	switch update.Status {
 	case DecodeMapped:
 		outcome, err = p.router.Dispatch(ctx, update.Event)
@@ -75,14 +80,17 @@ func (p *Processor) ProcessUpdate(ctx context.Context, update DecodedUpdate) err
 	case DecodeFailed:
 		outcome, err = p.router.RecordDecodeFailure(ctx, update.UpdateID)
 	}
+
 	if outcome.Status == "" {
 		return ErrUpdateProcessing
 	}
+
 	// Router errors can accompany a durable handler_failed outcome. No raw
 	// handler, database, or transport errors cross this boundary.
 	if err != nil && outcome.Status != persistence.UpdateHandlerFailed {
 		return ErrUpdateProcessing
 	}
+
 	if update.CallbackQueryID != "" {
 		p.report(ctx, outcome.CorrelationID, observability.CategoryCallbackAck, observability.OperationAcknowledge, ackErr)
 	}
@@ -104,6 +112,7 @@ func (p *Processor) send(ctx context.Context, request runtimecontract.ResponseRe
 	if err := runtimecontract.ValidateResponse(request); err != nil {
 		return observability.OperationSend, err
 	}
+
 	switch response := request.(type) {
 	case runtimecontract.PublicResponse:
 		_, err := p.sender.SendPublic(ctx, response)

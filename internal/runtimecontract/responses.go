@@ -28,12 +28,15 @@ func (d GroupDestination) validate() error {
 	if d.ChatID == 0 {
 		return validationError("destination.chat_id", ReasonRequired)
 	}
+
 	if d.ChatID > 0 {
 		return validationError("destination.chat_id", ReasonOutOfRange)
 	}
+
 	if d.Kind != ChatKindGroup && d.Kind != ChatKindSupergroup {
 		return validationError("destination.kind", ReasonUnsupported)
 	}
+
 	return nil
 }
 
@@ -74,48 +77,61 @@ func (c MessageContent) validate() error {
 	if c.Text == "" {
 		return validationError("content.text", ReasonRequired)
 	}
+
 	if !utf8.ValidString(c.Text) {
 		return validationError("content.text", ReasonInvalid)
 	}
+
 	textLength := len(utf16.Encode([]rune(c.Text)))
 	boundaries := utf16Boundaries(c.Text, textLength)
 	if textLength > maxMessageTextUTF16 {
 		return validationError("content.text", ReasonOutOfRange)
 	}
+
 	for _, entity := range c.Entities {
 		if entity.Kind != TextEntityBold && entity.Kind != TextEntityItalic && entity.Kind != TextEntityCode && entity.Kind != TextEntityTextLink {
 			return validationError("content.entities.kind", ReasonUnsupported)
 		}
+
 		if entity.Offset < 0 || entity.Length <= 0 || entity.Offset > textLength-entity.Length {
 			return validationError("content.entities.range", ReasonOutOfRange)
 		}
+
 		if !boundaries[entity.Offset] || !boundaries[entity.Offset+entity.Length] {
 			return validationError("content.entities.range", ReasonInvalid)
 		}
+
 		if entity.Kind == TextEntityTextLink && entity.URL == "" {
 			return validationError("content.entities.url", ReasonRequired)
 		}
+
 		if entity.Kind != TextEntityTextLink && entity.URL != "" {
 			return validationError("content.entities.url", ReasonInconsistent)
 		}
 	}
+
 	for _, row := range c.Buttons {
 		if len(row) == 0 {
 			return validationError("content.buttons.row", ReasonRequired)
 		}
+
 		for _, button := range row {
 			if button.Text == "" {
 				return validationError("content.buttons.text", ReasonRequired)
 			}
+
 			if !utf8.ValidString(button.Text) {
 				return validationError("content.buttons.text", ReasonInvalid)
 			}
+
 			if button.CallbackData == "" {
 				return validationError("content.buttons.callback_data", ReasonRequired)
 			}
+
 			if !utf8.ValidString(button.CallbackData) {
 				return validationError("content.buttons.callback_data", ReasonInvalid)
 			}
+
 			if len([]byte(button.CallbackData)) > 64 {
 				return validationError("content.buttons.callback_data", ReasonOutOfRange)
 			}
@@ -161,6 +177,7 @@ func validateResponseAt(request ResponseRequest, now *time.Time) error {
 		if value == nil {
 			return validationError("response", ReasonRequired)
 		}
+
 		return value.validate()
 	case EphemeralResponse:
 		return value.validate(now)
@@ -168,6 +185,7 @@ func validateResponseAt(request ResponseRequest, now *time.Time) error {
 		if value == nil {
 			return validationError("response", ReasonRequired)
 		}
+
 		return value.validate(now)
 	case CallbackAcknowledgement:
 		return value.validate()
@@ -175,6 +193,7 @@ func validateResponseAt(request ResponseRequest, now *time.Time) error {
 		if value == nil {
 			return validationError("response", ReasonRequired)
 		}
+
 		return value.validate()
 	default:
 		return validationError("response", ReasonRequired)
@@ -193,6 +212,7 @@ func (r PublicResponse) validate() error {
 	if err := r.Destination.validate(); err != nil {
 		return err
 	}
+
 	return r.Content.validate()
 }
 
@@ -216,12 +236,15 @@ func (a CallbackAuthorization) validate(replace bool) error {
 	if a.CallbackQueryID == "" {
 		return validationError("authorization.callback_query_id", ReasonRequired)
 	}
+
 	if a.ValidUntil.IsZero() {
 		return validationError("authorization.valid_until", ReasonRequired)
 	}
+
 	if replace && a.OriginatedFromEphemeral {
 		return validationError("authorization.replace_callback_message", ReasonInconsistent)
 	}
+
 	return nil
 }
 
@@ -238,12 +261,15 @@ func (a IncomingEphemeralAuthorization) validate(replace bool) error {
 	if a.EphemeralMessageID <= 0 {
 		return validationError("authorization.ephemeral_message_id", ReasonOutOfRange)
 	}
+
 	if a.ValidUntil.IsZero() {
 		return validationError("authorization.valid_until", ReasonRequired)
 	}
+
 	if replace {
 		return validationError("authorization.replace_callback_message", ReasonInconsistent)
 	}
+
 	return nil
 }
 
@@ -257,6 +283,7 @@ func (AdministratorAuthorization) validate(replace bool) error {
 	if replace {
 		return validationError("authorization.replace_callback_message", ReasonInconsistent)
 	}
+
 	return nil
 }
 
@@ -279,30 +306,39 @@ func (r EphemeralResponse) validate(now *time.Time) error {
 	if err := r.Destination.validate(); err != nil {
 		return err
 	}
+
 	if r.TargetUserID == 0 {
 		return validationError("target.user_id", ReasonRequired)
 	}
+
 	if r.TargetUserID < 0 {
 		return validationError("target.user_id", ReasonOutOfRange)
 	}
+
 	if r.TargetIsBot {
 		return validationError("target.user_id", ReasonInvalid)
 	}
+
 	if r.Authorization == nil {
 		return validationError("authorization", ReasonRequired)
 	}
+
 	validUntil, err := validateEphemeralAuthorization(r.Authorization, r.ReplaceCallbackMessage)
 	if err != nil {
 		return err
 	}
+
 	if now != nil && !validUntil.IsZero() && !now.Before(validUntil) {
 		return validationError("authorization.valid_until", ReasonOutOfRange)
 	}
+
 	if r.EditMessageID < 0 {
 		return validationError("edit_message_id", ReasonOutOfRange)
 	}
+
 	if r.EditMessageID > 0 {
 		var callback CallbackAuthorization
+
 		switch auth := r.Authorization.(type) {
 		case CallbackAuthorization:
 			callback = auth
@@ -311,6 +347,7 @@ func (r EphemeralResponse) validate(now *time.Time) error {
 		default:
 			return validationError("edit_message_id", ReasonInconsistent)
 		}
+
 		if !callback.OriginatedFromEphemeral || r.ReplaceCallbackMessage {
 			return validationError("edit_message_id", ReasonInconsistent)
 		}
@@ -326,6 +363,7 @@ func validateEphemeralAuthorization(authorization EphemeralAuthorization, replac
 		if value == nil {
 			return time.Time{}, validationError("authorization", ReasonRequired)
 		}
+
 		return value.ValidUntil, value.validate(replace)
 	case IncomingEphemeralAuthorization:
 		return value.ValidUntil, value.validate(replace)
@@ -333,6 +371,7 @@ func validateEphemeralAuthorization(authorization EphemeralAuthorization, replac
 		if value == nil {
 			return time.Time{}, validationError("authorization", ReasonRequired)
 		}
+
 		return value.ValidUntil, value.validate(replace)
 	case AdministratorAuthorization:
 		return time.Time{}, value.validate(replace)
@@ -340,6 +379,7 @@ func validateEphemeralAuthorization(authorization EphemeralAuthorization, replac
 		if value == nil {
 			return time.Time{}, validationError("authorization", ReasonRequired)
 		}
+
 		return time.Time{}, value.validate(replace)
 	default:
 		return time.Time{}, validationError("authorization", ReasonUnsupported)
@@ -357,5 +397,6 @@ func (r CallbackAcknowledgement) validate() error {
 	if r.CallbackQueryID == "" {
 		return validationError("callback_query_id", ReasonRequired)
 	}
+
 	return nil
 }

@@ -13,6 +13,7 @@ func (d *Delivery) SendEphemeral(ctx context.Context, req runtimecontract.Epheme
 	if err := runtimecontract.ValidateResponseAt(req, d.now()); err != nil {
 		return runtimecontract.DeliveryReceipt{}, err
 	}
+
 	params := publicParams(runtimecontract.PublicResponse{Destination: req.Destination, Content: req.Content})
 	if req.EditMessageID > 0 {
 		// An empty keyboard removes controls from stale or expired views.
@@ -28,16 +29,20 @@ func (d *Delivery) SendEphemeral(ctx context.Context, req runtimecontract.Epheme
 			if err != nil {
 				return err
 			}
+
 			if !accepted {
 				return &APIError{Kind: ErrorIndeterminate}
 			}
+
 			return nil
 		})
 		if err != nil {
 			return runtimecontract.DeliveryReceipt{}, err
 		}
+
 		return runtimecontract.DeliveryReceipt{ChatID: req.Destination.ChatID, EphemeralMessageID: int64(req.EditMessageID)}, nil
 	}
+
 	params.EphemeralMessageParameters = &models.EphemeralMessageParameters{ReceiverUserID: int64(req.TargetUserID)}
 	callback := func(auth runtimecontract.CallbackAuthorization) {
 		params.EphemeralMessageParameters.CallbackQueryID = auth.CallbackQueryID
@@ -57,15 +62,19 @@ func (d *Delivery) SendEphemeral(ctx context.Context, req runtimecontract.Epheme
 	case *runtimecontract.IncomingEphemeralAuthorization:
 		incoming(*auth)
 	}
+
 	var receipt runtimecontract.DeliveryReceipt
+
 	err := d.client.call(ctx, true, func(ctx context.Context) error {
 		message, err := d.client.bot.SendMessage(ctx, params)
 		if err != nil {
 			return err
 		}
+
 		if message == nil || message.ID != 0 || message.EphemeralMessageID < 0 || message.Chat.ID != int64(req.Destination.ChatID) {
 			return &APIError{Kind: ErrorIndeterminate}
 		}
+
 		receipt = runtimecontract.DeliveryReceipt{ChatID: req.Destination.ChatID, EphemeralMessageID: int64(message.EphemeralMessageID)}
 		return nil
 	})

@@ -32,6 +32,7 @@ func (g cursorCommitGate) RecordTerminal(ctx context.Context, tx runtimecontract
 	if err := g.CursorStore.RecordTerminal(ctx, tx, outcome); err != nil {
 		return err
 	}
+
 	close(g.entered)
 	select {
 	case <-g.release:
@@ -52,16 +53,20 @@ func openCursorIntegrationDB(t *testing.T, dir string) *persistence.DB {
 			t.Error(err)
 		}
 	})
+
 	migrations, err := persistence.RuntimeMigrations()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(t.Context(), migrations); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := db.ExecContext(t.Context(), `CREATE TABLE IF NOT EXISTS cursor_feature(update_id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatal(err)
 	}
+
 	return db
 }
 
@@ -73,6 +78,7 @@ func cursorIntegrationPoller(t *testing.T, db *persistence.DB, cursors persisten
 			t.Fatal(err)
 		}
 	}
+
 	registry.Seal()
 	sink := observability.NewJSONSink(io.Discard)
 	router := interaction.NewRouter(registry, db, cursors, nil, nil, interaction.RouterOptions{Now: clock.Now, Diagnostics: sink})
@@ -80,17 +86,21 @@ func cursorIntegrationPoller(t *testing.T, db *persistence.DB, cursors persisten
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	processor, err := NewProcessor(router, NewDelivery(client, nil), ProcessorOptions{Diagnostics: sink})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	poller, err := NewPoller(client, db, PollerOptions{TimeoutSeconds: 20, ProcessUpdate: processor.ProcessUpdate, Sleep: clock.Sleep})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := poller.Initialize(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+
 	return poller
 }
 
@@ -123,11 +133,14 @@ func assertCursorState(t *testing.T, db *persistence.DB, wantCursor runtimecontr
 	if err != nil || cursor != wantCursor {
 		t.Fatalf("durable cursor=%d, want %d; error=%v", cursor, wantCursor, err)
 	}
+
 	for table, want := range map[string]int{"cursor_feature": wantEffects, "processed_updates": wantOutcomes} {
 		var count int
+
 		if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM `+table).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
+
 		if count != want {
 			t.Errorf("%s count=%d, want %d", table, count, want)
 		}
@@ -137,27 +150,35 @@ func assertCursorState(t *testing.T, db *persistence.DB, wantCursor runtimecontr
 func assertCursorRequests(t *testing.T, fake *testsupport.FakeTelegram, want []int64) {
 	t.Helper()
 	var offsets []int64
+
 	for _, request := range fake.Requests() {
 		if strings.HasSuffix(request.Path, "/deleteWebhook") && len(request.Body) > 0 {
 			var webhook struct {
 				DropPending bool `json:"drop_pending_updates"`
 			}
+
 			if err := json.Unmarshal(request.Body, &webhook); err != nil || webhook.DropPending {
 				t.Fatalf("webhook backlog was not preserved: %v", err)
 			}
 		}
+
 		if !strings.HasSuffix(request.Path, "/getUpdates") {
 			continue
 		}
+
 		var poll GetUpdatesRequest
+
 		if err := json.Unmarshal(request.Body, &poll); err != nil {
 			t.Fatal(err)
 		}
+
 		if poll.Limit != 1 || poll.Timeout != 20 || !reflect.DeepEqual(poll.AllowedUpdates, []string{"message", "callback_query"}) {
 			t.Fatalf("unsafe poll request: %+v", poll)
 		}
+
 		offsets = append(offsets, poll.Offset)
 	}
+
 	if !reflect.DeepEqual(offsets, want) {
 		t.Fatalf("poll offsets=%v, want %v", offsets, want)
 	}
@@ -192,18 +213,23 @@ func TestCursorIntegrationCommitControlsAcknowledgementAndDuplicateSuppression(t
 	observer := openCursorIntegrationDB(t, dir)
 	fake := testsupport.NewFakeTelegram(response(identity), response(`{"ok":true,"result":true}`), cursorCommand(41), cursorCommand(41), cursorStopResponse())
 	defer fake.Close()
+
 	gate := cursorCommitGate{CursorStore: db, entered: make(chan struct{}), release: make(chan struct{})}
 	var calls atomic.Int64
+
 	poller := cursorIntegrationPoller(t, db, gate, fake, func(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 		calls.Add(1)
 		command, ok := event.(interaction.Command)
+
 		if !ok || command.Name != "act" || command.MessageID != 9 || command.UpdateID() != 41 || command.ChatID() != -100 || command.UserID() != 8 {
 			t.Errorf("lost command identity: %+v", event)
 		}
+
 		return cursorEffects(ctx, scope, event)
 	}, testsupport.NewManualClock(time.Now()))
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
+
 	done := make(chan error, 1)
 	go func() { done <- poller.Run(ctx) }()
 	waitCursorGate(t, ctx, gate.entered, done)
@@ -213,6 +239,7 @@ func TestCursorIntegrationCommitControlsAcknowledgementAndDuplicateSuppression(t
 	_ = assertKind(t, waitCursorDone(t, ctx, done), ErrorConflict)
 	assertCursorState(t, observer, 41, 1, 2)
 	assertCursorRequests(t, fake, []int64{41, 42, 42})
+
 	if calls.Load() != 1 {
 		t.Fatalf("completed duplicate repeated handler: calls=%d", calls.Load())
 	}
@@ -225,8 +252,10 @@ func TestCursorIntegrationCancellationBeforeCommitReopensAndRedelivers(t *testin
 	clock := testsupport.NewManualClock(time.Now())
 	first := testsupport.NewFakeTelegram(response(identity), response(`{"ok":true,"result":true}`), cursorCommand(91))
 	defer first.Close()
+
 	gate := cursorCommitGate{CursorStore: db, entered: make(chan struct{}), release: make(chan struct{})}
 	var attempts atomic.Int64
+
 	handler := func(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 		attempts.Add(1)
 		return cursorEffects(ctx, scope, event)
@@ -234,8 +263,10 @@ func TestCursorIntegrationCancellationBeforeCommitReopensAndRedelivers(t *testin
 	poller := cursorIntegrationPoller(t, db, gate, first, handler, clock)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
+
 	work, cancelWork := context.WithCancel(ctx)
 	defer cancelWork()
+
 	done := make(chan error, 1)
 	go func() { done <- poller.Run(work) }()
 	waitCursorGate(t, ctx, gate.entered, done)
@@ -243,6 +274,7 @@ func TestCursorIntegrationCancellationBeforeCommitReopensAndRedelivers(t *testin
 	if err := waitCursorDone(t, ctx, done); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled poller: %v", err)
 	}
+
 	assertCursorRequests(t, first, []int64{91})
 	assertCursorState(t, db, 90, 0, 1)
 	if err := db.Close(); err != nil {
@@ -253,10 +285,12 @@ func TestCursorIntegrationCancellationBeforeCommitReopensAndRedelivers(t *testin
 	assertCursorState(t, reopened, 90, 0, 1)
 	second := testsupport.NewFakeTelegram(response(identity), response(`{"ok":true,"result":true}`), cursorCommand(91), cursorCommand(91), cursorStopResponse())
 	defer second.Close()
+
 	restarted := cursorIntegrationPoller(t, reopened, reopened, second, handler, clock)
 	_ = assertKind(t, restarted.Run(ctx), ErrorConflict)
 	assertCursorRequests(t, second, []int64{91, 92, 92})
 	assertCursorState(t, reopened, 91, 1, 2)
+
 	if attempts.Load() != 2 {
 		t.Fatalf("handler attempts=%d, want rolled-back attempt and one successful redelivery", attempts.Load())
 	}
@@ -274,37 +308,48 @@ func TestCursorIntegrationTransientPollingPreservesLaterInteractionsAndTerminalO
 		response(`{"ok":true,"result":[{"update_id":54,"poll":{}}]}`),
 		response(`{"ok":true,"result":[{"update_id":55,"message":null}]}`), cursorStopResponse())
 	defer fake.Close()
+
 	var events []interaction.Event
+
 	poller := cursorIntegrationPoller(t, db, db, fake, func(ctx context.Context, scope runtimecontract.WorkScope, event interaction.Event) (interaction.HandlerResult, error) {
 		events = append(events, event)
 		return cursorEffects(ctx, scope, event)
 	}, clock)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
+
 	done := make(chan error, 1)
 	go func() { done <- poller.Run(ctx) }()
 	if err := clock.WaitForTimers(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
+
 	assertCursorState(t, db, 51, 1, 2)
 	assertCursorRequests(t, fake, []int64{51, 52})
 	clock.Advance(250 * time.Millisecond)
 	_ = assertKind(t, waitCursorDone(t, ctx, done), ErrorConflict)
 	assertCursorRequests(t, fake, []int64{51, 52, 52, 53, 54, 55, 56})
 	assertCursorState(t, db, 55, 3, 6)
+
 	if len(events) != 3 {
 		t.Fatalf("routed %d events, want command, callback, ordinary message", len(events))
 	}
+
 	callback, ok := events[1].(interaction.Callback)
+
 	if !ok || callback.UpdateID() != 52 || callback.ChatID() != -100 || callback.UserID() != 8 || callback.QueryID != "query-52" || callback.MessageID != 9 || callback.Data != "act:next" {
 		t.Errorf("lost callback identity: %+v", events[1])
 	}
+
 	message, ok := events[2].(interaction.GroupMessage)
+
 	if !ok || message.UpdateID() != 53 || message.ChatID() != -100 || message.UserID() != 8 || message.MessageID != 10 || message.Text != "ordinary message" {
 		t.Errorf("lost message identity: %+v", events[2])
 	}
+
 	for id, want := range map[int]string{54: "ignored", 55: "decode_failed"} {
 		var status string
+
 		if err := db.QueryRowContext(ctx, `SELECT status FROM processed_updates WHERE update_id=?`, id).Scan(&status); err != nil || status != want {
 			t.Errorf("update %d terminal status=%q, want %q; error=%v", id, status, want, err)
 		}

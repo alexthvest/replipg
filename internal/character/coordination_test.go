@@ -42,6 +42,7 @@ func (store coordinationCursor) RecordTerminal(ctx context.Context, tx runtimeco
 	if err := store.CursorStore.RecordTerminal(ctx, tx, outcome); err != nil {
 		return err
 	}
+
 	store.inspect(tx)
 	return nil
 }
@@ -55,9 +56,11 @@ func readCoordinationState(t *testing.T, tx runtimecontract.DBTX, id contract.ID
 	t.Helper()
 	ctx := context.Background()
 	var got coordinationState
+
 	if err := tx.QueryRowContext(ctx, `SELECT health,revision FROM characters WHERE id=?`, id).Scan(&got.health, &got.revision); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, count := range []struct {
 		query  string
 		target *int
@@ -74,6 +77,7 @@ func readCoordinationState(t *testing.T, tx runtimecontract.DBTX, id contract.ID
 	}
 	return got
 }
+
 func assertCoordinationState(t *testing.T, tx runtimecontract.DBTX, id contract.ID, want coordinationState) {
 	t.Helper()
 	if got := readCoordinationState(t, tx, id); got != want {
@@ -92,6 +96,7 @@ func (tx rejectCoordinationReceipt) ExecContext(ctx context.Context, query strin
 		tx.inspect()
 		return nil, tx.failure
 	}
+
 	return tx.DBTX.ExecContext(ctx, query, args...)
 }
 
@@ -105,7 +110,9 @@ func TestCoordinatedCharacterEffectsCommitAndRollbackWithRuntime(t *testing.T) {
  CREATE TABLE coordination_child(parent_id INTEGER REFERENCES coordination_parent(id) DEFERRABLE INITIALLY DEFERRED)`); err != nil {
 				t.Fatal(err)
 			}
+
 			var id contract.ID
+
 			inCharacterTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
 				got, _, err := service.Ensure(ctx, tx, 42)
 				id = got.ID
@@ -120,12 +127,14 @@ func TestCoordinatedCharacterEffectsCommitAndRollbackWithRuntime(t *testing.T) {
 			registry := interaction.NewRegistry()
 			owner := &countedCoordinationTransactions{db: db}
 			var tentative contract.MutationResult
+
 			if err := registry.RegisterCommand("coordinate", coordinatedHandler(func(ctx context.Context, scope runtimecontract.WorkScope, _ interaction.Event) (interaction.HandlerResult, error) {
 				handlerCalls++
 				tx := scope.DBTX()
 				if _, err := tx.ExecContext(ctx, `INSERT INTO coordination_gameplay(update_id,value) VALUES(100,1)`); err != nil {
 					return interaction.HandlerResult{}, err
 				}
+
 				effectTx := tx
 				if fail && stage == "before_receipt" {
 					effectTx = rejectCoordinationReceipt{DBTX: tx, failure: injected, inspect: func() {
@@ -135,19 +144,23 @@ func TestCoordinatedCharacterEffectsCommitAndRollbackWithRuntime(t *testing.T) {
 					}}
 				}
 				var err error
+
 				tentative, err = service.ApplyHealth(ctx, effectTx, contract.HealthChange{OperationID: "coordination:damage", CharacterID: id, Kind: contract.HealthDamage, Amount: 40})
 				if err != nil {
 					return interaction.HandlerResult{}, err
 				}
+
 				if !tentative.Applied || tentative.Current.Health != 60 {
 					t.Fatalf("retry did not apply exactly once: %+v", tentative)
 				}
+
 				// A successful service result does not make any state durable by itself.
 				assertCoordinationState(t, tx, id, coordinationState{health: 60, revision: 2, gameplay: 1, operations: 1})
 				assertCoordinationState(t, db, id, before)
 				if fail && stage == "after_receipt" {
 					return interaction.HandlerResult{}, contract.NewStorageError(injected)
 				}
+
 				if fail && stage == "commit" {
 					if _, err := tx.ExecContext(ctx, `INSERT INTO coordination_child(parent_id) VALUES(999)`); err != nil {
 						return interaction.HandlerResult{}, err
@@ -157,6 +170,7 @@ func TestCoordinatedCharacterEffectsCommitAndRollbackWithRuntime(t *testing.T) {
 			})); err != nil {
 				t.Fatal(err)
 			}
+
 			registry.Seal()
 			cursor := coordinationCursor{CursorStore: db, inspect: func(tx runtimecontract.DBTX) {
 				terminalCalls++
@@ -174,53 +188,69 @@ func TestCoordinatedCharacterEffectsCommitAndRollbackWithRuntime(t *testing.T) {
 			})
 			event := interaction.Command{Identity: interaction.Identity{Update: 100, Chat: -100, User: 42, ChatKind: runtimecontract.ChatKindSupergroup}, Name: "coordinate"}
 			outcome, err := router.Dispatch(ctx, event)
+
 			if fail {
 				var transaction *persistence.TransactionError
+
 				if !errors.As(err, &transaction) || !reflect.DeepEqual(outcome, interaction.DispatchOutcome{}) {
 					t.Fatalf("failed dispatch returned success: %+v, %v", outcome, err)
 				}
+
 				expectedStage := persistence.TransactionStageCallback
 				if stage == "commit" {
 					expectedStage = persistence.TransactionStageCommit
 				}
+
 				if transaction.Stage != expectedStage {
 					t.Fatalf("failure stage %q, want %q", transaction.Stage, expectedStage)
 				}
+
 				assertCoordinationState(t, db, id, before)
 				if cursor, err := db.CompletedUpdate(ctx); err != nil || cursor != 0 {
 					t.Fatalf("failed action completed update: cursor=%d err=%v", cursor, err)
 				}
+
 				if owner.calls != 1 {
 					t.Fatalf("failed action opened %d transactions", owner.calls)
 				}
+
 				if stage != "before_receipt" && !tentative.Applied {
 					t.Fatal("failure did not follow a tentative successful mutation")
 				}
+
 				if stage == "commit" && terminalCalls != 1 {
 					t.Fatal("deferred constraint failed before terminal writes")
 				}
+
 				fail = false
 				outcome, err = router.Dispatch(ctx, event)
 			}
+
 			if err != nil || outcome.Status != persistence.UpdateCompleted {
 				t.Fatalf("coordinated success: %+v, %v", outcome, err)
 			}
+
 			assertCoordinationState(t, db, id, after)
 			if cursor, err := db.CompletedUpdate(ctx); err != nil || cursor != event.Update {
 				t.Fatalf("successful cursor=%d err=%v", cursor, err)
 			}
+
 			wantCalls := 1
 			if stage != "success" {
 				wantCalls = 2
 			}
+
 			if handlerCalls != wantCalls || owner.calls != wantCalls {
 				t.Fatalf("handler calls=%d transactions=%d, want %d", handlerCalls, owner.calls, wantCalls)
 			}
+
 			// A completed runtime update cannot repeat unrelated gameplay or character work.
 			if _, err := router.Dispatch(ctx, event); err != nil {
 				t.Fatal(err)
 			}
+
 			assertCoordinationState(t, db, id, after)
+
 			if handlerCalls != wantCalls {
 				t.Fatal("completed update reran handler")
 			}

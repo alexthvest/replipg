@@ -38,6 +38,7 @@ func TestEphemeralExactRestrictedPayloads(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := testsupport.NewFakeTelegram(response(identity), response(`{"ok":true,"result":{"message_id":0,"ephemeral_message_id":19,"chat":{"id":-100,"type":"supergroup"}}}`))
 			defer fake.Close()
+
 			d := NewDelivery(newTestClient(t, fake), func() time.Time { return ephemeralNow })
 			req := ephemeralRequest()
 			req.Authorization = tc.auth
@@ -48,13 +49,17 @@ func TestEphemeralExactRestrictedPayloads(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if receipt != (runtimecontract.DeliveryReceipt{ChatID: -100, EphemeralMessageID: 19}) {
 				t.Fatalf("receipt=%+v", receipt)
 			}
+
 			requests := fake.Requests()
+
 			if len(requests) != 2 || requests[1].Path != "/bot42:secret/sendMessage" {
 				t.Fatalf("requests=%v", requests)
 			}
+
 			want := map[string]string{"chat_id": "-100", "text": "Hello 😀", "ephemeral_message_parameters": tc.parameters, "entities": `[{"type":"bold","offset":0,"length":5}]`, "reply_markup": `{"inline_keyboard":[[{"text":"button","callback_data":"data"}]]}`}
 			if tc.reply != "" {
 				want["reply_parameters"] = tc.reply
@@ -134,17 +139,21 @@ func TestEphemeralInvalidBeforeIO(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := testsupport.NewFakeTelegram(response(identity))
 			defer fake.Close()
+
 			d := NewDelivery(newTestClient(t, fake), func() time.Time { return ephemeralNow })
 			req := ephemeralRequest()
 			tc.change(&req)
 			receipt, err := d.SendEphemeral(context.Background(), req)
 			var invalid *runtimecontract.ValidationError
+
 			if !errors.As(err, &invalid) || invalid.Field != tc.field {
 				t.Fatalf("err=%v want field=%s", err, tc.field)
 			}
+
 			if receipt != (runtimecontract.DeliveryReceipt{}) || len(fake.Requests()) != 1 {
 				t.Fatal("invalid request performed I/O")
 			}
+
 			if outcome := Outcome(receipt, err); outcome.Kind != runtimecontract.DeliveryPermanentFailure || outcome.ReasonCode != "validation" {
 				t.Fatalf("outcome=%+v", outcome)
 			}
@@ -166,6 +175,7 @@ func TestEphemeralEditPayloadAndFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := testsupport.NewFakeTelegram(response(identity), response(tc.result))
 			defer fake.Close()
+
 			d := NewDelivery(newTestClient(t, fake), func() time.Time { return ephemeralNow })
 			req := ephemeralRequest()
 			req.EditMessageID = 19
@@ -179,6 +189,7 @@ func TestEphemeralEditPayloadAndFailures(t *testing.T) {
 				keyboard = `{"inline_keyboard":[[{"text":"Back","callback_data":"inv:back"}]]}`
 			}
 			receipt, err := d.SendEphemeral(context.Background(), req)
+
 			if tc.failure != "" {
 				_ = assertKind(t, err, tc.failure)
 				if receipt != (runtimecontract.DeliveryReceipt{}) || strings.Contains(err.Error(), "private sentinel") {
@@ -188,9 +199,11 @@ func TestEphemeralEditPayloadAndFailures(t *testing.T) {
 				t.Fatalf("edit receipt=%+v err=%v", receipt, err)
 			}
 			requests := fake.Requests()
+
 			if len(requests) != 2 || requests[1].Path != "/bot42:secret/editEphemeralMessageText" {
 				t.Fatalf("unexpected edit or fallback: %+v", requests)
 			}
+
 			want := map[string]string{"chat_id": "-100", "receiver_user_id": "7", "ephemeral_message_id": "19", "text": "Hello 😀", "entities": `[{"type":"bold","offset":0,"length":5}]`, "reply_markup": keyboard}
 			if got := requestFields(t, requests[1]); !reflect.DeepEqual(got, want) {
 				t.Fatalf("edit fields=%v want=%v", got, want)
@@ -221,18 +234,24 @@ func TestEphemeralFailureWithoutFallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := testsupport.NewFakeTelegram(response(identity), tc.result)
 			defer fake.Close()
+
 			d := NewDelivery(newTestClient(t, fake), func() time.Time { return ephemeralNow })
 			receipt, err := d.SendEphemeral(context.Background(), ephemeralRequest())
 			_ = assertKind(t, err, tc.kind)
 			outcome := Outcome(receipt, err)
+
 			if receipt != (runtimecontract.DeliveryReceipt{}) || outcome.Kind != tc.outcome || outcome.RetryAfter != tc.delay || outcome.ReasonCode != string(tc.kind) {
 				t.Fatalf("receipt=%+v outcome=%+v", receipt, outcome)
 			}
+
 			requests := fake.Requests()
+
 			if len(requests) != 2 || requests[1].Path != "/bot42:secret/sendMessage" {
 				t.Fatalf("fallback or retry: %v", requests)
 			}
+
 			fields := requestFields(t, requests[1])
+
 			if fields["chat_id"] != "-100" || fields["ephemeral_message_parameters"] == "" {
 				t.Fatalf("visibility changed: %v", fields)
 			}
@@ -251,6 +270,7 @@ func TestEphemeralAcceptanceAtZeroOrdinaryID(t *testing.T) {
 		if err != nil || receipt.MessageID != 0 || receipt.ChatID != -100 || Outcome(receipt, err).Kind != runtimecontract.DeliveryAccepted {
 			t.Fatalf("receipt=%+v err=%v", receipt, err)
 		}
+
 		fake.Close()
 	}
 }
@@ -258,6 +278,7 @@ func TestEphemeralAcceptanceAtZeroOrdinaryID(t *testing.T) {
 func TestEphemeralCancelledBeforeIO(t *testing.T) {
 	fake := testsupport.NewFakeTelegram(response(identity))
 	defer fake.Close()
+
 	d := NewDelivery(newTestClient(t, fake), func() time.Time { return ephemeralNow })
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

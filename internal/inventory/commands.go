@@ -20,13 +20,16 @@ func Register(registry *interaction.Registry, service *Service, now func() time.
 	if err := p.validate(); err != nil {
 		return err
 	}
+
 	if registry == nil || service == nil || now == nil {
 		return contract.ErrInvalidInput
 	}
+
 	h := inventoryHandler{service: service, now: now, presentation: p}
 	if err := registry.RegisterCommand("inventory", h); err != nil {
 		return err
 	}
+
 	return registry.RegisterCallback("inv:", h)
 }
 
@@ -41,6 +44,7 @@ func (h inventoryHandler) Handle(ctx context.Context, scope runtimecontract.Work
 	locale := localization.English
 	resolve := func(chat runtimecontract.ChatID) error {
 		var err error
+
 		locale, err = h.presentation.Resolve(ctx, scope.DBTX(), chat)
 		return err
 	}
@@ -60,39 +64,49 @@ func (h inventoryHandler) Handle(ctx context.Context, scope runtimecontract.Work
 		if e.Name != "inventory" || !authorizedInventoryCommand(e, now) {
 			return interaction.HandlerResult{}, nil
 		}
+
 		if err := resolve(e.Chat); err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		auth := runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(e.EphemeralMessageID), ValidUntil: e.SentAt.Add(15 * time.Second)}
 		if strings.TrimSpace(e.Arguments) != "" {
 			value, err := text("usage.inventory")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
+
 			return inventoryResponse(e.Identity, auth, runtimecontract.MessageContent{Text: value})
 		}
+
 		result, err := h.service.Open(ctx, scope.DBTX(), e.User)
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		content, err := h.service.pageContent(ctx, scope.DBTX(), now, e.Identity, result.Current.CharacterID, 0, inventoryPresentation{locale, h.presentation})
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		content, err = h.presentation.decorate(ctx, scope.DBTX(), now, e.Identity, locale, sharingcontract.InventoryPage, 0, content)
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		return inventoryResponse(e.Identity, auth, content)
 	case interaction.Callback:
 		if e.ActorIsBot || e.Update <= 0 || e.User <= 0 || e.Chat >= 0 || e.QueryID == "" || e.EphemeralMessageID <= 0 || int64(int(e.EphemeralMessageID)) != int64(e.EphemeralMessageID) || !inventoryGroup(e.ChatKind) {
 			return interaction.HandlerResult{}, nil
 		}
+
 		control, err := resolveControl(ctx, scope.DBTX(), now, e.User, e.Chat, e.Data)
 		var storage runtimecontract.StorageFailure
+
 		if errors.As(err, &storage) {
 			return interaction.HandlerResult{}, err
 		}
+
 		deadline := now.Add(15 * time.Second)
 		if err == nil && control.ExpiresAt.Before(deadline) {
 			deadline = control.ExpiresAt
@@ -101,20 +115,26 @@ func (h inventoryHandler) Handle(ctx context.Context, scope runtimecontract.Work
 		if errors.Is(err, contract.ErrNotFound) {
 			return interaction.HandlerResult{}, nil
 		}
+
 		if err := resolve(e.Chat); err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		if errors.Is(err, contract.ErrExpiredControl) {
 			value, err := text("inventory.expired")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
+
 			return inventoryResponseForMessage(e.Identity, auth, int(e.EphemeralMessageID), runtimecontract.MessageContent{Text: value})
 		}
+
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		var content runtimecontract.MessageContent
+
 		switch control.Action {
 		case "page":
 			content, err = h.service.pageContent(ctx, scope.DBTX(), now, e.Identity, control.CharacterID, control.Page, inventoryPresentation{locale, h.presentation})
@@ -126,6 +146,7 @@ func (h inventoryHandler) Handle(ctx context.Context, scope runtimecontract.Work
 				item = ""
 			}
 			var result contract.MutationResult
+
 			result, err = h.service.ChangeEquipment(ctx, scope.DBTX(), contract.EquipmentChange{OperationID: contract.OperationID("inventory:control:" + control.Token), CharacterID: control.CharacterID, Slot: control.Slot, ItemID: item, ExpectedRevision: control.ExpectedRevision})
 			if err == nil {
 				control.ExpectedRevision = result.Current.Revision
@@ -134,21 +155,26 @@ func (h inventoryHandler) Handle(ctx context.Context, scope runtimecontract.Work
 		default:
 			return interaction.HandlerResult{}, nil
 		}
+
 		// Cleanup failures can wrap an expected rejection; storage classification
 		// takes precedence so the dispatcher rolls back and retries the update.
 		if errors.As(err, &storage) {
 			return interaction.HandlerResult{}, err
 		}
+
 		if errors.Is(err, contract.ErrNotOwned) || errors.Is(err, contract.ErrStaleControl) {
 			value, err := text("inventory.stale")
 			if err != nil {
 				return interaction.HandlerResult{}, err
 			}
+
 			return inventoryResponseForMessage(e.Identity, auth, int(e.EphemeralMessageID), runtimecontract.MessageContent{Text: value})
 		}
+
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		kind := sharingcontract.ItemDetails
 		if control.Action == "page" {
 			kind = sharingcontract.InventoryPage
@@ -157,31 +183,39 @@ func (h inventoryHandler) Handle(ctx context.Context, scope runtimecontract.Work
 		if err != nil {
 			return interaction.HandlerResult{}, err
 		}
+
 		return inventoryResponseForMessage(e.Identity, auth, int(e.EphemeralMessageID), content)
 	}
 	return interaction.HandlerResult{}, nil
 }
+
 func inventoryGroup(kind runtimecontract.ChatKind) bool {
 	return kind == runtimecontract.ChatKindGroup || kind == runtimecontract.ChatKindSupergroup
 }
+
 func authorizedInventoryCommand(command interaction.Command, now time.Time) bool {
 	return command.Update > 0 && command.User > 0 && command.Chat < 0 && inventoryGroup(command.ChatKind) && !command.ActorIsBot && !command.SenderIsChat && command.EphemeralMessageID > 0 && int64(int(command.EphemeralMessageID)) == int64(command.EphemeralMessageID) && !command.SentAt.IsZero() && now.Before(command.SentAt.Add(15*time.Second))
 }
+
 func inventoryResponse(identity interaction.Identity, auth runtimecontract.EphemeralAuthorization, content runtimecontract.MessageContent) (interaction.HandlerResult, error) {
 	return inventoryResponseForMessage(identity, auth, 0, content)
 }
+
 func inventoryResponseForMessage(identity interaction.Identity, auth runtimecontract.EphemeralAuthorization, editMessageID int, content runtimecontract.MessageContent) (interaction.HandlerResult, error) {
 	response := runtimecontract.EphemeralResponse{Destination: runtimecontract.GroupDestination{ChatID: identity.Chat, Kind: identity.ChatKind}, TargetUserID: identity.User, Authorization: auth, Content: content, EditMessageID: editMessageID}
 	if err := runtimecontract.ValidateResponse(response); err != nil {
 		return interaction.HandlerResult{}, err
 	}
+
 	return interaction.HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{response}}, nil
 }
+
 func (s *Service) pageContent(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, id charactercontract.ID, page int, presentation inventoryPresentation) (runtimecontract.MessageContent, error) {
 	view, err := readInventoryPage(ctx, tx, s.catalog, id, page)
 	if err != nil {
 		return runtimecontract.MessageContent{}, err
 	}
+
 	base := inventoryControl{UserID: identity.User, ChatID: identity.Chat, CharacterID: id, Page: view.Page, ExpectedRevision: view.Current.Revision}
 	controls := viewControls{}
 	for _, item := range view.Current.Items {
@@ -192,8 +226,10 @@ func (s *Service) pageContent(ctx context.Context, tx runtimecontract.DBTX, now 
 		if err != nil {
 			return runtimecontract.MessageContent{}, err
 		}
+
 		controls.Items = append(controls.Items, data)
 	}
+
 	if view.Page > 0 {
 		control := base
 		control.Action = "page"
@@ -214,15 +250,18 @@ func (s *Service) pageContent(ctx context.Context, tx runtimecontract.DBTX, now 
 	}
 	return renderPageLocalized(s.catalog, view, identity.ActorUsername, controls, presentation.presentation, presentation.locale)
 }
+
 func (s *Service) detailContent(ctx context.Context, tx runtimecontract.DBTX, now time.Time, identity interaction.Identity, control inventoryControl, presentation inventoryPresentation) (runtimecontract.MessageContent, error) {
 	snapshot, _, err := readInventoryMetadata(ctx, tx, s.catalog, control.CharacterID)
 	if err != nil {
 		return runtimecontract.MessageContent{}, err
 	}
+
 	quantity, err := ownedQuantity(ctx, tx, control.CharacterID, control.ItemID)
 	if err != nil {
 		return runtimecontract.MessageContent{}, err
 	}
+
 	snapshot.Items = []contract.OwnedItem{{ItemID: control.ItemID, Quantity: quantity}}
 	back := control
 	back.Action = "page"
@@ -233,6 +272,7 @@ func (s *Service) detailContent(ctx context.Context, tx runtimecontract.DBTX, no
 	if err != nil {
 		return runtimecontract.MessageContent{}, err
 	}
+
 	controls := viewControls{Back: data}
 	item, found := s.catalog.Lookup(control.ItemID)
 	if found && (item.Category == contract.CategoryWeapon || item.Category == contract.CategoryArmor) {
@@ -247,6 +287,7 @@ func (s *Service) detailContent(ctx context.Context, tx runtimecontract.DBTX, no
 		if err != nil {
 			return runtimecontract.MessageContent{}, err
 		}
+
 		if action.Action == "equip" {
 			controls.Equip = token
 		} else {

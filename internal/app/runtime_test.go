@@ -40,6 +40,7 @@ func TestNewRejectsInvalidConfigurationBeforeSideEffects(t *testing.T) {
 func TestStartupRegistersRecoversAndPreservesBacklogBeforeReady(t *testing.T) {
 	fake := testsupport.NewFakeTelegram(testsupport.TelegramResponse{Body: []byte(`{"ok":true,"result":{"id":123,"is_bot":true,"first_name":"test"}}`)}, testsupport.TelegramResponse{Body: []byte(`{"ok":true,"result":true}`)}, testsupport.TelegramResponse{Body: []byte(`{"ok":true,"result":[{"update_id":41,"edited_message":{}}]}`)}, testsupport.TelegramResponse{WaitForCancellation: true})
 	defer fake.Close()
+
 	registered := false
 	app, err := New(testConfig(t), Options{TelegramBaseURL: fake.URL(), HTTPClient: fake.Client(), Register: func(r Registrations) error {
 		registered = true
@@ -60,6 +61,7 @@ func TestStartupRegistersRecoversAndPreservesBacklogBeforeReady(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	done := make(chan error, 1)
 	go func() { done <- app.Run(ctx) }()
 
@@ -78,6 +80,7 @@ func TestStartupRegistersRecoversAndPreservesBacklogBeforeReady(t *testing.T) {
 	}
 
 	requests := fake.Requests()
+
 	if !strings.HasSuffix(requests[0].Path, "/getMe") || !strings.HasSuffix(requests[1].Path, "/deleteWebhook") || strings.Contains(string(requests[1].Body), `"drop_pending_updates":true`) {
 		t.Fatalf("wrong initialization: %+v", requests)
 	}
@@ -106,6 +109,7 @@ func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 	cfg := testConfig(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	db, err := persistence.Open(ctx, persistence.Options{StorageDir: cfg.StorageDir, StorageFilesystem: cfg.StorageFilesystem, BusyTimeout: cfg.BusyTimeout})
 	if err != nil {
 		t.Fatal(err)
@@ -137,12 +141,14 @@ func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 
 	var listener net.Listener
 	var runtimeDB *persistence.DB
+
 	registered := false
 	app, err := New(cfg, Options{Diagnostics: observability.NewJSONSink(io.Discard), TelegramBaseURL: fake.URL(), HTTPClient: fake.Client(), Open: func(ctx context.Context, opts persistence.Options) (*persistence.DB, error) {
 		runtimeDB, err = persistence.Open(ctx, opts)
 		return runtimeDB, err
 	}, Listen: func(string, string) (net.Listener, error) {
 		var listenErr error
+
 		listener, listenErr = net.Listen("tcp", "127.0.0.1:0")
 
 		return listener, listenErr
@@ -180,13 +186,17 @@ func TestHealthRemainsNotReadyWhileIdentityBlockedAfterRecovery(t *testing.T) {
 	if registered {
 		t.Fatal("registration preceded live identity verification")
 	}
+
 	var delivery, job string
+
 	if err := runtimeDB.QueryRowContext(ctx, `SELECT state FROM outbound_deliveries WHERE id='interrupted'`).Scan(&delivery); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := runtimeDB.QueryRowContext(ctx, `SELECT state FROM scheduled_jobs WHERE id='expired'`).Scan(&job); err != nil {
 		t.Fatal(err)
 	}
+
 	if delivery != "reconciliation_required" || job != "pending" {
 		t.Fatal("identity verification preceded recovery")
 	}

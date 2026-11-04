@@ -64,5 +64,6 @@ type boundedRouter struct {
 func (r boundedRouter) Dispatch(ctx context.Context, event interaction.Event) (interaction.DispatchOutcome, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
+
 	return r.UpdateRouter.Dispatch(ctx, event)
 }

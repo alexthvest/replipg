@@ -18,8 +18,10 @@ func IsStorageFailure(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	var sqliteErr *sqlite.Error
 	var storageFailure runtimecontract.StorageFailure
+
 	return errors.As(err, &storageFailure) || errors.As(err, &sqliteErr) || errors.Is(err, sql.ErrConnDone) ||
 		errors.Is(err, sql.ErrTxDone) || errors.Is(err, ErrStorage) ||
 		errors.Is(err, ErrTransaction) || errors.Is(err, ErrContention) ||
@@ -70,8 +72,10 @@ type TransactionError struct {
 	cause error
 }
 
-func (e *TransactionError) Error() string        { return "transaction failed during " + string(e.Stage) }
-func (e *TransactionError) Unwrap() error        { return e.cause }
+func (e *TransactionError) Error() string { return "transaction failed during " + string(e.Stage) }
+
+func (e *TransactionError) Unwrap() error { return e.cause }
+
 func (e *TransactionError) Is(target error) bool { return target == ErrTransaction }
 
 // StorageOperation is an allowlisted update-completion repository operation.
@@ -95,7 +99,9 @@ type StorageError struct {
 func (e *StorageError) Error() string {
 	return "storage operation failed during " + string(e.Operation)
 }
-func (e *StorageError) Unwrap() error        { return e.cause }
+
+func (e *StorageError) Unwrap() error { return e.cause }
+
 func (e *StorageError) Is(target error) bool { return target == ErrStorage }
 
 // UpdateOutcomeValidationError identifies an invalid field without its value.
@@ -125,6 +131,7 @@ type UpdateConflictError struct {
 func (e *UpdateConflictError) Error() string {
 	return "update completion conflict: " + string(e.Reason)
 }
+
 func (e *UpdateConflictError) Is(target error) bool {
 	switch e.Reason {
 	case UpdateConflictAlreadyProcessed:
@@ -277,6 +284,7 @@ func (e *OpenError) Error() string { return "persistence startup failed during "
 func migrationOperationError(version int, stage MigrationStage, reason MigrationReason, ctx context.Context, err error) error {
 	mapped := mapError(ctx, err)
 	var safeCause error
+
 	if errors.Is(mapped, context.Canceled) || errors.Is(mapped, context.DeadlineExceeded) || errors.Is(mapped, ErrContention) {
 		safeCause = mapped
 	}
@@ -303,13 +311,17 @@ func safeOperationCause(ctx context.Context, err error, preserveApplicationError
 		errors.Is(mapped, ErrNilTransactionCallback) || errors.Is(mapped, ErrStorage) {
 		return mapped
 	}
+
 	var sqliteErr *sqlite.Error
+
 	if errors.As(err, &sqliteErr) {
 		return nil
 	}
+
 	if preserveApplicationError {
 		return err
 	}
+
 	return nil
 }
 
@@ -317,11 +329,13 @@ func mapError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
+
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
 
 	var sqliteErr *sqlite.Error
+
 	if errors.As(err, &sqliteErr) {
 		switch sqliteErr.Code() & 0xff {
 		case 5, 6: // SQLITE_BUSY and SQLITE_LOCKED, including extended codes.

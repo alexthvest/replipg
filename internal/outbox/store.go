@@ -54,21 +54,27 @@ func (s *Store) Register(kind runtimecontract.DeliveryKind, version uint16, deco
 	if kind == "" {
 		return invalid("delivery.kind", runtimecontract.ReasonRequired)
 	}
+
 	if version == 0 {
 		return invalid("payload.version", runtimecontract.ReasonOutOfRange)
 	}
+
 	if decoder == nil {
 		return invalid("decoder", runtimecontract.ReasonRequired)
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.sealed {
 		return ErrRegistrySealed
 	}
+
 	key := schemaKey{kind, version}
 	if _, exists := s.decoders[key]; exists {
 		return ErrRegistrationConflict
 	}
+
 	s.decoders[key] = decoder
 	return nil
 }
@@ -84,37 +90,46 @@ func (s *Store) Enqueue(ctx context.Context, tx runtimecontract.DBTX, req runtim
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
+
 	if isNilDBTX(tx) {
 		return "", invalid("transaction", runtimecontract.ReasonRequired)
 	}
+
 	s.mu.RLock()
 	decoder := s.decoders[schemaKey{req.Kind, req.Payload.Version()}]
 	s.mu.RUnlock()
 	if decoder == nil {
 		return "", &UnsupportedVersionError{Version: req.Payload.Version()}
 	}
+
 	response, err := decode(decoder, req.Payload)
 	if err != nil {
 		return "", err
 	}
+
 	now := s.now().UTC()
 	if err := runtimecontract.ValidateResponseAt(response, now); err != nil {
 		return "", err
 	}
+
 	routing, err := responseRouting(response)
 	if err != nil {
 		return "", err
 	}
+
 	id, err := s.generateID()
 	if err != nil {
 		return "", errors.New("delivery identifier generation failed")
 	}
+
 	if id == "" {
 		return "", invalid("delivery.id", runtimecontract.ReasonRequired)
 	}
+
 	result, err := tx.ExecContext(ctx, `INSERT INTO outbound_deliveries (
 		id, kind, content_version, content, destination_chat_id, target_user_id,
 		authorization_kind, callback_query_id, incoming_ephemeral_message_id,
@@ -130,13 +145,16 @@ func (s *Store) Enqueue(ctx context.Context, tx runtimecontract.DBTX, req runtim
 	if err != nil {
 		return "", storageError(ctx, err)
 	}
+
 	count, err := result.RowsAffected()
 	if err != nil {
 		return "", storageError(ctx, err)
 	}
+
 	if count != 1 {
 		return "", &ConflictError{}
 	}
+
 	return id, nil
 }
 
@@ -156,16 +174,20 @@ func deliveryStatus(ctx context.Context, tx runtimecontract.DBTX, id runtimecont
 	if err := ctx.Err(); err != nil {
 		return DeliveryStatus{}, err
 	}
+
 	if id == "" {
 		return DeliveryStatus{}, invalid("delivery.id", runtimecontract.ReasonRequired)
 	}
+
 	if isNilDBTX(tx) {
 		return DeliveryStatus{}, invalid("transaction", runtimecontract.ReasonRequired)
 	}
+
 	var status DeliveryStatus
 	var next, terminal sql.NullInt64
 	var reason sql.NullString
 	var created, updated int64
+
 	rows, err := tx.QueryContext(ctx, `SELECT id, state, attempt_count, max_attempts,
 		next_attempt_at, reason_code, created_at, updated_at, terminal_at
 		FROM outbound_deliveries WHERE id = ?`, id)
@@ -173,20 +195,25 @@ func deliveryStatus(ctx context.Context, tx runtimecontract.DBTX, id runtimecont
 		return DeliveryStatus{}, storageError(ctx, err)
 	}
 	defer func() { _ = rows.Close() }()
+
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return DeliveryStatus{}, storageError(ctx, err)
 		}
+
 		return DeliveryStatus{}, ErrNotFound
 	}
+
 	err = rows.Scan(&status.ID, &status.State,
 		&status.Attempts, &status.MaxAttempts, &next, &reason, &created, &updated, &terminal)
 	if err != nil {
 		return DeliveryStatus{}, storageError(ctx, err)
 	}
+
 	if err := rows.Close(); err != nil {
 		return DeliveryStatus{}, storageError(ctx, err)
 	}
+
 	status.CreatedAt = time.UnixMilli(created).UTC()
 	status.UpdatedAt = time.UnixMilli(updated).UTC()
 	if next.Valid {
@@ -203,9 +230,11 @@ func deliveryStatus(ctx context.Context, tx runtimecontract.DBTX, id runtimecont
 
 func generateID() (runtimecontract.DeliveryID, error) {
 	var random [16]byte
+
 	if _, err := rand.Read(random[:]); err != nil {
 		return "", err
 	}
+
 	return runtimecontract.DeliveryID(hex.EncodeToString(random[:])), nil
 }
 
@@ -220,10 +249,12 @@ func decode(decoder Decoder, payload runtimecontract.VersionedPayload) (response
 			err = ErrDecode
 		}
 	}()
+
 	response, err = decoder(payload)
 	if err != nil {
 		return nil, ErrDecode
 	}
+
 	return response, nil
 }
 
@@ -232,18 +263,23 @@ func storageError(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+
 	if errors.Is(err, context.Canceled) {
 		return context.Canceled
 	}
+
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
+
 	if errors.Is(err, persistence.ErrContention) {
 		return persistence.ErrContention
 	}
+
 	if errors.Is(err, persistence.ErrPersistenceClosed) {
 		return persistence.ErrPersistenceClosed
 	}
+
 	return ErrStorage
 }
 
@@ -251,6 +287,7 @@ func isNilDBTX(tx runtimecontract.DBTX) bool {
 	if tx == nil {
 		return true
 	}
+
 	value := reflect.ValueOf(tx)
 	switch value.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:

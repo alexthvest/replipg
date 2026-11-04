@@ -51,13 +51,16 @@ func openDispatchDB(t *testing.T, dir string) *persistence.DB {
 			t.Error(err)
 		}
 	})
+
 	migrations, err := persistence.RuntimeMigrations()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.Migrate(context.Background(), migrations); err != nil {
 		t.Fatal(err)
 	}
+
 	return db
 }
 
@@ -70,6 +73,7 @@ func newDispatchFixture(t *testing.T, dir string) dispatchFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	now := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	store := outbox.NewStore(db, outbox.Options{Now: func() time.Time { return now }, GenerateID: func() (runtimecontract.DeliveryID, error) { return "dispatch-delivery", nil }})
 	if err := store.Register("feature", 1, func(payload runtimecontract.VersionedPayload) (runtimecontract.ResponseRequest, error) {
@@ -77,16 +81,19 @@ func newDispatchFixture(t *testing.T, dir string) dispatchFixture {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	store.Seal()
 	jobs := scheduler.New(db, dispatchClock{now})
 	if err := jobs.Register("feature", 1, dispatchJobHandler{}); err != nil {
 		t.Fatal(err)
 	}
+
 	jobs.SealRegistrations()
 	payload, err := runtimecontract.NewVersionedPayload(1, []byte("opaque feature result"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	retry := runtimecontract.RetryPolicy{MaxAttempts: 3, InitialDelay: time.Second, MaxDelay: time.Minute}
 	return dispatchFixture{db: db, registry: NewRegistry(), outbox: store, jobs: jobs, now: now,
 		delivery: runtimecontract.DeliveryRequest{Kind: "feature", Payload: payload, Retry: retry},
@@ -101,12 +108,15 @@ func (f dispatchFixture) effects(ctx context.Context, scope runtimecontract.Work
 	if _, err := scope.DBTX().ExecContext(ctx, `INSERT INTO dispatch_feature(value) VALUES (?)`, "opaque feature result"); err != nil {
 		return HandlerResult{}, err
 	}
+
 	if _, err := scope.EnqueueDelivery(ctx, f.delivery); err != nil {
 		return HandlerResult{}, err
 	}
+
 	if _, err := scope.Schedule(ctx, f.job); err != nil {
 		return HandlerResult{}, err
 	}
+
 	return HandlerResult{}, nil
 }
 
@@ -114,9 +124,11 @@ func assertDispatchCounts(t *testing.T, db runtimecontract.DBTX, want int) {
 	t.Helper()
 	for _, table := range []string{"dispatch_feature", "outbound_deliveries", "scheduled_jobs", "processed_updates", "runtime_cursors"} {
 		var count int
+
 		if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM `+table).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
+
 		if count != want {
 			t.Errorf("%s count = %d, want %d", table, count, want)
 		}
@@ -133,6 +145,7 @@ func (s inspectingCursorStore) RecordTerminal(ctx context.Context, tx runtimecon
 	if err := s.CursorStore.RecordTerminal(ctx, tx, outcome); err != nil {
 		return err
 	}
+
 	s.inspect(tx)
 	return nil
 }
@@ -144,6 +157,7 @@ func TestDispatchCommitsDurableEffectsTogether(t *testing.T) {
 	if err := f.registry.RegisterCommand("feature_action", dispatchHandlerFunc(f.effects)); err != nil {
 		t.Fatal(err)
 	}
+
 	f.registry.Seal()
 	router := f.router()
 	inspected := false
@@ -156,38 +170,49 @@ func TestDispatchCommitsDurableEffectsTogether(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dispatch() must atomically commit: %v", err)
 	}
+
 	if result.Status != persistence.UpdateCompleted || result.CorrelationID != "dispatch-correlation" || !inspected {
 		t.Fatalf("outcome = %+v, inspected = %v", result, inspected)
 	}
+
 	assertDispatchCounts(t, observer, 1)
 	if err := f.db.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	reopened := openDispatchDB(t, dir)
 	assertDispatchCounts(t, reopened, 1)
 	terminal, exists, err := reopened.TerminalOutcome(context.Background(), 42)
 	if err != nil || !exists || terminal.Status != persistence.UpdateCompleted || terminal.CorrelationID != result.CorrelationID || !terminal.CompletedAt.Equal(f.now) {
 		t.Fatalf("terminal = %+v, %v, %v", terminal, exists, err)
 	}
+
 	cursor, err := reopened.CompletedUpdate(context.Background())
 	if err != nil || cursor != 42 {
 		t.Fatalf("cursor = %d, %v", cursor, err)
 	}
+
 	var state, content string
+
 	if err := reopened.QueryRowContext(context.Background(), `SELECT value FROM dispatch_feature`).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := reopened.QueryRowContext(context.Background(), `SELECT content FROM outbound_deliveries`).Scan(&content); err != nil {
 		t.Fatal(err)
 	}
+
 	if state != "opaque feature result" || content != state {
 		t.Fatal("feature state or opaque delivery content changed")
 	}
+
 	var payload []byte
 	var due int64
+
 	if err := reopened.QueryRowContext(context.Background(), `SELECT payload,due_at FROM scheduled_jobs WHERE id=?`, f.job.ID).Scan(&payload, &due); err != nil {
 		t.Fatal(err)
 	}
+
 	if string(payload) != state || due != f.job.DueAt.UnixMilli() {
 		t.Fatal("scheduled payload or due instant changed")
 	}
@@ -200,11 +225,13 @@ func TestDispatchRollsBackEveryEffectOnStorageFailure(t *testing.T) {
 			if scenario == "schedule" {
 				f.job.Type = "unregistered"
 			}
+
 			if scenario == "cursor write" {
 				if _, err := f.db.ExecContext(context.Background(), `CREATE TRIGGER reject_cursor BEFORE INSERT ON runtime_cursors BEGIN SELECT RAISE(ABORT,'injected cursor failure'); END`); err != nil {
 					t.Fatal(err)
 				}
 			}
+
 			handler := dispatchHandlerFunc(func(ctx context.Context, scope runtimecontract.WorkScope, event Event) (HandlerResult, error) {
 				result, err := f.effects(ctx, scope, event)
 				if err == nil && scenario == "commit" {
@@ -215,41 +242,53 @@ func TestDispatchRollsBackEveryEffectOnStorageFailure(t *testing.T) {
 			if err := f.registry.RegisterCommand("feature_action", handler); err != nil {
 				t.Fatal(err)
 			}
+
 			f.registry.Seal()
 			result, err := f.router().Dispatch(context.Background(), Command{Identity: testIdentity(), Name: "feature_action"})
+
 			if scenario == "schedule" {
 				// Invalid feature requests are isolated terminal failures; actual
 				// storage failures below remain retryable with no completion.
 				if err != nil || result.Status != persistence.UpdateHandlerFailed {
 					t.Fatalf("invalid schedule outcome = %+v, %v", result, err)
 				}
+
 				for _, table := range []string{"dispatch_feature", "outbound_deliveries", "scheduled_jobs"} {
 					var count int
+
 					if err := f.db.QueryRowContext(context.Background(), `SELECT count(*) FROM `+table).Scan(&count); err != nil {
 						t.Fatal(err)
 					}
+
 					if count != 0 {
 						t.Fatalf("%s residue = %d", table, count)
 					}
 				}
+
 				cursor, err := f.db.CompletedUpdate(context.Background())
 				if err != nil || cursor != 42 {
 					t.Fatalf("failure cursor = %d, %v", cursor, err)
 				}
+
 				return
 			}
+
 			if err == nil {
 				t.Fatal("failed transaction reported success")
 			}
+
 			if !reflect.DeepEqual(result, DispatchOutcome{}) {
 				t.Fatalf("failed transaction returned outcome: %+v", result)
 			}
+
 			if scenario == "commit" {
 				var txErr *persistence.TransactionError
+
 				if !errors.As(err, &txErr) || txErr.Stage != persistence.TransactionStageCommit {
 					t.Fatalf("want commit failure, got %v", err)
 				}
 			}
+
 			assertDispatchCounts(t, f.db, 0)
 			cursor, err := f.db.CompletedUpdate(context.Background())
 			if err != nil || cursor != 0 {

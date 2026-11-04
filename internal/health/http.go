@@ -24,14 +24,17 @@ func NewHandler(state *State, work WorkStatusSource) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+
 		snapshot := state.Snapshot()
 		code := http.StatusOK
 		var body any
+
 		switch r.URL.Path {
 		case "/livez":
 			if !snapshot.Live {
@@ -58,6 +61,7 @@ func NewHandler(state *State, work WorkStatusSource) http.Handler {
 			}{Snapshot: snapshot}
 			var counts WorkCounts
 			var err error
+
 			if work == nil {
 				err = ErrWorkStatusUnavailable
 			} else {
@@ -72,6 +76,7 @@ func NewHandler(state *State, work WorkStatusSource) http.Handler {
 			}
 			body = result
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(code)

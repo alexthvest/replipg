@@ -17,5 +17,6 @@ func (p Presentation) validate() error {
 	if p.Catalog == nil || p.Resolve == nil {
 		return errors.New("devsmoke: missing presentation dependency")
 	}
+
 	return nil
 }
