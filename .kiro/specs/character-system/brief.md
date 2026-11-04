@@ -29,19 +29,19 @@ Represent the Telegram user identity separately from a generic character record,
 
 ## Out of Boundary
 
-- Equipment-derived modifiers belong to inventory-equipment.
+- Equipment-derived modifiers belong to inventory-system.
 - Battle damage and defeat orchestration belong to battle-system.
 - Telegram update plumbing and ephemeral delivery belong to telegram-runtime.
 
 ## Upstream / Downstream
 
 - **Upstream**: telegram-runtime provides identity-bearing update routing, ephemeral replies, persistence, and clock/scheduling abstractions.
-- **Downstream**: inventory-equipment attaches owned items to a character; monster-encounters and battle-system check eligibility and mutate health/status.
+- **Downstream**: inventory-system attaches owned items to a character; monster-encounters and battle-system check eligibility and mutate health/status.
 
 ## Existing Spec Touchpoints
 
 - **Extends**: None.
-- **Adjacent**: inventory-equipment calculates equipped modifiers; battle-system decides when damage causes incapacitation.
+- **Adjacent**: inventory-system calculates equipped modifiers; battle-system decides when damage causes incapacitation.
 
 ## Constraints
 

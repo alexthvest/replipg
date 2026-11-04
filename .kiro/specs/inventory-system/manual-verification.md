@@ -1,6 +1,8 @@
 > Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
 
-# Inventory Equipment Verification
+> Split verification (2026-11-04): automated checks and independent reviews passed; live observations remain pending. Final scripts/check and scripts/smoke exited 0. Enable inventory probes only with a positive REPLIPG_OWNER_TELEGRAM_USER_ID and authorize numeric owner identity before all development behavior/output. Existing owner observations below are historical and do not prove this split. Repeat grant/heal as owner and reject non-owner/admin use; see ../item-system/manual-verification.md for /dev_item, disabled/config and zero-state checks. Preserve all original pending live gates.
+
+# Inventory System Verification
 
 ## Evidence status
 
@@ -12,7 +14,7 @@ This document separates reproduction instructions from observed evidence. Automa
 
 ## Content and rollout
 
-The embedded `internal/inventory/items.json` defines Stick (+1 attack), Cloth armor (+1 defense), Healing potion (10 HP), and inert Coin. Each character receives one Stick, one Cloth armor, three potions and ten Coins on first authorized inventory opening. Equipment starts unequipped. Coins are ordinary stacked items with no spending or currency semantics.
+The embedded `internal/item/items.json` with separate inventory starter configuration defines Stick (+1 attack), Cloth armor (+1 defense), Healing potion (10 HP), and inert Coin. Each character receives one Stick, one Cloth armor, three potions and ten Coins on first authorized inventory opening. Equipment starts unequipped. Coins are ordinary stacked items with no spending or currency semantics.
 
 Saved item categories and numeric mechanics are immutable. Display text may change; new mechanics require a new identity while preserving all old definitions. Changing the starter kit affects only characters whose starter entitlement remains pending. Startup catalog preparation registers definitions without granting items or creating inventory roots.
 

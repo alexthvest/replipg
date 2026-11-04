@@ -44,7 +44,7 @@ These are seams inside one feature, not separate specifications or services.
 
 ## Upstream / Downstream
 
-- **Upstream**: telegram-runtime supplies authenticated actor/group context, callback routing, public delivery, persistence, and delivery recovery capabilities. character-system and inventory-equipment supply the personal views. localization supplies English/Russian presentation and group locale resolution.
+- **Upstream**: telegram-runtime supplies authenticated actor/group context, callback routing, public delivery, persistence, and delivery recovery capabilities. character-system and inventory-system supply the personal views. localization supplies English/Russian presentation and group locale resolution.
 - **Downstream**: Future gameplay interfaces may reuse the sharing capability if separately specified. Encounter and battle implementation are not prerequisites or part of this feature.
 
 ## Existing Spec Touchpoints

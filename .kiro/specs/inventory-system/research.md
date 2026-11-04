@@ -1,10 +1,12 @@
 > Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
 
+> Historical evidence: the pre-split combined implementation and its dated results below are retained. They do not prove the approved 2026-11-04 extraction or owner-authorization changes. Fresh split evidence is recorded in validation-report.md and tasks 8.1–8.3; original live gates remain pending. Active ownership is defined in design.md.
+
 # Research & Design Decisions
 
 ## Summary
 
-- **Feature**: `inventory-equipment`
+- **Feature**: `inventory-system`
 - **Discovery Scope**: Extension; integration-focused light discovery of the existing runtime and character implementation.
 - **Key Findings**:
   - All gameplay changes can share caller-owned `DBTX`; character reads can normalize recovery and healing accepts a full-health no-op, requiring inventory-specific rejection and operation isolation.

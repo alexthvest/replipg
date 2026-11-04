@@ -1,5 +1,7 @@
 > Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
 
+> Historical discovery below predates item extraction. The approved 2026-11-04 split uses pure item definitions with no text fields; localized text remains exclusively here and inventory/composition validates it. The legacy-text-shape decision is superseded.
+
 # Research & Design Decisions
 
 ## Summary

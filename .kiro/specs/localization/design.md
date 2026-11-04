@@ -120,14 +120,14 @@ The arrows indicate capability use, not unrestricted imports. Catalogs are share
 - `internal/app/runtime.go`, `composition.go`: inject transport ports into registrations, create client before registration, initialize factories, wait for worker-start handshake, size supervision results for all workers.
 - `internal/character/render.go`, `commands.go`, `development.go` and corresponding tests: explicit locale and injected presentation dependencies, including domain errors and raw states.
 - `internal/inventory/render.go`, `commands.go`, `development.go` and corresponding tests: bilingual item lookup, labels, owner fallback, stale guidance and controls.
-- `internal/inventory/catalog.go`, `catalog_test.go`: expose the existing item-text validation for reuse; preserve current catalog loading and mechanics reconciliation.
+- `internal/inventory` presentation validation and command composition: validate retained item translations independently from the pure item catalog; inventory retains persisted mechanics reconciliation.
 - `internal/persistence/migrate.go`: explicitly embed and register migration 0004 in ordered runtime migrations.
 - `internal/devsmoke/register.go` and its tests: translate all visible probe messages without changing routes or privacy.
 - `cmd/replipg/main.go`, `character.go`, `inventory.go`: compose shared presentation options and command description keys; preserve enabled command flags and names.
 - `cmd/replipg/smoke_test.go`, existing character/inventory integration tests: preserve executable transport regressions and add bilingual expectations.
 - `README.md`: settings behavior, bot permissions, new managed menu scopes, restart/rollback instructions and reproduction commands.
 
-`internal/inventory/items.json` contains stable identities, categories, mechanics and starter quantities only. All rendering reads bilingual names and descriptions exclusively from localization resources. Do not reset preexisting user edits; the current `cloth_armor` display intent is leather armor despite its historical ID. Reconcile the English wording with that intent and correct Russian spelling without renaming the ID or changing defense.
+`internal/item/items.json` contains stable identities, categories and mechanics only; separate inventory seed configuration owns starter quantities. All rendering reads bilingual names and descriptions exclusively from localization resources. Do not reset preexisting user edits; the current `cloth_armor` display intent is leather armor despite its historical ID. Reconcile the English wording with that intent and correct Russian spelling without renaming the ID or changing defense.
 
 ## System Flows
 
@@ -260,6 +260,8 @@ Item names remain limited to 80 runes and descriptions to 400; export and reuse 
 
 ### GroupStore and Feature Presentation
 
+The approved item/inventory split adds `Store.ResolveReadOnly(ctx, tx, chat)` for application-owned catalog inspection. It reads the saved locale or returns English without initializing group settings or menu work. `/dev_item` uses this capability after owner authorization; existing `Resolve` and normal player interactions retain their initialization behavior. `TestResolveReadOnlyDoesNotCreateSettings` covers both missing settings and saved Russian selection.
+
 **Contracts: State, Service.** Inbound: settings and injected feature resolution (P0). Outbound: DBTX (P0). Store errors wrap safe storage markers consistent with existing feature stores.
 
 ```go
@@ -281,7 +283,7 @@ func (s *Store) Change(ctx context.Context, tx runtimecontract.DBTX,
 
 Each feature's `Register` and applicable `RegisterDevelopment` entry points require presentation options containing the catalog and a narrow resolver function with the above signature. All callers, including tests, use this single presentation path; no legacy registration wrappers or English-only fallback renderers remain. Resolve once with the handler's `WorkScope.DBTX`, before translating usage, errors or content; pass locale explicitly through character summaries and inventory page/detail renderers. No DB access in render functions. Missing presentation dependencies fail registration, rather than silently disabling localization.
 
-`ItemDefinition` contains gameplay mechanics only; renderers exclusively use `Catalog.Item` for names and descriptions. Custom display text in tests belongs to translation fixtures. Inventory's startup mechanics reconciliation and constructor revalidation stay unchanged. Composition validates bilingual item text using the current catalog IDs and exported validator before preparation/admission.
+`ItemDefinition` contains gameplay mechanics only; renderers exclusively use `Catalog.Item` for names and descriptions. Custom display text in tests belongs to translation fixtures. Inventory retains startup mechanics reconciliation and constructor validation of injected item content and separate starter lines. Composition validates bilingual item text using the current catalog IDs and exported validator before preparation/admission.
 
 ### PreparingHandler and MembershipPort
 
@@ -443,3 +445,7 @@ graph TD
 ```
 
 Initialization does not backfill player state or replace item definitions. Groups become managed on first accepted localized interaction; untouched groups use the English global menu. Catalog/preparation failure blocks admission even if the migration has committed. A schema-3 binary rejects a schema-4 database; roll forward or restore a stopped matching whole-directory snapshot and binary. When rolling back, deliberately remove/restore owned chat menus because external Telegram state is not restored by a database backup.
+
+## Approved Item Boundary Update (2026-11-04)
+
+Dependencies: telegram-runtime, character-system, item-system for stable content IDs and inventory-system for UI. Item contracts/catalog import no localization. Names/descriptions stay exclusively in localization resources; inventory/composition performs item-text validation through the existing adapter. Earlier combined-catalog file references in historical research/tasks are superseded by this boundary.

@@ -33,12 +33,12 @@ Implement combat as an explicit persisted state machine with a monotonically inc
 ## Out of Boundary
 
 - Encounter probability and monster selection belong to monster-encounters.
-- Base character state belongs to character-system; item ownership/effects belong to inventory-equipment.
+- Base character state belongs to character-system; item definitions/effects belong to item-system; ownership and atomic consumption belong to inventory-system.
 - Telegram retries, flood control, and delivery reconciliation belong to telegram-runtime.
 
 ## Upstream / Downstream
 
-- **Upstream**: character-system supplies health and eligibility; inventory-equipment supplies modifiers, item consumption, and grants; monster-encounters supplies the encounter and monster definition; telegram-runtime supplies callback routing, atomic persistence support, and delivery reconciliation.
+- **Upstream**: character-system supplies health and eligibility; item-system supplies definitions/effects; inventory-system supplies modifiers, item consumption, and grants; monster-encounters supplies the encounter and monster definition; telegram-runtime supplies callback routing, atomic persistence support, and delivery reconciliation.
 - **Downstream**: Future progression, achievements, guilds, and world-event specs can consume battle outcomes without changing the core transition model.
 
 ## Existing Spec Touchpoints

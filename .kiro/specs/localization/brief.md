@@ -55,7 +55,7 @@ This approach was selected by the user over typed Go translation bundles and an 
 ## Existing Spec Touchpoints
 
 - **Extends**: None as a separate existing-spec workstream; this new cross-cutting feature owns language behavior and the adaptations needed in existing interfaces.
-- **Adjacent**: telegram-runtime command-menu and delivery capabilities; character-system rendering and ownership; inventory-equipment catalog validation, item presentation, ephemeral message editing, and stale controls. Preserve their gameplay and privacy contracts.
+- **Adjacent**: telegram-runtime command-menu and delivery capabilities; character-system rendering and ownership; item-system stable item content and inventory-system presentation validation, item presentation, ephemeral message editing, and stale controls. Preserve their gameplay and privacy contracts.
 
 ## Constraints
 

@@ -40,15 +40,16 @@ The implementation will be a Go modular monolith running as one long-polling con
 
 - [x] telegram-runtime -- Establish configuration, long polling, ephemeral interaction support, SQLite persistence, migrations, durable scheduling, and Telegram delivery reconciliation. Dependencies: none
 - [x] character-system -- Create and persist one generic character per Telegram user, including health and temporary incapacitation. Dependencies: telegram-runtime
-- [ ] inventory-equipment -- Manage consumables, weapons, armor, equipped slots, item effects, and atomic item grants. Dependencies: telegram-runtime, character-system
+- [ ] item-system -- Define immutable items and mechanics in a pure Go catalog. Domain dependencies: none; operator demonstration requires telegram-runtime.
+- [ ] inventory-system -- Manage ownership, starter supplies, equipment slots and bonus aggregation, atomic grants and coordinated healing. Dependencies: item-system, telegram-runtime, character-system
 - [ ] monster-encounters -- Track privacy-preserving chat activity and schedule configurable common and special monster encounters in group chats. Dependencies: telegram-runtime, character-system
-- [ ] battle-system -- Run step-based cooperative monster battles and resolve actions, cooldowns, monster responses, escape, defeat, recovery, and contribution-weighted loot. Dependencies: character-system, inventory-equipment, monster-encounters
+- [ ] battle-system -- Run step-based cooperative monster battles and resolve actions, cooldowns, monster responses, escape, defeat, recovery, and contribution-weighted loot. Dependencies: character-system, item-system, inventory-system, monster-encounters
 
 ## Localization Expansion
 
 Discovery adds one shared localization feature using embedded, version-controlled English and Russian catalogs and the Go standard library. Each group selects one persistent language for all personal and public bot interfaces. Everyone can inspect `/settings`; only group administrators can change the language. Groups without a saved choice default to English. Preserve stable command names, content IDs, gameplay mechanics, and existing privacy guarantees.
 
-- [ ] localization -- Translate current player-facing UI and item content, add group-language settings, and synchronize translated group command descriptions. Dependencies: telegram-runtime, character-system, inventory-equipment. Brief: `.kiro/specs/localization/brief.md`.
+- [ ] localization -- Translate current player-facing UI and item content, add group-language settings, and synchronize translated group command descriptions. Dependencies: telegram-runtime, character-system, item-system (content), inventory-system (UI). Brief: `.kiro/specs/localization/brief.md`.
 
 Implement localization after the existing inventory work and before new encounter and battle interfaces. Those future specs consume the shared localization capability for their text and content; their gameplay scope and existing dependency relationships remain unchanged. This expansion preserves the original roadmap and completed items.
 
@@ -58,6 +59,10 @@ Discovery adds explicit sharing of the current personal view. Players keep chara
 
 The user chose current-view sharing over a compact summary. Public interactive menus and a menu visibility setting are deferred because routine browsing would overload the conversation. Sharing does not change group settings, gameplay ownership, or the rule against public fallback after failed personal delivery.
 
-- [ ] menu-sharing -- Capture displayed personal views and publish explicit owner-authorized snapshots through existing public delivery. Dependencies: telegram-runtime, character-system, inventory-equipment, localization. Brief: `.kiro/specs/menu-sharing/brief.md`.
+- [ ] menu-sharing -- Capture displayed personal views and publish explicit owner-authorized snapshots through existing public delivery. Dependencies: telegram-runtime, character-system, inventory-system, localization. Brief: `.kiro/specs/menu-sharing/brief.md`.
 
 This is one new feature boundary with presentation, snapshot authorization, and delivery seams. It can follow the existing inventory/localization work independently of encounter and battle implementation. Preserve all earlier roadmap phases and completion markers.
+
+## Approved Item / Inventory Split
+
+The user approved this split and its implementation on 2026-11-04. Item System is an independent pure Go catalog; Inventory System consumes item contracts and owns state. Localization consumes item identities for content and inventory views for UI; Battle consumes both item definitions/effects and inventory operations/modifiers. Preserve schemas, migrations, item IDs, serialized receipts and tuning. Existing completed evidence remains historical, and pending live gates remain open.

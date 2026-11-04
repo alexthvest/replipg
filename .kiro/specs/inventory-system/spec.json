@@ -1,0 +1,28 @@
+{
+  "feature_name": "inventory-system",
+  "created_at": "2026-10-28T07:58:00Z",
+  "updated_at": "2026-11-04T00:00:00Z",
+  "language": "en",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "dependencies": [
+    "item-system",
+    "telegram-runtime",
+    "character-system"
+  ],
+  "approval_basis": "User approved split requirements, design, tasks and implementation by requesting Implement the plan on 2026-11-04."
+}

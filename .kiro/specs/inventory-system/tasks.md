@@ -326,3 +326,35 @@ Each milestone's automated integration gate also includes reproducible commands 
 - [x] Edit the originating view for inventory navigation, equipment actions, and stale/expired notices; reject callbacks without an ephemeral message target before mutation.
 - [x] Cover exact edit payloads, empty keyboard removal, rejected edits, callback ownership, and same-message navigation/equipment in automated tests; update reproduction instructions.
 - [ ] Owner live verification of in-place inventory navigation and equipment actions (see manual-verification.md).
+
+## Approved Item / Inventory Split (2026-11-04)
+
+All preceding checked tasks and their requirement mappings record the historical combined implementation. They do not claim the extraction or owner-authorization changes have been re-executed. The user approved the following requirements/design/tasks and implementation by requesting “Implement the plan”. The active design supersedes combined catalog ownership; preserve all original completion/live markers.
+
+- [x] 8.1 Extract Item System and retain inventory state coordination
+  - Move IDs/categories/effect/definition types and strict catalog/seed validation to pure item contracts/catalog; remove old inventory catalog implementation and compatibility aliases.
+  - Inject a consumer-owned catalog and separately copied/validated starter lines into inventory; translate item failures to inventory classifications where required.
+  - Preserve compatibility projection, migrations, schemas, receipts, serialized names, quantities, tuning, equipment and healing coordination. Add focused catalog/constructor/architecture and existing-state regression evidence.
+  - Done when item-system task 1.1 passes and inventory consumers cannot mutate injected data or import item implementation.
+  - _Boundary: Item contracts and inventory service_
+  - _Requirements: 1.1–1.7, 2.1–2.7, 4.1–4.9, 5.1–5.6, 6.1–6.7, 8.1–8.7_
+
+- [x] 8.2 Integrate operator inspection and owner authorization
+  - Compose item catalog, inventory starter and localization validation; add application-layer /dev_item and authorize it plus inventory probes by positive configured owner ID before behavior/output.
+  - Preserve self-only mutations, ephemeral group privacy, disabled command/menu omission and independent runtime/character modes. Document syntax, prerequisites, output and state changes and exercise owner/non-owner/config/error paths with fake Telegram.
+  - Done when item-system task 1.2 passes and existing inventory UI/grant/heal flows remain consistent with their original contracts.
+  - _Depends: 8.1_
+  - _Boundary: Application composition and inventory development interactions_
+  - _Requirements: 3.1–3.9, 7.1–7.7, 9.1–9.7, 10.1–10.5_
+
+- [ ] 8.3 Validate split and retain explicit live gate
+  - Run pinned scripts/check and scripts/smoke plus focused compatibility/import/executable verification; obtain independent review and record fresh evidence separately from historical results.
+  - Record owner/non-owner /dev_item, inventory grant/heal, normal inventory continuity, wrong/expired controls and disabled mode in a Telegram test group only when actually observed. Keep original live gates and this task unchecked if required live observations remain unavailable.
+  - Done when automated validation and live evidence are recorded; report MANUAL_VERIFY_REQUIRED for unobserved live outcomes.
+  - _Depends: 8.2_
+  - _Boundary: Final validation and visible delivery_
+  - _Requirements: 1.5, 8.1–8.7, 9.1–9.7, 10.1–10.5_
+
+## Split Implementation Notes
+
+- 2026-11-04: Tasks 8.1 and 8.2 passed independent review. Final `./scripts/check` and `./scripts/smoke` both exited 0 on the combined workspace, including race tests and the actual production executable with fake Telegram. Task 8.3 and all older live gates remain unchecked for missing real Telegram observations; see validation-report.md.

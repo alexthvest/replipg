@@ -1,6 +1,20 @@
 > Historical note (2026-11-04): The custom checker in `internal/architecture` has been retired. References below to its source, allowlists, fixtures, commands, or results describe historical work and are no longer implementation or validation requirements. Package dependency guidance still applies.
 
-# Inventory Equipment Validation
+## Current split validation — 2026-11-04
+
+**SOFTWARE_VERIFIED / MANUAL_VERIFY_REQUIRED.** Tasks 8.1 and 8.2 passed independent review. Final `./scripts/check` exited 0 through devenv: configuration/formatting verification, zero lint issues, all normal tests, build and race tests pass. Final `./scripts/smoke` exited 0 and exercised the production executable with fake Telegram. No live Telegram messages were sent.
+
+Catalog definitions and mechanical types now belong to Item System; inventory owns starter configuration, quantities, slots, modifiers, receipts and coordinated healing. Schemas, migrations, IDs, seed tuning and canonical receipts remain unchanged. Literal old SQL/JSON fixtures verify restart and replay compatibility. Normal inventory, sharing, localization, equipment and consumption regressions pass. Strict owner configuration and owner-first inventory probe authorization are tested, as are disabled mode and non-owner player access. `/dev_item` creates no feature state, including settings; read-only locale lookup and bilingual output are verified. See ../item-system/validation-report.md for the requirement matrix and commands.
+
+All inventory requirement sections have automated or documentary evidence; requirement 9.7's live portion and requirement 10.5's actual owner/non-owner group observations remain pending. Task 8.3 and older live gates remain unchecked. No unresolved software finding or upstream remediation remains. Historical results below are preserved separately from this fresh validation.
+
+## Item extraction evidence — 2026-11-04
+
+Task 8.1 and item-system task 1.1 passed independent review. Fresh parent checks passed `devenv shell -- go test -count=1 ./internal/item/... ./internal/inventory/...` (exit 0). Independent review passed the full Go suite and lint (both exit 0, zero issues). Literal pre-extraction SQL/JSON fixtures preserve equipment and replayed grant, equipment and frozen-healing results after reopening. Injected catalog and starter mutation-isolation tests pass. Direct `go list` inspection confirms the dependency direction. Schemas, migrations, IDs, receipt encodings and tuning remain unchanged. Operator integration and final/live verification are separate pending gates; the following older results remain historical.
+
+> Historical evidence: the pre-split combined implementation and its dated results below are retained. They do not prove the approved 2026-11-04 extraction or owner-authorization changes. Fresh split validation is pending; tasks 8.1–8.3 and original live gates remain unchecked. Active ownership is defined in design.md.
+
+# Historical Combined-System Validation
 
 ## Decision
 
