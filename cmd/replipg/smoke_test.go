@@ -61,6 +61,8 @@ func TestProductionBinarySmoke(t *testing.T) {
 				_, _ = io.WriteString(w, `{"ok":true,"result":{"id":123456,"is_bot":true,"first_name":"fixture","username":"test_bot"}}`)
 			case <-r.Context().Done():
 			}
+		case "setMyCommands":
+			_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 		case "deleteWebhook":
 			var payload struct {
 				Drop bool `json:"drop_pending_updates"`

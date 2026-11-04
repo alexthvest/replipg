@@ -32,6 +32,7 @@ type Registrations struct {
 // Options supplies explicit composition boundaries. TelegramBaseURL and HTTPClient
 // support local Bot API integration tests; production leaves both unset.
 type Options struct {
+	Commands        []runtimecontract.CommandDeclaration
 	Diagnostics     observability.DiagnosticSink
 	Register        func(Registrations) error
 	TelegramBaseURL string
@@ -68,6 +69,12 @@ type Runtime struct {
 func New(cfg config.Config, options Options) (*Runtime, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
+	}
+	if err := runtimecontract.ValidateCommandDeclarations(options.Commands); err != nil {
+		return nil, err
+	}
+	if options.Commands != nil {
+		options.Commands = append([]runtimecontract.CommandDeclaration{}, options.Commands...)
 	}
 
 	if options.Diagnostics == nil {
@@ -212,6 +219,11 @@ func (r *Runtime) Run(ctx context.Context) (runErr error) {
 		return r.failure(ctx, "telegram_identity")
 	}
 
+	if r.options.Commands != nil {
+		if err := client.SetGroupCommands(startupCtx, r.options.Commands); err != nil {
+			return r.failure(ctx, "telegram_commands")
+		}
+	}
 	_ = r.state.SetDependency(health.Telegram, true)
 	sender := telegram.NewDelivery(client, time.Now)
 	router := interaction.NewRouter(routes, db, db, deliveries, jobs, interaction.RouterOptions{Diagnostics: r.options.Diagnostics})

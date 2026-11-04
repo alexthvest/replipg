@@ -3,6 +3,7 @@ package telegram
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -92,5 +93,40 @@ func TestDecodeUpdateUnsafeIdentity(t *testing.T) {
 		if !errors.Is(err, ErrUpdateID) || got.UpdateID != 0 || got.Event != nil {
 			t.Fatalf("unsafe identity: %#v %v", got, err)
 		}
+	}
+}
+
+func TestCommandSourceAuthorization(t *testing.T) {
+	for _, tc := range []struct {
+		name, extra string
+		bot, chat   bool
+		unix        int64
+	}{
+		{"human", `,"date":123`, false, false, 123},
+		{"missing time", "", false, false, 0},
+		{"bot", `,"date":123`, true, false, 123},
+		{"anonymous", `,"date":123,"sender_chat":{"id":-8}`, false, true, 123},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := json.RawMessage(fmt.Sprintf(`{"update_id":1,"message":{"ephemeral_message_id":7,"from":{"id":42,"is_bot":%t},"chat":{"id":-9,"type":"supergroup"},"text":"/character","entities":[{"type":"bot_command","offset":0,"length":10}]%s}}`, tc.bot, tc.extra))
+			got, err := DecodeUpdate(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			command, ok := got.Event.(interaction.Command)
+			if !ok {
+				t.Fatalf("event %T", got.Event)
+			}
+			if command.ActorIsBot != tc.bot || command.SenderIsChat != tc.chat {
+				t.Fatalf("metadata %+v", command)
+			}
+			if tc.unix == 0 {
+				if !command.SentAt.IsZero() {
+					t.Fatal("invented timestamp")
+				}
+			} else if command.SentAt.Unix() != tc.unix {
+				t.Fatal("lost source timestamp")
+			}
+		})
 	}
 }

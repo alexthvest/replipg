@@ -1,0 +1,7 @@
+{
+  "max_health": 100,
+  "attack": 10,
+  "defense": 5,
+  "incapacitation_duration": "5s",
+  "recovery_percent": "25"
+}

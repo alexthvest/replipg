@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf16"
 
@@ -105,7 +106,7 @@ func DecodeUpdate(raw json.RawMessage) (DecodedUpdate, error) {
 			return result, nil
 		}
 		if command {
-			result.Event = interaction.Command{Identity: identity, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Name: interaction.CommandName(name), Arguments: args}
+			result.Event = interaction.Command{Identity: identity, MessageID: interaction.MessageID(message.MessageID), EphemeralMessageID: interaction.EphemeralMessageID(message.EphemeralMessageID), Name: interaction.CommandName(name), Arguments: args, SentAt: message.sentAt(), ActorIsBot: message.From.IsBot, SenderIsChat: len(message.SenderChat) > 0 && string(message.SenderChat) != "null"}
 		} else {
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(messageRaw, &fields)
@@ -129,13 +130,15 @@ func DecodeUpdate(raw json.RawMessage) (DecodedUpdate, error) {
 }
 
 type inboundUser struct {
-	ID int64 `json:"id"`
+	ID    int64 `json:"id"`
+	IsBot bool  `json:"is_bot"`
 }
 type inboundMessage struct {
-	MessageID          int64        `json:"message_id"`
-	EphemeralMessageID int64        `json:"ephemeral_message_id"`
-	From               *inboundUser `json:"from"`
-	Date               *int64       `json:"date"`
+	MessageID          int64           `json:"message_id"`
+	EphemeralMessageID int64           `json:"ephemeral_message_id"`
+	From               *inboundUser    `json:"from"`
+	Date               *int64          `json:"date"`
+	SenderChat         json.RawMessage `json:"sender_chat"`
 	Chat               struct {
 		ID   int64                    `json:"id"`
 		Type runtimecontract.ChatKind `json:"type"`
@@ -146,6 +149,13 @@ type inboundMessage struct {
 		Offset int    `json:"offset"`
 		Length int    `json:"length"`
 	} `json:"entities"`
+}
+
+func (m inboundMessage) sentAt() time.Time {
+	if m.Date == nil || *m.Date <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(*m.Date, 0).UTC()
 }
 
 func (m inboundMessage) group() bool {

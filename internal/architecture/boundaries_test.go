@@ -46,6 +46,20 @@ func TestBoundaryCheckerRejectsForbiddenImports(t *testing.T) {
 		{"persistence imports service", "internal/persistence/db.go", modulePath + "/internal/outbox"},
 		{"service imports app", "internal/outbox/store.go", modulePath + "/internal/app"},
 		{"runtime imports command", "internal/health/state.go", modulePath + "/cmd/replipg"},
+		{"runtime imports character contract", "internal/app/runtime.go", modulePath + "/internal/character/contract"},
+		{"gameplay imports character implementation", "internal/battle/service.go", modulePath + "/internal/character"},
+		{"nested gameplay imports character implementation", "internal/inventory/nested/store.go", modulePath + "/internal/character/store"},
+		{"gameplay imports nested character contract", "internal/encounter/events_windows.go", modulePath + "/internal/character/contract/extra"},
+		{"character contract imports implementation", "internal/character/contract/types.go", modulePath + "/internal/character"},
+		{"nested character contract imports interaction", "internal/character/contract/nested/types_linux.go", modulePath + "/internal/interaction"},
+		{"character contract imports runtime subpackage", "internal/character/contract/types.go", modulePath + "/internal/runtimecontract/extra"},
+		{"character contract imports third party", "internal/character/contract/types.go", "example.com/types"},
+		{"character imports outbox", "internal/character/commands.go", modulePath + "/internal/outbox"},
+		{"character imports scheduler", "internal/character/nested/rules_windows.go", modulePath + "/internal/scheduler"},
+		{"character imports config", "internal/character/config.go", modulePath + "/internal/config"},
+		{"character imports diagnostics", "internal/character/service.go", modulePath + "/internal/observability"},
+		{"character imports other gameplay", "internal/character/service.go", modulePath + "/internal/battle"},
+		{"character imports contract subpackage", "internal/character/service.go", modulePath + "/internal/character/contract/extra"},
 		{"unapproved runtime dependency", "internal/telegram/client.go", "example.com/client"},
 	}
 	for _, tc := range cases {
@@ -65,12 +79,15 @@ func TestBoundaryCheckerRejectsForbiddenImports(t *testing.T) {
 func TestBoundaryCheckerAllowsContractsAndComposition(t *testing.T) {
 	fixture := fstest.MapFS{}
 	for source, imports := range map[string][]string{
-		"internal/runtimecontract/database.go": {"context", "database/sql", "time"},
-		"internal/telegram/delivery.go":        {"github.com/go-telegram/bot", "github.com/go-telegram/bot/models", modulePath + "/internal/runtimecontract"},
-		"internal/persistence/db.go":           {"modernc.org/sqlite", "modernc.org/libc", modulePath + "/internal/config"},
-		"internal/devsmoke/register.go":        {modulePath + "/internal/interaction", modulePath + "/internal/runtimecontract"},
-		"internal/character/commands.go":       {modulePath + "/internal/runtimecontract", modulePath + "/internal/interaction", modulePath + "/internal/outbox", modulePath + "/internal/scheduler", modulePath + "/internal/character/model"},
-		"cmd/replipg/main.go":                  {modulePath + "/internal/app", modulePath + "/internal/config", modulePath + "/internal/devsmoke"},
+		"internal/runtimecontract/database.go":     {"context", "database/sql", "time"},
+		"internal/telegram/delivery.go":            {"github.com/go-telegram/bot", "github.com/go-telegram/bot/models", modulePath + "/internal/runtimecontract"},
+		"internal/persistence/db.go":               {"modernc.org/sqlite", "modernc.org/libc", modulePath + "/internal/config"},
+		"internal/devsmoke/register.go":            {modulePath + "/internal/interaction", modulePath + "/internal/runtimecontract"},
+		"internal/character/commands.go":           {modulePath + "/internal/runtimecontract", modulePath + "/internal/interaction", modulePath + "/internal/character/contract", modulePath + "/internal/character/model"},
+		"internal/character/contract/types.go":     {"errors", "time", modulePath + "/internal/runtimecontract"},
+		"internal/battle/future/events_windows.go": {modulePath + "/internal/character/contract", modulePath + "/internal/runtimecontract"},
+		"internal/inventory/future.go":             {modulePath + "/internal/character/contract"},
+		"cmd/replipg/main.go":                      {modulePath + "/internal/app", modulePath + "/internal/config", modulePath + "/internal/devsmoke", modulePath + "/internal/character", modulePath + "/internal/character/contract"},
 		// Cross-component integration tests may compose concrete adapters.
 		"internal/character/integration_test.go": {modulePath + "/internal/telegram", "modernc.org/sqlite"},
 	} {
@@ -145,6 +162,15 @@ func allowedDependency(source, dependency string) bool {
 	if strings.HasPrefix(source, "cmd/") {
 		owner = "cmd"
 	}
+	if strings.HasPrefix(source, "internal/character/contract/") {
+		return dependency == modulePath+"/internal/runtimecontract"
+	}
+	if owner == "character" {
+		return dependency == modulePath+"/internal/runtimecontract" ||
+			dependency == modulePath+"/internal/interaction" ||
+			dependency == modulePath+"/internal/character" ||
+			strings.HasPrefix(dependency, modulePath+"/internal/character/") && !strings.HasPrefix(dependency, modulePath+"/internal/character/contract/")
+	}
 	if owner == "runtimecontract" {
 		return false // All standard-library imports were accepted by the scanner.
 	}
@@ -173,6 +199,10 @@ func allowedDependency(source, dependency string) bool {
 		// The command composes optional features; runtime never imports them.
 		return owner == "cmd" || runtimeTarget && (owner == target || targetLayer < ownerLayer)
 	}
-	// Features consume contracts and registries, or their own subpackages.
+	// Gameplay may consume only the exact shared character contract package.
+	if dependency == modulePath+"/internal/character/contract" {
+		return true
+	}
+	// Other features retain their existing contracts, registries, and own subpackages.
 	return target == owner || target == "runtimecontract" || target == "interaction" || target == "outbox" || target == "scheduler"
 }

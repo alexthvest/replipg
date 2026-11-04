@@ -19,7 +19,8 @@ func IsStorageFailure(err error) bool {
 		return false
 	}
 	var sqliteErr *sqlite.Error
-	return errors.As(err, &sqliteErr) || errors.Is(err, sql.ErrConnDone) ||
+	var storageFailure runtimecontract.StorageFailure
+	return errors.As(err, &storageFailure) || errors.As(err, &sqliteErr) || errors.Is(err, sql.ErrConnDone) ||
 		errors.Is(err, sql.ErrTxDone) || errors.Is(err, ErrStorage) ||
 		errors.Is(err, ErrTransaction) || errors.Is(err, ErrContention) ||
 		errors.Is(err, ErrPersistenceClosed)

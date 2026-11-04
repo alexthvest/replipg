@@ -159,12 +159,9 @@ func TestExecutePreservesSafeStartupErrorMetadata(t *testing.T) {
 
 func TestProductionSmokeRequiresExplicitEnablement(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
-		options := productionOptions(config.Config{DevSmoke: enabled})
-		if !enabled {
-			if options.Register != nil {
-				t.Fatal("default command registers development behavior")
-			}
-			continue
+		options, err := productionOptions(config.Config{DevSmoke: enabled}, commandLookup(nil))
+		if err != nil {
+			t.Fatal(err)
 		}
 		if options.Register == nil {
 			t.Fatal("explicit smoke enablement ignored")
@@ -176,8 +173,8 @@ func TestProductionSmokeRequiresExplicitEnablement(t *testing.T) {
 		registry.Seal()
 		identity := interaction.Identity{Update: 1, Chat: -100, User: 8, ChatKind: runtimecontract.ChatKindSupergroup}
 		for _, event := range []interaction.Event{interaction.Command{Identity: identity, Name: "dev_smoke"}, interaction.Command{Identity: identity, Name: "dev_smoke_ephemeral"}, interaction.Callback{Identity: identity, Data: "dev_smoke:reply"}, interaction.GroupMessage{Identity: identity}} {
-			if _, ok := registry.Resolve(event); !ok {
-				t.Fatal("enabled command omitted development route")
+			if _, ok := registry.Resolve(event); ok != enabled {
+				t.Fatal("smoke routing does not match opt-in")
 			}
 		}
 	}

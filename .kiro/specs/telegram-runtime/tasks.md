@@ -401,7 +401,7 @@
 
 ## Implementation Notes
 
-- All automated implementation tasks and independent reviews pass. Feature-level validation remains `MANUAL_VERIFY_REQUIRED` until the live Telegram test-group demonstration required by `.kiro/steering/development-workflow.md` is recorded; no real Telegram messages were sent during implementation.
+- All 53 implementation subtasks and independent reviews pass. On 2026-10-27 the owner explicitly accepted the remaining live-verification gate with "please also close it for telegram-runtime", following reported successful operation. Feature-level validation is GO; owner acceptance and automated evidence are recorded separately in validation.md. No assistant-observed live results or detailed per-probe outcomes are claimed.
 
 - Task 8.1: Startup must call owning `Store.ReconcilePending` after registration sealing and before readiness; abandoned attempts alone remain quarantined until an explicit registered decision.
 

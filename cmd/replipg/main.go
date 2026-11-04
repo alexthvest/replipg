@@ -11,7 +11,6 @@ import (
 
 	"github.com/alexthvest/replipg/internal/app"
 	"github.com/alexthvest/replipg/internal/config"
-	"github.com/alexthvest/replipg/internal/devsmoke"
 )
 
 type runtimeRunner interface {
@@ -55,18 +54,12 @@ func run() int {
 	defer stop()
 
 	return execute(ctx, os.LookupEnv, func(cfg config.Config) (runtimeRunner, error) {
-		return app.New(cfg, productionOptions(cfg))
-	}, os.Stderr)
-}
-
-func productionOptions(cfg config.Config) app.Options {
-	options := app.Options{}
-	if cfg.DevSmoke {
-		options.Register = func(registrations app.Registrations) error {
-			return devsmoke.Register(registrations.Registry, nil)
+		options, err := productionOptions(cfg, os.LookupEnv)
+		if err != nil {
+			return nil, err
 		}
-	}
-	return options
+		return app.New(cfg, options)
+	}, os.Stderr)
 }
 
 func main() {

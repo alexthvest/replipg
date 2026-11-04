@@ -15,3 +15,10 @@ type DBTX interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
+
+// StorageFailure marks sanitized storage errors whose underlying cause may be a
+// row scan, iteration, or cleanup failure rather than a driver-specific error.
+// Transaction owners keep these failures retryable without importing features.
+type StorageFailure interface {
+	StorageFailure()
+}

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-//go:embed migrations/0001_runtime.sql
+//go:embed migrations/0001_runtime.sql migrations/0002_characters.sql
 var runtimeMigrationFiles embed.FS
 
 var migrationFilename = regexp.MustCompile(`^(\d{4})_[a-z0-9][a-z0-9_]*\.sql$`)
@@ -35,7 +35,7 @@ type MigrationSet struct {
 
 // RuntimeMigrations returns the explicitly ordered, embedded runtime schema.
 func RuntimeMigrations() (MigrationSet, error) {
-	return NewMigrationSet(runtimeMigrationFiles, "migrations/0001_runtime.sql")
+	return NewMigrationSet(runtimeMigrationFiles, "migrations/0001_runtime.sql", "migrations/0002_characters.sql")
 }
 
 // NewMigrationSet reads and validates an explicitly ordered migration set.

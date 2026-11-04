@@ -2,12 +2,12 @@
 
 ## Validation Report
 
-- DECISION: **MANUAL_VERIFY_REQUIRED**
+- DECISION: **GO**
 - Automated implementation: **53/53 subtasks checked**; all 27 subtasks continued in this run received independent approval.
 - Requirements: **60/60 numbered acceptance criteria** have implementation and substantive automated-test evidence.
 - Concrete code blockers, blocked tasks, and unresolved review findings: **none**.
 - Code snapshot: `69e642d`; automated quality-gate record: `2437bfc`. Subsequent report changes are documentation only.
-- Feature GO is withheld until the required live Telegram-group demonstration is recorded. No real Telegram messages were sent during implementation or validation.
+- The project owner accepted closure of the remaining live-verification gate on 2026-10-27 with "please also close it for telegram-runtime", following reported successful live operation. This is owner acceptance, not assistant-observed live evidence; no real Telegram messages were sent by the assistant during implementation or validation.
 
 ## Changes and Boundaries
 
@@ -97,13 +97,36 @@ Every task below reached implementer status **READY_FOR_REVIEW**, independent ve
 
 ## Manual Gate and Operational Limits
 
-- OWNERSHIP: LOCAL — outstanding manual validation only.
+- OWNERSHIP: LOCAL — all acceptance gates closed.
 - UPSTREAM_SPEC: N/A.
 - BLOCKED_TASKS: None; all implementation subtasks are checked.
-- FEATURE_GO: **MANUAL_VERIFY_REQUIRED**.
+- FEATURE_GO: **GO**.
 
-[Development steering](../../steering/development-workflow.md) requires each milestone to include **“a user-visible demonstration in a Telegram test group.”** The [validation skill](../../../.agents/skills/kiro-validate-impl/SKILL.md) says **“Do not treat the feature as complete”** when manual verification is required. The roadmap feature therefore remains unchecked; automated smoke does not replace live client visibility verification.
+[Development steering](../../steering/development-workflow.md) requires a user-visible demonstration in a Telegram test group. The owner explicitly accepted the runtime's remaining manual gate after reporting successful operation during character-system testing. The roadmap runtime entry is therefore complete. No detailed runtime-probe observations, client versions, or per-step results were supplied; none are inferred. Automated smoke and owner acceptance are separate evidence sources.
 
-Using an authorized dedicated bot/group, follow the [README development probes](../../../README.md): enable `REPLIPG_DEV_SMOKE=true` in ignored local configuration, build/run, probe readiness, demonstrate `/dev_smoke`, invisible callback acknowledgement, a reply restricted to the pressing user, and ordinary-message intake with appropriate Privacy Mode. Exercise incoming-ephemeral reply where supported and verify rejected restricted delivery creates no public/private fallback. Record reproducible commands and observations without credentials or private content, then stop and disable smoke mode.
+For future reproduction with an authorized dedicated bot/group, follow the [README development probes](../../../README.md): enable `REPLIPG_DEV_SMOKE=true` in ignored local configuration, build/run, probe readiness, demonstrate `/dev_smoke`, invisible callback acknowledgement, a reply restricted to the pressing user, and ordinary-message intake with appropriate Privacy Mode. Exercise incoming-ephemeral reply where supported and verify rejected restricted delivery creates no public/private fallback. Record observations without credentials or private content, then stop and disable smoke mode. These instructions are not a claim that the owner individually reported every probe result.
 
 Operational constraints remain one active instance on a local persistent filesystem, no public/private response fallback, explicit resolution of uncertain sends, and cooperative context cancellation by feature handlers, reconcilers, and transports. No deployment or real-group messaging was performed.
+
+## Character integration revalidation
+
+Character-system fault-injection tests exposed a runtime classification gap:
+feature-wrapped SQL row scan, iteration, and close errors could be recorded as
+terminal handler failures. The runtime contract now offers a generic
+`StorageFailure` marker; persistence recognizes that marker through `errors.As`,
+and the character storage wrapper implements it. Runtime packages retain their
+prohibition on character imports. The regression tests prove rollback and retry
+with the same update and operation identity instead of advancing completion.
+Focused character/interaction/persistence/runtimecontract/architecture tests,
+vet, lint, and affected-package race checks passed during implementation. Final
+repository-wide results are recorded in the character-system validation report.
+The automated revalidation remains separate from the owner's subsequent acceptance of the live Telegram gate.
+
+## Closure verification — 2026-10-27
+
+- STATUS: VERIFIED
+- CLAIM_TYPE: FEATURE_GO
+- CLAIM: Telegram-runtime's implementation and acceptance gates are closed.
+- EVIDENCE: All 53 subtasks checked; existing 60/60 requirements, independent design/integration reviews, and explicit owner acceptance of the remaining manual gate. Shared repository checks were refreshed immediately before this documentation-only closure: `./scripts/check` exited 0 (formatting, full tests, vet, lint with 0 issues, and race); `./scripts/smoke` exited 0 (production binary smoke 0.455s).
+- GAPS: No remaining runtime acceptance blocker. Detailed live per-probe observations were not supplied; gate closure records the owner's explicit acceptance rather than inventing those observations.
+- NOTES: No code, configuration, deployment, or real Telegram messaging changes. Single-instance, local-storage, privacy, and reconciliation constraints remain in force.

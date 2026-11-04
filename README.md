@@ -131,3 +131,56 @@ both durable workers active, public and restricted replies, invisible callback
 acknowledgement, ordinary-message intake, rejected restricted delivery without
 fallback, SIGTERM shutdown, closed health listener, and the durable cursor after
 storage reopens. It prints only test results and safe failure descriptions.
+
+## Characters
+
+Normal startup installs the ephemeral `/character` command. Select it from the
+Telegram group command menu to create your character and inspect health, base
+attack/defense, and recovery state. Typed ordinary commands have no incoming
+restricted-reply authorization and produce no response. Only the originating
+human actor can inspect their character; bots and anonymous chat senders are
+ignored. One character follows the same user across groups and process restarts.
+Authorization lasts 15 seconds from the original message timestamp, so an old
+queued command may expire without a reply. A failed reply does not reset committed
+character state; select the command again.
+
+Starting tuning is version-controlled in `internal/character/defaults.json`:
+100 health, 10 attack, 5 defense, five-minute incapacitation, and 25% recovery.
+Settings are strictly validated before runtime construction. Existing characters
+keep stored base attributes, and each defeat retains its original recovery
+amount and deadline across configuration changes. Recovery occurs on the next
+inspection or gameplay operation at/after that deadline; there is no passive
+regeneration or background recovery notification.
+
+The executable replaces the complete default-language `all_group_chats` command
+menu at startup. Do not install per-chat or localized command menus that override
+this managed scope. Other scopes are not deleted automatically. Startup remains
+not-ready if publication fails and preserves queued updates.
+
+Character schema migration 0002 is additive. Stop the runtime before backing up
+the entire local SQLite storage directory. A version-1 binary refuses a version-2
+database: roll forward, or restore a compatible stopped whole-directory backup
+before running the older binary. Restore external command-menu settings deliberately
+when rolling back to a binary that does not manage them.
+
+For a dedicated test deployment, set `REPLIPG_DEV_CHARACTER=true` in the ignored
+`.env` and restart. This flag accepts exactly `true` or `false`, defaults to false
+when absent, and is independent of `REPLIPG_DEV_SMOKE`. It exposes ephemeral
+`/dev_character_damage <whole HP>` and `/dev_character_defeat` commands for the
+requesting actor only, with five-second recovery. Select the menu command and
+supply the damage amount in clients supporting ephemeral command arguments.
+After defeat, inspect before and after five seconds: health recovers to 25/100
+on observation. Stop/restart during incapacitation to verify the same deadline.
+Set the flag back to `false` and restart to remove these routes and replace the
+managed menu; already-recorded defeats retain their original timing and amount.
+
+Reproduce automated verification without real Telegram traffic:
+
+```sh
+./scripts/check
+./scripts/smoke
+devenv shell -- go test -count=1 -run 'TestCharacter' ./cmd/replipg
+```
+
+See `.kiro/specs/character-system/manual-verification.md` for live milestone steps
+and the separate evidence record.

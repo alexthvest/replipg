@@ -38,8 +38,8 @@ The implementation will be a Go modular monolith running as one long-polling con
 
 ## Specs (dependency order)
 
-- [ ] telegram-runtime -- Establish configuration, long polling, ephemeral interaction support, SQLite persistence, migrations, durable scheduling, and Telegram delivery reconciliation. Dependencies: none
-- [ ] character-system -- Create and persist one generic character per Telegram user, including health and temporary incapacitation. Dependencies: telegram-runtime
+- [x] telegram-runtime -- Establish configuration, long polling, ephemeral interaction support, SQLite persistence, migrations, durable scheduling, and Telegram delivery reconciliation. Dependencies: none
+- [x] character-system -- Create and persist one generic character per Telegram user, including health and temporary incapacitation. Dependencies: telegram-runtime
 - [ ] inventory-equipment -- Manage consumables, weapons, armor, equipped slots, item effects, and atomic item grants. Dependencies: telegram-runtime, character-system
 - [ ] monster-encounters -- Track privacy-preserving chat activity and schedule configurable common and special monster encounters in group chats. Dependencies: telegram-runtime, character-system
 - [ ] battle-system -- Run step-based cooperative monster battles and resolve actions, cooldowns, monster responses, escape, defeat, recovery, and contribution-weighted loot. Dependencies: character-system, inventory-equipment, monster-encounters

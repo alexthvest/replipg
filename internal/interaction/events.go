@@ -3,6 +3,7 @@ package interaction
 
 import (
 	"context"
+	"time"
 
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
@@ -58,6 +59,9 @@ type Command struct {
 	MessageID          MessageID
 	EphemeralMessageID EphemeralMessageID
 	Arguments          string
+	SentAt             time.Time
+	ActorIsBot         bool
+	SenderIsChat       bool
 }
 
 func (Command) eventKind() EventKind { return EventKindCommand }
