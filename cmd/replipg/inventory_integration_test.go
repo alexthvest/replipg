@@ -249,6 +249,8 @@ func startInventoryBinary(t *testing.T, ctx context.Context, binary, dir string,
 	db := inventoryBinaryDB(t, dir)
 	var count int
 
+	// Callers count the original four items plus any test-specific definitions.
+	catalogSize += 4 // iron_sword, chainmail, greater_healing_potion, ruby
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM inventory_catalog`).Scan(&count); err != nil || count != catalogSize {
 		t.Fatalf("catalog not prepared before Telegram setup: count=%d err=%v", count, err)
 	}
@@ -546,7 +548,7 @@ func TestInventoryProductionBinaryInspectionRestart(t *testing.T) {
 	h.submit(t, 7, -100, "owner_one", coin, true)
 	detail := h.reply(t, 7, -100)
 
-	if !strings.Contains(detail.text, "Coin • owner_one") || !strings.Contains(detail.text, "Category: inert") || !strings.Contains(detail.text, "Owned: 10") || len(detail.buttons) != 2 || detail.buttons[0][0].Text != "Back" {
+	if !strings.Contains(detail.text, "Coin • owner_one") || !strings.Contains(detail.text, "Category: inert") || !strings.Contains(detail.text, "Owned: (10)") || len(detail.buttons) != 2 || detail.buttons[0][0].Text != "Back" {
 		t.Fatal("inert detail gained mechanics or lost owned quantity")
 	}
 

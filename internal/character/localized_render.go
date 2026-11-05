@@ -6,36 +6,41 @@ import (
 
 	"github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/presentation"
+	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
-func renderLocalizedSummary(c *localization.Catalog, l localization.Locale, s contract.Snapshot, created bool) (string, error) {
+func renderLocalizedSummary(c *localization.Catalog, l localization.Locale, s contract.Snapshot, created bool) (runtimecontract.MessageContent, error) {
 	state, err := c.Text(l, localization.Key("character.state."+string(s.State)), nil)
 	if err != nil {
-		return "", err
+		return runtimecontract.MessageContent{}, err
 	}
 
-	text, err := c.Text(l, "character.summary", localization.Args{"health": localization.Integer(s.Health), "max": localization.Integer(s.MaxHealth), "attack": localization.Integer(s.Attack), "defense": localization.Integer(s.Defense), "state": localization.String(state)})
+	summary, err := presentation.Localized(c, l, "character.summary", localization.Args{"health": localization.Integer(s.Health), "max": localization.Integer(s.MaxHealth), "attack": localization.Integer(s.Attack), "defense": localization.Integer(s.Defense), "state": localization.String(state)})
 	if err != nil {
-		return "", err
+		return runtimecontract.MessageContent{}, err
 	}
+
+	var text presentation.Builder
 
 	if created {
 		notice, e := c.Text(l, "character.created", nil)
 		if e != nil {
-			return "", e
+			return runtimecontract.MessageContent{}, e
 		}
 
-		text = notice + text
+		text.Write(notice)
 	}
+	text.Append(summary)
 	if s.State == contract.StateIncapacitated {
 		notice, e := c.Text(l, "character.recovery", localization.Args{"deadline": localization.String(s.RecoverAt.UTC().Format(time.RFC3339Nano))})
 		if e != nil {
-			return "", e
+			return runtimecontract.MessageContent{}, e
 		}
 
-		text += notice
+		text.Write(notice)
 	}
-	return text, nil
+	return text.Content(), nil
 }
 
 func renderLocalizedDomainError(c *localization.Catalog, l localization.Locale, err error) (string, error) {

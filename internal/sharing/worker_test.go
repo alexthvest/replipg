@@ -99,12 +99,48 @@ func projectorRead(t *testing.T, db *persistence.DB, token string) (v viewRecord
 	return
 }
 
+func TestProjectorSuccessIsSilentAndKeepsCooldown(t *testing.T) {
+	now := time.Unix(110, 0).UTC()
+	terminal := now.Add(-5 * time.Second)
+	ledger := &projectorLedger{evidence: map[runtimecontract.DeliveryID]Evidence{}}
+	db, projector, view, accepted := projectorFixture(t, &now, ledger)
+	ledger.evidence[accepted.PublicDeliveryID] = Evidence{State: Completed, TerminalAt: terminal}
+	projector.resolve = func(context.Context, runtimecontract.DBTX, runtimecontract.ChatID) (localization.Locale, error) {
+		t.Fatal("successful sharing must not resolve feedback locale")
+		return "", errors.New("unexpected feedback")
+	}
+
+	if worked, err := projector.RunOnce(context.Background()); err != nil || !worked {
+		t.Fatalf("projection: %v %v", worked, err)
+	}
+
+	stored, action := projectorRead(t, db, view.Token)
+	if action.PublicState != "succeeded" || action.FeedbackState != "skipped" || !action.FeedbackPurged || action.FeedbackDeliveryID != "" || action.CallbackQueryID != "" || !action.CallbackDeadline.IsZero() || !stored.LastSuccessAt.Equal(terminal) || len(ledger.requests) != 0 {
+		t.Fatalf("success emitted feedback or lost durable state: %+v %+v", stored, action)
+	}
+
+	for _, delta := range []time.Duration{30*time.Second - time.Millisecond, 30 * time.Second} {
+		if eligible := !terminal.Add(delta).Before(stored.LastSuccessAt.Add(30 * time.Second)); eligible != (delta == 30*time.Second) {
+			t.Fatal("cooldown boundary changed")
+		}
+	}
+
+	now = now.Add(time.Hour)
+	mustTx(t, db, func(ctx context.Context, tx runtimecontract.DBTX) error {
+		return projector.Refresh(ctx, tx, view.Token)
+	})
+	stored, action = projectorRead(t, db, view.Token)
+	if len(ledger.requests) != 0 || !stored.LastSuccessAt.Equal(terminal) || action.FeedbackState != "skipped" {
+		t.Fatal("reprojection emitted feedback or changed cooldown")
+	}
+}
+
 func TestProjectorTerminalEvidence(t *testing.T) {
 	for _, tc := range []struct {
 		state DeliveryState
 		want  string
 		key   localization.Key
-	}{{Completed, "succeeded", localization.SharingSuccess}, {Rejected, "failed", localization.SharingFailure}, {Unknown, "unknown", localization.SharingUnknown}} {
+	}{{Rejected, "failed", localization.SharingFailure}, {Unknown, "unknown", localization.SharingUnknown}} {
 		t.Run(string(tc.state), func(t *testing.T) {
 			now := time.Unix(110, 0).UTC()
 			terminal := time.Unix(105, 0).UTC()
@@ -122,19 +158,7 @@ func TestProjectorTerminalEvidence(t *testing.T) {
 				t.Fatalf("projection=%+v", action)
 			}
 
-			if tc.state == Completed {
-				if !got.LastSuccessAt.Equal(terminal) {
-					t.Fatal("cooldown uses projection time")
-				}
-
-				for _, delta := range []time.Duration{30*time.Second - time.Millisecond, 30 * time.Second} {
-					eligible := !terminal.Add(delta).Before(got.LastSuccessAt.Add(30 * time.Second))
-
-					if eligible != (delta == 30*time.Second) {
-						t.Fatal("cooldown boundary")
-					}
-				}
-			} else if !got.LastSuccessAt.IsZero() {
+			if !got.LastSuccessAt.IsZero() {
 				t.Fatal("failure started success cooldown")
 			}
 
@@ -204,9 +228,6 @@ func TestProjectorRefreshBypassesDueTimeAndExpiredFeedback(t *testing.T) {
 			}
 
 			want := "skipped"
-			if offset < 0 {
-				want = "queued"
-			}
 
 			if work.FeedbackState != want || work.CallbackQueryID != "" || !work.CallbackDeadline.IsZero() {
 				t.Fatalf("feedback=%+v", work)
@@ -222,7 +243,7 @@ func TestProjectorRollbackOnFeedbackError(t *testing.T) {
 			sentinel := errors.New("injected failure")
 			l := &projectorLedger{evidence: map[runtimecontract.DeliveryID]Evidence{}}
 			db, p, v, a := projectorFixture(t, &now, l)
-			l.evidence[a.PublicDeliveryID] = Evidence{State: Completed, TerminalAt: time.Unix(105, 0)}
+			l.evidence[a.PublicDeliveryID] = Evidence{State: Rejected, TerminalAt: time.Unix(105, 0)}
 			switch failure {
 			case "enqueue":
 				l.enqueueErr = sentinel
@@ -256,7 +277,7 @@ func TestProjectorRollbackOnFeedbackError(t *testing.T) {
 
 			_, work = projectorRead(t, db, v.Token)
 
-			if work.PublicState != "succeeded" {
+			if work.PublicState != "failed" {
 				t.Fatal("projection retry failed")
 			}
 		})

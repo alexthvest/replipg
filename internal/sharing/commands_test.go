@@ -133,6 +133,13 @@ func (f *callbackFixture) count(t *testing.T, kind runtimecontract.DeliveryKind)
 	return n
 }
 
+func requireSilentShare(t *testing.T, result interaction.HandlerResult) {
+	t.Helper()
+	if len(result.ImmediateResponses) != 0 {
+		t.Fatalf("successful or pending sharing produced guidance: %+v", result)
+	}
+}
+
 func feedbackText(t *testing.T, r interaction.HandlerResult) string {
 	t.Helper()
 
@@ -181,9 +188,8 @@ func TestShareAcceptanceExactSnapshotAndReplay(t *testing.T) {
 		}
 
 		got := r.(runtimecontract.PublicResponse)
-		attribution, _ := Attribution(f.service.catalog, localization.English, 42)
 
-		if got.Content.Text != f.cb.Source.Body.Text+"\n\n"+attribution || !reflect.DeepEqual(got.Content.Entities, f.cb.Source.Body.Entities) || len(got.Content.Buttons) != 0 || got.Destination.ChatID != -1 {
+		if got.Content.Text != f.cb.Source.Body.Text || !reflect.DeepEqual(got.Content.Entities, f.cb.Source.Body.Entities) || len(got.Content.Buttons) != 0 || got.Destination.ChatID != -1 {
 			t.Fatalf("snapshot changed: %+v", got)
 		}
 
@@ -309,14 +315,23 @@ func TestShareRefreshCooldownAndRetry(t *testing.T) {
 	}
 }
 
+func TestShareMaximumLengthSnapshotIsSilent(t *testing.T) {
+	f := newCallbackFixture(t, strings.Repeat("x", 4096))
+	result, err := f.dispatch(f.cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	requireSilentShare(t, result)
+	if f.count(t, PublicKind) != 1 {
+		t.Fatal("valid maximum-length snapshot was rejected")
+	}
+}
+
 func TestShareRejectsInvalidAndUnavailableSources(t *testing.T) {
-	for _, name := range []string{"owner", "group", "bot", "token", "keyboard", "body", "receiver", "binding", "missing", "expired", "oversize"} {
+	for _, name := range []string{"owner", "group", "bot", "token", "keyboard", "body", "receiver", "binding", "missing", "expired"} {
 		t.Run(name, func(t *testing.T) {
-			body := ""
-			if name == "oversize" {
-				body = strings.Repeat("x", 4096)
-			}
-			f := newCallbackFixture(t, body)
+			f := newCallbackFixture(t, "")
 			owned := false
 			switch name {
 			case "owner":
@@ -354,8 +369,6 @@ func TestShareRejectsInvalidAndUnavailableSources(t *testing.T) {
 					_, err := tx.ExecContext(ctx, `UPDATE sharing_views SET view_kind='inventory_page',usable_until=?`, f.now.UnixMilli())
 					return err
 				})
-				owned = true
-			case "oversize":
 				owned = true
 			}
 
@@ -468,15 +481,10 @@ func TestShareInheritedDeadlineAndCharacterWithoutExpiry(t *testing.T) {
 				t.Fatal("usable source rejected")
 			}
 
-			feedbackText(t, result)
-			auth := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse).Authorization.(runtimecontract.CallbackAuthorization)
+			requireSilentShare(t, result)
 			want := f.now.Add(15 * time.Second)
 			if inventory {
 				want = f.now.Add(3 * time.Second)
-			}
-
-			if !auth.ValidUntil.Equal(want) {
-				t.Fatal("immediate deadline renewed", auth.ValidUntil, want)
 			}
 
 			mustTx(t, f.db, func(ctx context.Context, tx runtimecontract.DBTX) error {
@@ -491,7 +499,7 @@ func TestShareInheritedDeadlineAndCharacterWithoutExpiry(t *testing.T) {
 	}
 }
 
-func TestShareUnknownHoldDoesNotSlideAndPendingGuidance(t *testing.T) {
+func TestShareUnknownHoldDoesNotSlideAndPendingIsSilent(t *testing.T) {
 	f := newCallbackFixture(t, "")
 	if _, err := f.dispatch(f.cb); err != nil {
 		t.Fatal(err)
@@ -504,9 +512,9 @@ func TestShareUnknownHoldDoesNotSlideAndPendingGuidance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want, _ := f.service.catalog.Text(localization.Russian, localization.SharingPending, nil)
+	requireSilentShare(t, result)
 
-	if feedbackText(t, result) != want || f.count(t, PublicKind) != 1 {
+	if f.count(t, PublicKind) != 1 {
 		t.Fatal("pending action admitted another publication")
 	}
 
@@ -587,10 +595,7 @@ func TestShareKnownLatestOutcomeClearsHistoricalUncertaintyGuidance(t *testing.T
 		t.Fatal(err)
 	}
 
-	want, _ := f.service.catalog.Text(localization.Russian, localization.SharingPending, nil)
-	if got := feedbackText(t, result); got != want {
-		t.Fatalf("historical uncertainty guidance=%q want=%q", got, want)
-	}
+	requireSilentShare(t, result)
 
 	if f.count(t, PublicKind) != 3 {
 		t.Fatal("known successful outcome prevented later share")

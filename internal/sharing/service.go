@@ -99,7 +99,7 @@ func (s *Service) Decorate(ctx context.Context, tx runtimecontract.DBTX, v contr
 	}
 
 	body := cloneContent(v.Body)
-	body.Buttons = append(body.Buttons, []runtimecontract.InlineButton{{Text: label, CallbackData: sharePrefix + token}})
+	body.Buttons = append(body.Buttons, []runtimecontract.InlineButton{{Text: label, CallbackData: sharePrefix + token, Style: runtimecontract.ButtonPrimary}})
 	if err = runtimecontract.ValidateResponse(runtimecontract.PublicResponse{Destination: v.Destination, Content: body}); err != nil {
 		return runtimecontract.MessageContent{}, err
 	}

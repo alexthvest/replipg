@@ -203,7 +203,6 @@ func (p *Projector) projectPublic(ctx context.Context, tx runtimecontract.DBTX, 
 		if evidence.TerminalAt.After(view.LastSuccessAt) {
 			view.LastSuccessAt = evidence.TerminalAt
 		}
-		key = localization.SharingSuccess
 	case Rejected:
 		if evidence.TerminalAt.IsZero() {
 			return errors.New("sharing: missing terminal evidence")
@@ -248,7 +247,7 @@ func (p *Projector) queueFeedback(ctx context.Context, tx runtimecontract.DBTX, 
 		return nil
 	}
 
-	if action.CallbackQueryID == "" || !now.Before(action.CallbackDeadline) {
+	if key == "" || action.CallbackQueryID == "" || !now.Before(action.CallbackDeadline) {
 		action.FeedbackState = "skipped"
 	} else {
 		locale, err := p.resolve(ctx, tx, view.Destination.ChatID)

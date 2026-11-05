@@ -1,3 +1,5 @@
+> Presentation update (2026-11-04, user approved): Shared messages contain only the displayed menu body, with its formatting and without controls. Remove the attribution footer and routine preparation, pending, and success messages. Keep personal failure, cooldown, expiry, and uncertain-delivery guidance, callback acknowledgement, durable delivery, and replay protection. This supersedes the attribution and routine feedback obligations below; previously published snapshots stay unchanged.
+
 # Design Document
 
 ## Overview

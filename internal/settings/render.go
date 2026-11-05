@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/presentation"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -13,7 +14,7 @@ func (h handler) render(ctx context.Context, tx runtimecontract.DBTX, v Snapshot
 	text := func(key string, args localization.Args) (string, error) {
 		return h.catalog.Text(v.Locale, localization.Key(key), args)
 	}
-	title, err := text("settings.title", nil)
+	title, err := presentation.Localized(h.catalog, v.Locale, "settings.title", nil)
 	if err != nil {
 		return runtimecontract.MessageContent{}, err
 	}
@@ -37,7 +38,7 @@ func (h handler) render(ctx context.Context, tx runtimecontract.DBTX, v Snapshot
 		return runtimecontract.MessageContent{}, err
 	}
 
-	lines := []string{title, line, state}
+	lines := []string{line, state}
 	if !admin {
 		english, err := text("language.en", nil)
 		if err != nil {
@@ -62,7 +63,11 @@ func (h handler) render(ctx context.Context, tx runtimecontract.DBTX, v Snapshot
 
 		lines = append(lines, value)
 	}
-	content := runtimecontract.MessageContent{Text: strings.Join(lines, "\n")}
+	var body presentation.Builder
+
+	body.Append(title)
+	body.Write("\n\n" + strings.Join(lines, "\n"))
+	content := body.Content()
 	if admin {
 		for _, l := range []localization.Locale{localization.English, localization.Russian} {
 			label, err := text("language."+string(l), nil)
@@ -75,7 +80,12 @@ func (h handler) render(ctx context.Context, tx runtimecontract.DBTX, v Snapshot
 				return content, err
 			}
 
-			content.Buttons = append(content.Buttons, []runtimecontract.InlineButton{{Text: label, CallbackData: data}})
+			style := runtimecontract.ButtonStyle("")
+			if l != v.Locale {
+				style = runtimecontract.ButtonPrimary
+			}
+
+			content.Buttons = append(content.Buttons, []runtimecontract.InlineButton{{Text: label, CallbackData: data, Style: style}})
 		}
 	}
 	return content, nil

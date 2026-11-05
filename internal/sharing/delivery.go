@@ -40,7 +40,7 @@ type DeliveryLedger interface {
 	Purge(context.Context, runtimecontract.DBTX, runtimecontract.DeliveryKind, runtimecontract.DeliveryID, time.Time) (bool, error)
 }
 
-// PublicPayload is the immutable v1 attributed group snapshot schema.
+// PublicPayload is the immutable v1 group snapshot schema.
 type PublicPayload struct {
 	ActionUpdateID runtimecontract.UpdateID         `json:"action_update_id"`
 	Destination    runtimecontract.GroupDestination `json:"destination"`
@@ -57,7 +57,7 @@ type FeedbackPayload struct {
 	Content         runtimecontract.MessageContent   `json:"content"`
 }
 
-// EncodePublic captures the complete attributed snapshot without personal authorization.
+// EncodePublic captures the complete snapshot without personal authorization.
 func EncodePublic(p PublicPayload) (runtimecontract.VersionedPayload, error) {
 	if _, err := p.response(); err != nil {
 		return runtimecontract.VersionedPayload{}, err

@@ -319,7 +319,7 @@ func TestSharingRecoveryPendingPreservesFrozenDelivery(t *testing.T) {
 			}
 
 			f.press(1)
-			f.guidance(f.press(2), localization.SharingPending)
+			requireSilentShare(t, f.press(2))
 
 			if f.count(PublicKind) != 1 {
 				t.Fatal("replay or pending press enqueued another publication")
@@ -346,18 +346,13 @@ func TestSharingRecoveryPendingPreservesFrozenDelivery(t *testing.T) {
 				t.Fatal("pending public work became personal")
 			}
 
-			attribution, err := Attribution(f.service.catalog, locale, 42)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if public.Content.Text != captured.Text+"\n\n"+attribution || !reflect.DeepEqual(public.Content.Entities, captured.Entities) || len(public.Content.Buttons) != 0 || public.Destination != decorationView().Destination {
-				t.Fatal("restart changed snapshot, attribution, formatting, destination or controls")
+			if public.Content.Text != captured.Text || !reflect.DeepEqual(public.Content.Entities, captured.Entities) || len(public.Content.Buttons) != 0 || public.Destination != decorationView().Destination {
+				t.Fatal("restart changed snapshot, formatting, destination or controls")
 			}
 
 			var payload PublicPayload
 
-			if err = json.Unmarshal(before, &payload); err != nil {
+			if err := json.Unmarshal(before, &payload); err != nil {
 				t.Fatal(err)
 			}
 
@@ -367,8 +362,16 @@ func TestSharingRecoveryPendingPreservesFrozenDelivery(t *testing.T) {
 
 			f.clock.Advance(time.Second) // pending inspection was deferred by the repeated press
 			f.project()
-			f.guidanceFromFeedback(localization.SharingSuccess)
+			f.noFeedback()
 		})
+	}
+}
+
+func (f *sharingRecovery) noFeedback() {
+	f.t.Helper()
+	a := f.action(1)
+	if a.PublicState != "succeeded" || a.FeedbackState != "skipped" || a.FeedbackDeliveryID != "" || f.count(FeedbackKind) != 0 {
+		f.t.Fatalf("successful share emitted feedback: %+v", a)
 	}
 }
 
@@ -417,7 +420,7 @@ func TestSharingRecoveryAttemptingNeverAutomaticallyReposts(t *testing.T) {
 	}
 
 	f.status(id, outbox.StateAttempting)
-	f.guidance(f.press(2), localization.SharingPending)
+	requireSilentShare(t, f.press(2))
 	cancel()
 	select {
 	case err := <-done:
@@ -525,10 +528,12 @@ func TestSharingRecoveryQueuedFeedback(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			f := newSharingRecovery(t, localization.Russian)
 			f.press(1)
-			f.run(nil)
+			f.transport.configure(runtimecontract.DeliveryIndeterminate, nil, nil)
+			f.run(outbox.ErrDeliveryNotCompleted)
+			f.transport.configure("", nil, nil)
 			f.clock.Advance(time.Second)
 			f.project()
-			f.guidanceFromFeedback(localization.SharingSuccess)
+			f.guidanceFromFeedback(localization.SharingUnknown)
 			before := f.action(1)
 			frozen := f.payload(before.FeedbackDeliveryID)
 			f.restart()
@@ -557,7 +562,7 @@ func TestSharingRecoveryQueuedFeedback(t *testing.T) {
 				wantFeedback = "rejected"
 			}
 
-			if after.PublicState != "succeeded" || after.FeedbackState != wantFeedback || after.PublicDeliveryID != before.PublicDeliveryID || after.FeedbackDeliveryID != before.FeedbackDeliveryID {
+			if after.PublicState != "unknown" || after.FeedbackState != wantFeedback || after.PublicDeliveryID != before.PublicDeliveryID || after.FeedbackDeliveryID != before.FeedbackDeliveryID {
 				t.Fatalf("feedback altered confirmed public outcome: %+v", after)
 			}
 
@@ -655,8 +660,8 @@ func TestSharingRecoveryConcurrentDispatchProjectionAndCompletion(t *testing.T) 
 	f.clock.Advance(time.Second)
 	f.project()
 
-	if f.count(FeedbackKind) != 1 {
-		t.Fatal("competing projections queued duplicate outcome feedback")
+	if f.count(FeedbackKind) != 0 {
+		t.Fatal("successful concurrent projection queued outcome feedback")
 	}
 
 	f.restart()
@@ -672,8 +677,8 @@ func TestSharingRecoveryProjectionFailureDoesNotResend(t *testing.T) {
 	f.press(1)
 	id := f.action(1).PublicDeliveryID
 	f.run(nil)
-	// A real storage fault aborts projection after feedback enqueue. The transaction
-	// must roll back the feedback and projection together, while completed public
+	// A real storage fault aborts projection after outcome processing. The transaction
+	// must roll back the outcome and projection together, while completed public
 	// work remains authoritative and is never sent to compensate.
 	if _, err := f.db.ExecContext(context.Background(), `CREATE TRIGGER interrupt_projection BEFORE UPDATE ON sharing_actions WHEN NEW.public_state='succeeded' BEGIN SELECT RAISE(ABORT,'injected projection interruption'); END`); err != nil {
 		t.Fatal(err)
@@ -701,9 +706,9 @@ func TestSharingRecoveryProjectionFailureDoesNotResend(t *testing.T) {
 	}
 
 	f.project()
-	f.guidanceFromFeedback(localization.SharingSuccess)
+	f.noFeedback()
 
-	if f.action(1).PublicState != "succeeded" || f.count(FeedbackKind) != 1 || f.count(PublicKind) != 1 {
+	if f.action(1).PublicState != "succeeded" || f.count(FeedbackKind) != 0 || f.count(PublicKind) != 1 {
 		t.Fatal("projection did not recover atomically")
 	}
 }

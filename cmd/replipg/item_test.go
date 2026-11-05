@@ -34,6 +34,10 @@ func TestItemProbeLocalizedReadOnly(t *testing.T) {
 		}}
 		for _, check := range []struct{ args, en, ru string }{
 			{"stick", "Attack bonus: +1", "Бонус атаки: +1"}, {"cloth_armor", "Defense bonus: +1", "Бонус защиты: +1"}, {"healing_potion", "10", "10"}, {"coin", "Coin", "Монета"},
+			{"iron_sword", "Attack bonus: +3", "Бонус атаки: +3"},
+			{"chainmail", "Defense bonus: +3", "Бонус защиты: +3"},
+			{"greater_healing_potion", "25", "25"},
+			{"ruby", "Ruby", "Рубин"},
 			{"", "Usage:", "Использование:"}, {"coin extra", "Usage:", "Использование:"}, {"../secret", "Usage:", "Использование:"}, {"unknown", "Unknown item", "Неизвестный предмет"},
 		} {
 			command := interaction.Command{Identity: interaction.Identity{Update: 1, User: 42, Chat: -1, ChatKind: runtimecontract.ChatKindGroup}, Name: "dev_item", Arguments: check.args, EphemeralMessageID: 1, SentAt: now}
@@ -68,6 +72,10 @@ func TestItemProbeLocalizedReadOnly(t *testing.T) {
 			} {
 				if check.args != known.id {
 					continue
+				}
+
+				if len(response.Content.Entities) < 2 || response.Content.Entities[0].Kind != runtimecontract.TextEntityBold || response.Content.Entities[1].Kind != runtimecontract.TextEntityCode {
+					t.Fatalf("item name or identifier lost formatting: %+v", response.Content)
 				}
 
 				category := known.enCategory

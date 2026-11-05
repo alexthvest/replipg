@@ -77,6 +77,8 @@ Add the bot to a Telegram group or supergroup and use:
 
 Groups default to English. Personal menus are visible only to the player who opened them. Use the Share button to publish a read-only snapshot in the group. Player interactions take place in groups and supergroups; private-chat gameplay is not supported.
 
+Sharing publishes the displayed menu without an attribution footer or progress and success messages. Errors, cooldowns, and uncertain-delivery warnings remain personal.
+
 ## Running reliably
 
 Run exactly one instance per bot token and storage directory. Startup removes any existing webhook so that the bot can receive updates through long polling.
@@ -111,6 +113,10 @@ Invoke these commands through Telegram's ephemeral command menu in a group or su
 | `/dev_item stick` | Shows stable ID, translated weapon category, and +1 attack bonus. | None. |
 | `/dev_item cloth_armor` | Shows stable ID, translated armor category, and +1 defense bonus. | None. |
 | `/dev_item healing_potion` | Shows stable ID, translated consumable category, and 10 HP healing. | None. |
+| `/dev_item iron_sword` | Shows the iron sword and +3 attack bonus. | None. |
+| `/dev_item chainmail` | Shows chainmail and +3 defense bonus. | None. |
+| `/dev_item greater_healing_potion` | Shows the greater healing potion and 25 HP healing. | None. |
+| `/dev_item ruby` | Shows a collectible ruby with no usable mechanics. | None. |
 | `/dev_inventory_grant <item-id> <positive whole quantity>` | First open `/inventory` as the owner. Success reports that the inventory reward was granted. | Adds items only to the owner's existing character; replaying the same update cannot grant twice. |
 | `/dev_inventory_heal healing_potion` | Owner has opened `/inventory`, owns a potion, is active, and has missing HP. With character probes enabled, `/dev_character_damage 20` prepares missing HP. Success reports healing. | Atomically spends one potion and heals up to 10 HP; full health or incapacitation spends nothing. |
 

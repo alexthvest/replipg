@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -182,6 +181,10 @@ func TestSharingInventoryMilestone(t *testing.T) {
 					t.Fatal(err)
 				}
 
+				if len(result.ImmediateResponses) == 0 {
+					return runtimecontract.EphemeralResponse{}
+				}
+
 				if len(result.ImmediateResponses) != 1 {
 					t.Fatalf("expected one personal response, got %d", len(result.ImmediateResponses))
 				}
@@ -309,42 +312,32 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			before := gameplay()
 			var copies []map[string]string
 
-			share := func(view runtimecontract.EphemeralResponse, label, pending, success string) {
+			share := func(view runtimecontract.EphemeralResponse, label string) {
 				t.Helper()
 				accepted := press(7, view, button(view, label))
 
-				if !strings.Contains(accepted.Content.Text, pending) {
-					t.Fatalf("pending guidance: %q", accepted.Content.Text)
+				if accepted.Content.Text != "" {
+					t.Fatalf("unexpected preparation guidance: %q", accepted.Content.Text)
 				}
 
 				run(worker)
 				fields := <-requests
-				attribution := "Shared by user 7"
-				if locale == "ru" {
-					attribution = "Поделился пользователь 7"
-				}
 
-				if fields["text"] != view.Content.Text+"\n\n"+attribution || fields["chat_id"] != "-100" || fields["ephemeral_message_parameters"] != "" || fields["reply_markup"] != "" || fields["reply_parameters"] != "" || !strings.HasSuffix(fields["method"], "/sendMessage") {
+				if fields["text"] != view.Content.Text || fields["chat_id"] != "-100" || fields["ephemeral_message_parameters"] != "" || fields["reply_markup"] != "" || fields["reply_parameters"] != "" || !strings.HasSuffix(fields["method"], "/sendMessage") {
 					t.Fatalf("invalid read-only public snapshot: %+v", fields)
 				}
 
 				copies = append(copies, fields)
 				run(projector)
-				run(worker)
-				feedback := <-requests
-				var auth struct {
-					Receiver int64 `json:"receiver_user_id"`
-				}
-
-				if err := json.Unmarshal([]byte(feedback["ephemeral_message_parameters"]), &auth); err != nil || auth.Receiver != 7 || !strings.Contains(feedback["text"], success) {
-					t.Fatalf("personal outcome: %+v %v", feedback, err)
+				if worked, err := worker.RunOnce(t.Context()); err != nil || worked {
+					t.Fatalf("success queued feedback: %v %v", worked, err)
 				}
 			}
-			pending, success, cooldown := "Sharing is still", "Shared in this group.", "You can share again in"
+			cooldown := "You can share again in"
 			if locale == "ru" {
-				pending, success, cooldown = "Публикация ещё", "Опубликовано в этой группе.", "Можно поделиться снова через"
+				cooldown = "Можно поделиться снова через"
 			}
-			share(navigated, shareLabel, pending, success)
+			share(navigated, shareLabel)
 			first := copies[0]["text"]
 			blocked := press(7, navigated, button(navigated, shareLabel))
 
@@ -364,7 +357,7 @@ func TestSharingInventoryMilestone(t *testing.T) {
 				t.Fatalf("elapsed interval setup: %d %v", n, err)
 			}
 
-			share(navigated, shareLabel, pending, success)
+			share(navigated, shareLabel)
 
 			if len(copies) != 2 || copies[0]["text"] != first || copies[1]["text"] != first || publicCount() != 2 {
 				t.Fatal("intentional repost did not retain both identical copies")
@@ -375,9 +368,9 @@ func TestSharingInventoryMilestone(t *testing.T) {
 			oldPage := command(7, "inventory")
 			oldDetail := press(7, oldPage, button(oldPage, "4"))
 			nextLocale := "ru"
-			newLabel, newPending, newSuccess, newCooldown := "Поделиться", "Публикация ещё", "Опубликовано в этой группе.", "Можно поделиться снова через"
+			newLabel, newCooldown := "Поделиться", "Можно поделиться снова через"
 			if locale == "ru" {
-				nextLocale, newLabel, newPending, newSuccess, newCooldown = "en", "Share", "Sharing is still", "Shared in this group.", "You can share again in"
+				nextLocale, newLabel, newCooldown = "en", "Share", "You can share again in"
 			}
 			switchLocale(nextLocale)
 			fresh := command(7, "inventory")
@@ -401,14 +394,14 @@ func TestSharingInventoryMilestone(t *testing.T) {
 				t.Fatal("ordinary member changed group language")
 			}
 
-			share(oldDetail, shareLabel, newPending, newSuccess)
+			share(oldDetail, shareLabel)
 			denied := press(7, oldDetail, button(oldDetail, shareLabel))
 
 			if !strings.Contains(denied.Content.Text, newCooldown) || publicCount() != 3 {
 				t.Fatal("cooldown guidance ignored current language")
 			}
 
-			if copies[0]["text"] != first || copies[1]["text"] != first || !strings.HasPrefix(copies[2]["text"], oldDetail.Content.Text+"\n\n") {
+			if copies[0]["text"] != first || copies[1]["text"] != first || copies[2]["text"] != oldDetail.Content.Text {
 				t.Fatal("language switch changed a captured snapshot")
 			}
 

@@ -135,6 +135,17 @@ func Parse(en, ru []byte) (*Catalog, error) {
 				return nil, invalidCatalog("localization: %s invalid template %s", v.l, k)
 			}
 
+			if styledMessage(k) {
+				args := Args{}
+				for name, kind := range s.params {
+					args[name] = Value{kind: kind}
+				}
+
+				if _, err := formatTemplate(compiled, s.params, args, true); err != nil {
+					return nil, invalidCatalog("localization: %s invalid formatting %s", v.l, k)
+				}
+			}
+
 			c.templates[v.l][k] = compiled
 		}
 
@@ -244,27 +255,32 @@ func (c *Catalog) Count(l Locale, k Key, n int64, a Args) (string, error) {
 }
 
 func (c *Catalog) render(l Locale, k string, s messageSpec, a Args) (string, error) {
+	content, err := c.renderFormatted(l, k, s, a)
+	return content.Text, err
+}
+
+func (c *Catalog) renderFormatted(l Locale, k string, s messageSpec, a Args) (FormattedText, error) {
 	if c == nil {
-		return "", errors.New("localization: missing catalog")
+		return FormattedText{}, errors.New("localization: missing catalog")
 	}
 
 	r, ok := c.resources[l]
 	if !ok {
-		return "", errors.New("localization: unsupported locale")
+		return FormattedText{}, errors.New("localization: unsupported locale")
 	}
 
 	_, ok = r[k]
 	if !ok {
-		return "", errors.New("localization: missing message")
+		return FormattedText{}, errors.New("localization: missing message")
 	}
 
-	v, err := executeTemplate(c.templates[l][k], s.params, a)
+	v, err := formatTemplate(c.templates[l][k], s.params, a, styledMessage(k))
 	if err != nil {
-		return "", err
+		return FormattedText{}, err
 	}
 
-	if !safe(v, true) || utf8.RuneCountInString(v) > s.limit || (s.limit == 4096 && len(utf16.Encode([]rune(v))) > 4096) {
-		return "", errors.New("localization: invalid rendered text")
+	if !safe(v.Text, true) || utf8.RuneCountInString(v.Text) > s.limit || (s.limit == 4096 && len(utf16.Encode([]rune(v.Text))) > 4096) {
+		return FormattedText{}, errors.New("localization: invalid rendered text")
 	}
 
 	return v, nil
@@ -320,35 +336,6 @@ func compileTemplate(text string, params map[string]ParamKind) (*template.Templa
 	}
 
 	return t, nil
-}
-
-func executeTemplate(t *template.Template, params map[string]ParamKind, args Args) (string, error) {
-	bad := errors.New("localization: invalid message parameters")
-	if len(args) != len(params) {
-		return "", bad
-	}
-
-	values := map[string]any{}
-	for k, kind := range params {
-		v, ok := args[k]
-		if !ok || v.kind != kind {
-			return "", bad
-		}
-
-		if kind == TextParam {
-			values[k] = v.text
-		} else {
-			values[k] = v.integer
-		}
-	}
-
-	var out bytes.Buffer
-
-	if err := t.Execute(&out, values); err != nil {
-		return "", bad
-	}
-
-	return out.String(), nil
 }
 
 func safe(s string, newline bool) bool {

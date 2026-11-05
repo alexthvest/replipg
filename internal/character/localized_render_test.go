@@ -26,8 +26,8 @@ func TestLocalizedCharacterSummaryAndSelection(t *testing.T) {
 	}
 
 	for _, part := range []string{"Персонаж создан.", "Здоровье: 0/100", "Атака: 10", "Защита: 5", "недееспособен", "2026-10-28T00:02:03Z"} {
-		if !strings.Contains(text, part) {
-			t.Fatalf("missing %q in %q", part, text)
+		if !strings.Contains(text.Text, part) {
+			t.Fatalf("missing %q in %q", part, text.Text)
 		}
 	}
 
@@ -64,6 +64,10 @@ func TestLocalizedCharacterSummaryAndSelection(t *testing.T) {
 
 		if !strings.Contains(response.Content.Text, want) {
 			t.Fatal(response.Content.Text)
+		}
+
+		if len(response.Content.Entities) != 3 || response.Content.Entities[0].Kind != runtimecontract.TextEntityCode || response.Content.Entities[0].Offset <= 0 {
+			t.Fatalf("character stats lost formatting after creation notice: %+v", response.Content)
 		}
 	}
 

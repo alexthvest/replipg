@@ -84,7 +84,7 @@ func (h shareHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 	}
 
 	if pending {
-		return h.guidance(ctx, tx, cb, deadline, localization.SharingPending, nil)
+		return interaction.HandlerResult{}, nil
 	}
 
 	if !view.LastSuccessAt.IsZero() {
@@ -98,20 +98,15 @@ func (h shareHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 		return h.guidance(ctx, tx, cb, deadline, localization.SharingUnknown, nil)
 	}
 
-	attribution, err := Attribution(h.service.catalog, view.Locale, view.Owner)
-	if err != nil {
-		return interaction.HandlerResult{}, err
-	}
-
-	body.Text += "\n\n" + attribution
 	request, err := NewPublicRequest(PublicPayload{ActionUpdateID: cb.Update, Destination: view.Destination, Content: body})
 	if err != nil {
 		return h.guidance(ctx, tx, cb, deadline, localization.SharingUnavailable, nil)
 	}
 
-	// Rendering guidance before enqueue means all fallible preparation is complete;
-	// the caller still owns atomic commit of the ledger and acceptance identity.
-	key := localization.SharingPending
+	// Ordinary sharing is silent. Only an intentional retry of an uncertain
+	// delivery needs a warning, rendered before the atomic acceptance write.
+	var result interaction.HandlerResult
+
 	if !view.UnknownUntil.IsZero() {
 		// The hold timestamp remains fixed historical evidence. Warn only when
 		// the latest deliberate attempt is uncertain, rather than carrying an
@@ -124,12 +119,11 @@ func (h shareHandler) Handle(ctx context.Context, scope runtimecontract.WorkScop
 		}
 
 		if latestState == "unknown" {
-			key = localization.SharingUnknownRetry
+			result, err = h.guidance(ctx, tx, cb, deadline, localization.SharingUnknownRetry, nil)
+			if err != nil {
+				return interaction.HandlerResult{}, err
+			}
 		}
-	}
-	result, err := h.guidance(ctx, tx, cb, deadline, key, nil)
-	if err != nil {
-		return interaction.HandlerResult{}, err
 	}
 
 	id, err := h.ledger.Enqueue(ctx, tx, request)

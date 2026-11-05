@@ -63,7 +63,17 @@ type TextEntity struct {
 type InlineButton struct {
 	Text         string
 	CallbackData string
+	Style        ButtonStyle `json:",omitempty"`
 }
+
+// ButtonStyle is an optional semantic color; the empty value uses client defaults.
+type ButtonStyle string
+
+const (
+	ButtonPrimary ButtonStyle = "primary"
+	ButtonSuccess ButtonStyle = "success"
+	ButtonDanger  ButtonStyle = "danger"
+)
 
 // MessageContent is supported text content with optional formatting and
 // callback-button rows.
@@ -116,6 +126,10 @@ func (c MessageContent) validate() error {
 		}
 
 		for _, button := range row {
+			if button.Style != "" && button.Style != ButtonPrimary && button.Style != ButtonSuccess && button.Style != ButtonDanger {
+				return validationError("content.buttons.style", ReasonUnsupported)
+			}
+
 			if button.Text == "" {
 				return validationError("content.buttons.text", ReasonRequired)
 			}

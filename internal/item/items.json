@@ -19,6 +19,26 @@
       "category": "consumable",
       "healing_hp": 10,
       "effect": "heal_self_fixed_hp"
+    },
+    {
+      "id": "iron_sword",
+      "category": "weapon",
+      "attack_bonus": 3
+    },
+    {
+      "id": "chainmail",
+      "category": "armor",
+      "defense_bonus": 3
+    },
+    {
+      "id": "greater_healing_potion",
+      "category": "consumable",
+      "healing_hp": 25,
+      "effect": "heal_self_fixed_hp"
+    },
+    {
+      "id": "ruby",
+      "category": "inert"
     }
   ]
 }

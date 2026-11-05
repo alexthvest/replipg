@@ -34,7 +34,7 @@ func TestCatalogBilingualAndPlural(t *testing.T) {
 		t.Fatal("unsupported locale accepted")
 	}
 
-	if err := c.ValidateItems([]string{"coin", "stick", "cloth_armor", "healing_potion"}, func(v ItemText) error { return nil }); err != nil {
+	if err := c.ValidateItems([]string{"coin", "stick", "cloth_armor", "healing_potion", "iron_sword", "chainmail", "greater_healing_potion", "ruby"}, func(v ItemText) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -59,10 +59,10 @@ func TestStrictResource(t *testing.T) {
 
 func TestCompleteCatalogValidation(t *testing.T) {
 	for _, tc := range []struct{ name, old, replacement string }{
-		{"unknown", `"settings.title": "Group settings"`, `"unknown": "Group settings"`},
-		{"missing", `"settings.title": "Group settings",`, ``},
-		{"empty", `"settings.title": "Group settings"`, `"settings.title": " "`},
-		{"control", `"settings.title": "Group settings"`, `"settings.title": "bad\u202e"`},
+		{"unknown", `"settings.title": "<b>Group settings</b>"`, `"unknown": "Group settings"`},
+		{"missing", `"settings.title": "<b>Group settings</b>",`, ``},
+		{"empty", `"settings.title": "<b>Group settings</b>"`, `"settings.title": " "`},
+		{"control", `"settings.title": "<b>Group settings</b>"`, `"settings.title": "bad\u202e"`},
 		{"wrong placeholder", `Language: {{.language}}`, `Language: {{.private}}`},
 		{"missing placeholder", `Language: {{.language}}`, `Language`},
 		{"function", `Language: {{.language}}`, `{{printf "%s" .language}}`},
@@ -70,7 +70,7 @@ func TestCompleteCatalogValidation(t *testing.T) {
 		{"pipeline", `Language: {{.language}}`, `{{.language | printf}}`},
 		{"branch", `Language: {{.language}}`, `{{if .language}}yes{{end}}`},
 		{"template definition", `Language: {{.language}}`, `{{define "extra"}}x{{end}}{{.language}}`},
-		{"literal plural collision", `"settings.title": "Group settings"`, `"recovery.seconds": "Group settings"`},
+		{"literal plural collision", `"settings.title": "<b>Group settings</b>"`, `"recovery.seconds": "Group settings"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := strings.Replace(string(english), tc.old, tc.replacement, 1)
@@ -115,7 +115,7 @@ func TestCompleteCatalogValidation(t *testing.T) {
 }
 
 func TestCatalogErrorsAreActionableAndSafe(t *testing.T) {
-	missing := strings.Replace(string(english), `"settings.title": "Group settings",`, "", 1)
+	missing := strings.Replace(string(english), `"settings.title": "<b>Group settings</b>",`, "", 1)
 	_, err := Parse([]byte(missing), russian)
 	var catalogErr *CatalogError
 
@@ -143,7 +143,7 @@ func TestCatalogErrorsAreActionableAndSafe(t *testing.T) {
 	}
 
 	validatorErr := errors.New("private-validator-cause")
-	err = c.ValidateItems([]string{"coin", "stick", "cloth_armor", "healing_potion"}, func(ItemText) error { return validatorErr })
+	err = c.ValidateItems([]string{"coin", "stick", "cloth_armor", "healing_potion", "iron_sword", "chainmail", "greater_healing_potion", "ruby"}, func(ItemText) error { return validatorErr })
 	catalogErr = nil
 	if !errors.As(err, &catalogErr) || !strings.Contains(err.Error(), "items.coin") || strings.Contains(err.Error(), validatorErr.Error()) || errors.Is(err, validatorErr) {
 		t.Fatalf("unsafe or untyped validator diagnostic: %v", err)

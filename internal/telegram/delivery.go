@@ -60,7 +60,7 @@ func publicParams(req runtimecontract.PublicResponse) *bot.SendMessageParams {
 		for i, row := range req.Content.Buttons {
 			markup.InlineKeyboard[i] = make([]models.InlineKeyboardButton, len(row))
 			for j, button := range row {
-				markup.InlineKeyboard[i][j] = models.InlineKeyboardButton{Text: button.Text, CallbackData: button.CallbackData}
+				markup.InlineKeyboard[i][j] = models.InlineKeyboardButton{Text: button.Text, CallbackData: button.CallbackData, Style: string(button.Style)}
 			}
 		}
 

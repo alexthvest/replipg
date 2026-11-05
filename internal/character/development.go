@@ -10,6 +10,7 @@ import (
 	"github.com/alexthvest/replipg/internal/character/contract"
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/localization"
+	"github.com/alexthvest/replipg/internal/presentation"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
@@ -118,7 +119,11 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 			return interaction.HandlerResult{}, renderErr
 		}
 
-		return personalResponse(command, text+"\n"+summary), nil
+		var content presentation.Builder
+
+		content.Write(text + "\n")
+		content.Append(summary)
+		return personalContentResponse(command, content.Content()), nil
 	}
 
 	text, err := renderLocalizedSummary(h.presentation.Catalog, locale, mutation.Current, created)
@@ -126,7 +131,7 @@ func (h developmentHandler) Handle(ctx context.Context, scope runtimecontract.Wo
 		return interaction.HandlerResult{}, err
 	}
 
-	result := personalResponse(command, text)
+	result := personalContentResponse(command, text)
 	if err := runtimecontract.ValidateResponse(result.ImmediateResponses[0]); err != nil {
 		return interaction.HandlerResult{}, err
 	}

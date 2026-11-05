@@ -186,16 +186,47 @@ func (f *sharingRetention) assertPrivate(values ...any) {
 	}
 }
 
+func TestSilentSuccessRetainsAndPurgesOnlyPublicDelivery(t *testing.T) {
+	f := newSharingRetention(t)
+	f.dispatchRetention(1)
+	f.outcome(runtimecontract.DeliveryAccepted)
+	f.clock.Advance(time.Second)
+	f.project()
+	action := f.action(1)
+
+	if action.PublicState != "succeeded" || action.FeedbackState != "skipped" || !action.FeedbackPurged || action.FeedbackDeliveryID != "" || f.count(FeedbackKind) != 0 || len(f.transport.sent()) != 1 {
+		t.Fatalf("successful share emitted feedback: %+v", action)
+	}
+
+	f.advanceTo(action.PublicPurgeAfter.Add(-time.Millisecond))
+	f.project()
+	f.rows(action.PublicDeliveryID, 1, 1)
+	f.advanceTo(action.PublicPurgeAfter)
+	f.project()
+	f.rows(action.PublicDeliveryID, 0, 0)
+	done := f.action(1)
+	if !done.PublicPurged || !done.FeedbackPurged || !done.NextCheckAt.IsZero() {
+		t.Fatalf("silent share retained unnecessary cleanup work: %+v", done)
+	}
+
+	f.restart()
+	requireSilentShare(t, f.press(1))
+	f.run(nil)
+	if f.count(PublicKind) != 0 || f.count(FeedbackKind) != 0 || len(f.transport.sent()) != 1 {
+		t.Fatal("replaying a silent share reposted or emitted feedback")
+	}
+}
+
 func TestSharingRetentionIndependentOutcomes(t *testing.T) {
 	for _, tc := range []struct {
 		name                       string
 		public, feedback           runtimecontract.DeliveryOutcomeKind
 		publicState, feedbackState string
 	}{
-		{"completed", runtimecontract.DeliveryAccepted, runtimecontract.DeliveryAccepted, "succeeded", "completed"},
+		{"failure_feedback_completed", runtimecontract.DeliveryPermanentFailure, runtimecontract.DeliveryAccepted, "failed", "completed"},
 		{"rejected", runtimecontract.DeliveryPermanentFailure, runtimecontract.DeliveryPermanentFailure, "failed", "rejected"},
 		{"abandoned_unknown", runtimecontract.DeliveryIndeterminate, runtimecontract.DeliveryIndeterminate, "unknown", "unknown"},
-		{"feedback_unknown", runtimecontract.DeliveryAccepted, runtimecontract.DeliveryIndeterminate, "succeeded", "unknown"},
+		{"feedback_unknown", runtimecontract.DeliveryPermanentFailure, runtimecontract.DeliveryIndeterminate, "failed", "unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newSharingRetention(t)
@@ -349,7 +380,7 @@ func TestSharingRetentionIndependentOutcomes(t *testing.T) {
 func TestSharingRetentionRollbackKeepsPayloadAndTombstoneAtomic(t *testing.T) {
 	f := newSharingRetention(t)
 	f.dispatchRetention(1)
-	f.outcome(runtimecontract.DeliveryAccepted)
+	f.outcome(runtimecontract.DeliveryPermanentFailure)
 	f.clock.Advance(time.Second)
 	f.project()
 	f.outcome(runtimecontract.DeliveryAccepted)
@@ -401,7 +432,7 @@ func TestSharingRetentionRollbackKeepsPayloadAndTombstoneAtomic(t *testing.T) {
 func TestSharingRetentionGuardsPreserveUnresolvedAndUnrelatedWork(t *testing.T) {
 	f := newSharingRetention(t)
 	f.dispatchRetention(1)
-	f.outcome(runtimecontract.DeliveryAccepted)
+	f.outcome(runtimecontract.DeliveryPermanentFailure)
 	f.clock.Advance(time.Second)
 	f.project()
 	first := f.action(1)

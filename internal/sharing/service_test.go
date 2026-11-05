@@ -55,7 +55,7 @@ func TestDecorationPreservesViewsAndMetadata(t *testing.T) {
 					t.Fatal("decoration must preserve body and append one Share row")
 				}
 
-				if got.Buttons[1][0].CallbackData != "share:v1:"+token || got.Buttons[1][0].Text != "Share" {
+				if got.Buttons[1][0].CallbackData != "share:v1:"+token || got.Buttons[1][0].Text != "Share" || got.Buttons[1][0].Style != runtimecontract.ButtonPrimary {
 					t.Fatal("invalid Share control")
 				}
 

@@ -132,7 +132,7 @@ func TestSharingCatalog(t *testing.T) {
 	}
 
 	for _, locale := range []localization.Locale{localization.English, localization.Russian} {
-		for _, key := range []localization.Key{"sharing.share", "sharing.pending", "sharing.success", "sharing.failure", "sharing.unknown", "sharing.unknown_retry", "sharing.unavailable", "sharing.reopen"} {
+		for _, key := range []localization.Key{"sharing.share", "sharing.failure", "sharing.unknown", "sharing.unknown_retry", "sharing.unavailable", "sharing.reopen"} {
 			if text, err := c.Text(locale, key, nil); err != nil || text == "" {
 				t.Fatalf("%s %s: %q %v", locale, key, text, err)
 			}
@@ -141,7 +141,7 @@ func TestSharingCatalog(t *testing.T) {
 		for _, tc := range []struct {
 			key   localization.Key
 			param string
-		}{{"sharing.attribution", "user_id"}, {"sharing.cooldown", "seconds"}} {
+		}{{"sharing.cooldown", "seconds"}} {
 			text, err := c.Text(locale, tc.key, localization.Args{tc.param: localization.Integer(123)})
 			if err != nil || !strings.Contains(text, "123") {
 				t.Fatalf("%s: %q %v", tc.key, text, err)
@@ -187,37 +187,6 @@ func TestDeliveryRequestsAreSingleAttempt(t *testing.T) {
 
 	if _, err := NewFeedbackRequest(FeedbackPayload{}); err == nil {
 		t.Fatal("invalid feedback request accepted")
-	}
-}
-
-func TestAttributionUsesFrozenLocaleAndNumericOwner(t *testing.T) {
-	catalog, err := localization.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	en, err := Attribution(catalog, localization.English, 123)
-	if err != nil || en != "Shared by user 123" {
-		t.Fatalf("%q %v", en, err)
-	}
-
-	ru, err := Attribution(catalog, localization.Russian, 123)
-	if err != nil || ru != "Поделился пользователь 123" {
-		t.Fatalf("%q %v", ru, err)
-	}
-
-	for _, owner := range []runtimecontract.UserID{0, -1} {
-		if _, err := Attribution(catalog, localization.English, owner); err == nil {
-			t.Fatal("invalid owner accepted")
-		}
-	}
-
-	if _, err := Attribution(catalog, "unknown", 123); err == nil {
-		t.Fatal("unsupported locale accepted")
-	}
-
-	if _, err := Attribution(nil, localization.English, 123); err == nil {
-		t.Fatal("missing catalog accepted")
 	}
 }
 

@@ -191,10 +191,15 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	press := func() interaction.HandlerResult {
 		t.Helper()
 		update++
+		entities := make([]map[string]any, 0, len(open.Content.Entities))
+		for _, entity := range open.Content.Entities {
+			entities = append(entities, map[string]any{"type": string(entity.Kind), "offset": entity.Offset, "length": entity.Length})
+		}
+
 		// Use the transport decoder rather than manufacture trusted callback evidence.
 		raw, err := json.Marshal(map[string]any{"update_id": update, "callback_query": map[string]any{
 			"id": fmt.Sprintf("milestone-%d", update), "from": map[string]any{"id": 7}, "data": data,
-			"message": map[string]any{"ephemeral_message_id": 900, "date": time.Now().Unix(), "chat": map[string]any{"id": -100, "type": "supergroup"}, "text": open.Content.Text, "receiver_user": map[string]any{"id": 7}, "reply_markup": map[string]any{"inline_keyboard": [][]map[string]string{{{"text": "Share", "callback_data": data}}}}},
+			"message": map[string]any{"ephemeral_message_id": 900, "date": time.Now().Unix(), "chat": map[string]any{"id": -100, "type": "supergroup"}, "text": open.Content.Text, "entities": entities, "receiver_user": map[string]any{"id": 7}, "reply_markup": map[string]any{"inline_keyboard": [][]map[string]string{{{"text": "Share", "callback_data": data}}}}},
 		}})
 		if err != nil {
 			t.Fatal(err)
@@ -237,14 +242,18 @@ func TestSharingCharacterMilestone(t *testing.T) {
 		}
 	}
 	countPublic(0)
-	personalGuidance(press(), "sharing")
-	personalGuidance(press(), "in progress") // A distinct incoming update, not just a replay.
+	if result := press(); len(result.ImmediateResponses) != 0 {
+		t.Fatal("share emitted preparation guidance")
+	}
+	if result := press(); len(result.ImmediateResponses) != 0 {
+		t.Fatal("pending share emitted guidance")
+	} // A distinct incoming update, not just a replay.
 	countPublic(1)
 	run(worker)
 	first := receive()
 
-	if first["text"] != open.Content.Text+"\n\nShared by user 7" || first["chat_id"] != "-100" || first["ephemeral_message_parameters"] != "" || first["reply_markup"] != "" || first["reply_parameters"] != "" {
-		t.Fatalf("invalid attributed ordinary snapshot: %v", first)
+	if first["text"] != open.Content.Text || first["chat_id"] != "-100" || first["ephemeral_message_parameters"] != "" || first["reply_markup"] != "" || first["reply_parameters"] != "" {
+		t.Fatalf("invalid ordinary snapshot: %v", first)
 	}
 
 	// The blocked press scheduled the next inspection in the future. Make that
@@ -257,9 +266,8 @@ func TestSharingCharacterMilestone(t *testing.T) {
 	}
 
 	run(projector)
-	run(worker)
-	if feedback := receive(); feedback["ephemeral_message_parameters"] == "" {
-		t.Fatal("outcome guidance became public")
+	if worked, err := worker.RunOnce(t.Context()); err != nil || worked {
+		t.Fatalf("success queued feedback: %v %v", worked, err)
 	}
 
 	personalGuidance(press(), "second")
@@ -307,7 +315,9 @@ func TestSharingCharacterMilestone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	personalGuidance(press(), "sharing") // Same old source, not a freshly rendered view.
+	if result := press(); len(result.ImmediateResponses) != 0 {
+		t.Fatal("reshare emitted preparation guidance")
+	} // Same old source, not a freshly rendered view.
 	countPublic(2)
 	run(worker)
 	second := receive()

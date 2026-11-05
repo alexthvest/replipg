@@ -209,7 +209,7 @@ func TestProjectorPendingFeedbackSurvivesPublicCleanup(t *testing.T) {
 	now := time.Unix(110, 0).UTC()
 	l := &projectorLedger{evidence: map[runtimecontract.DeliveryID]Evidence{}}
 	db, p, v, a := projectorFixture(t, &now, l)
-	l.evidence[a.PublicDeliveryID] = Evidence{State: Completed, TerminalAt: now}
+	l.evidence[a.PublicDeliveryID] = Evidence{State: Rejected, TerminalAt: now}
 	if _, err := p.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestProjectorFutureEvidenceRetention(t *testing.T) {
 	l := &projectorLedger{evidence: map[runtimecontract.DeliveryID]Evidence{}}
 	db, p, v, a := projectorFixture(t, &now, l)
 	future := now.Add(time.Minute)
-	l.evidence[a.PublicDeliveryID] = Evidence{State: Completed, TerminalAt: future}
+	l.evidence[a.PublicDeliveryID] = Evidence{State: Rejected, TerminalAt: future}
 	if _, err := p.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestProjectorInvalidFeedbackEvidenceRollsBack(t *testing.T) {
 			now := time.Unix(110, 0).UTC()
 			l := &projectorLedger{evidence: map[runtimecontract.DeliveryID]Evidence{}}
 			db, p, v, a := projectorFixture(t, &now, l)
-			l.evidence[a.PublicDeliveryID] = Evidence{State: Completed, TerminalAt: now}
+			l.evidence[a.PublicDeliveryID] = Evidence{State: Rejected, TerminalAt: now}
 			if _, err := p.RunOnce(context.Background()); err != nil {
 				t.Fatal(err)
 			}

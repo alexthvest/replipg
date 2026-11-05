@@ -41,7 +41,7 @@ func TestSourceFingerprint(t *testing.T) {
 
 func TestSourceAuthorizationAndBinding(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
-	for _, name := range []string{"valid", "receiver absent", "foreign owner", "foreign group", "bot", "missing source", "missing keyboard", "body mismatch", "receiver mismatch", "message mismatch", "first bind", "expired", "malformed token", "missing query", "ordinary source"} {
+	for _, name := range []string{"valid", "receiver absent", "foreign owner", "foreign group", "bot", "missing source", "missing keyboard", "body mismatch", "format mismatch", "receiver mismatch", "message mismatch", "first bind", "expired", "malformed token", "missing query", "ordinary source"} {
 		t.Run(name, func(t *testing.T) {
 			db := sharingTestDB(t)
 			token := strings.Repeat("b", 32)
@@ -71,6 +71,9 @@ func TestSourceAuthorizationAndBinding(t *testing.T) {
 				want = sourceUnavailable
 			case "body mismatch":
 				cb.Source.Body.Text = "different"
+				want = sourceUnavailable
+			case "format mismatch":
+				cb.Source.Body.Entities = []runtimecontract.TextEntity{{Kind: runtimecontract.TextEntityItalic, Offset: 3, Length: 6}}
 				want = sourceUnavailable
 			case "receiver mismatch":
 				cb.Source.ReceiverUserID = 43

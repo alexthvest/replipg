@@ -11,13 +11,33 @@ import (
 
 	"github.com/alexthvest/replipg/internal/interaction"
 	"github.com/alexthvest/replipg/internal/inventory/contract"
+	"github.com/alexthvest/replipg/internal/item"
 	itemcontract "github.com/alexthvest/replipg/internal/item/contract"
 	"github.com/alexthvest/replipg/internal/localization"
 	"github.com/alexthvest/replipg/internal/runtimecontract"
 )
 
-func TestLocalizedInventoryPresentation(t *testing.T) {
+func loadLocalizedSeedCatalog() (fixtureCatalog, error) {
 	catalog, err := LoadCatalog()
+	if err != nil {
+		return fixtureCatalog{}, err
+	}
+
+	seed, err := item.LoadCatalog()
+	if err != nil {
+		return fixtureCatalog{}, err
+	}
+
+	catalog.items = seed.Items()
+	for _, definition := range catalog.items {
+		catalog.byID[definition.ID] = definition
+	}
+
+	return catalog, nil
+}
+
+func TestLocalizedInventoryPresentation(t *testing.T) {
+	catalog, err := loadLocalizedSeedCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +252,7 @@ func TestRejectedInventoryControlDoesNotResolveLocale(t *testing.T) {
 }
 
 func TestLocalizedMaximumPageAndDetailBudgets(t *testing.T) {
-	catalog, err := LoadCatalog()
+	catalog, err := loadLocalizedSeedCatalog()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +392,7 @@ func TestPreparedInventoryResponseKeepsAcceptedLanguageSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(accepted.Content.Text, "Leather armor • Player_Name") || !strings.Contains(accepted.Content.Text, "Owned: 1") || !strings.Contains(accepted.Content.Text, "Defense bonus: +1") || accepted.Content.Buttons[0][0].Text != "Equip" || accepted.Content.Buttons[1][0].Text != "Back" {
+	if !strings.Contains(accepted.Content.Text, "Leather armor • Player_Name") || !strings.Contains(accepted.Content.Text, "Owned: (1)") || !strings.Contains(accepted.Content.Text, "Defense bonus: +1") || accepted.Content.Buttons[0][0].Text != "Equip" || accepted.Content.Buttons[1][0].Text != "Back" {
 		t.Fatal("English accepted content incomplete", accepted.Content)
 	}
 
@@ -386,7 +406,7 @@ func TestPreparedInventoryResponseKeepsAcceptedLanguageSnapshot(t *testing.T) {
 
 		next := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
 
-		if !strings.Contains(next.Content.Text, "Кожаная броня • Player_Name") || !strings.Contains(next.Content.Text, "В наличии: 1") || next.Content.Buttons[0][0].Text != "Экипировать" {
+		if !strings.Contains(next.Content.Text, "Кожаная броня • Player_Name") || !strings.Contains(next.Content.Text, "В наличии: (1)") || next.Content.Buttons[0][0].Text != "Экипировать" {
 			t.Fatal("new interaction did not use selected language", next.Content)
 		}
 

@@ -348,12 +348,8 @@ func (f *inventorySourceFixture) shareExact(t *testing.T, body runtimecontract.M
 	}
 
 	p := got[len(got)-1]
-	footer, err := Attribution(f.service.catalog, locale, 42)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	if p.Content.Text != body.Text+"\n\n"+footer || !reflect.DeepEqual(p.Content.Entities, body.Entities) || len(p.Content.Buttons) != 0 || p.Destination.ChatID != -1 {
+	if p.Content.Text != body.Text || !reflect.DeepEqual(p.Content.Entities, body.Entities) || len(p.Content.Buttons) != 0 || p.Destination.ChatID != -1 {
 		t.Fatalf("snapshot differs from selected source: %+v", p)
 	}
 
@@ -642,12 +638,12 @@ func (f *inventorySourceFixture) item(t *testing.T, body runtimecontract.Message
 	return f.personal(t, f.callback(t, body, "inv:"+token, nil).Event)
 }
 
-func TestInventorySourceOversizedAttributedSnapshot(t *testing.T) {
+func TestInventorySourceLongSnapshotDoesNotNeedFooterSpace(t *testing.T) {
 	description := strings.Repeat("Coin description. ", 10)
 	baseline := newInventorySourceFixture(t, inventorySourceResources(t, description))
 	page := baseline.open(t)
 	detail := baseline.item(t, page.Content, "coin")
-	// A valid real inventory detail leaves insufficient space for attribution.
+	// A valid near-limit detail can be shared without reserving footer space.
 	resources := inventorySourceResources(t, description, 4090-len(detail.Content.Text))
 	f := newInventorySourceFixture(t, resources)
 	page = f.open(t)
@@ -660,13 +656,9 @@ func TestInventorySourceOversizedAttributedSnapshot(t *testing.T) {
 	before := f.gameplay(t)
 	result := f.dispatch(t, f.callback(t, detail.Content, inventorySourceButton(t, detail.Content, "share"), nil).Event)
 
-	if len(f.publics(t)) != 0 || before != f.gameplay(t) {
-		t.Fatal("oversized attributed view published or changed gameplay")
+	if len(f.publics(t)) != 1 || f.publics(t)[0].Content.Text != detail.Content.Text || before != f.gameplay(t) {
+		t.Fatal("near-limit snapshot changed or sharing changed gameplay")
 	}
 
-	want, _ := resources.Text(localization.English, localization.SharingUnavailable, nil)
-
-	if feedbackText(t, result) != want {
-		t.Fatal("missing personal oversize guidance")
-	}
+	requireSilentShare(t, result)
 }

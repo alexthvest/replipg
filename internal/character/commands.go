@@ -73,7 +73,7 @@ func (h commandHandler) Handle(ctx context.Context, scope runtimecontract.WorkSc
 		return interaction.HandlerResult{}, err
 	}
 
-	result := personalResponse(command, text)
+	result := personalContentResponse(command, text)
 	if h.presentation.Sharing != nil {
 		response := result.ImmediateResponses[0].(runtimecontract.EphemeralResponse)
 		response.Content, err = h.presentation.Sharing.Decorate(ctx, scope.DBTX(), sharingcontract.View{
@@ -115,8 +115,12 @@ func personalCommand(event interaction.Event, now time.Time) (interaction.Comman
 }
 
 func personalResponse(command interaction.Command, text string) interaction.HandlerResult {
+	return personalContentResponse(command, runtimecontract.MessageContent{Text: text})
+}
+
+func personalContentResponse(command interaction.Command, content runtimecontract.MessageContent) interaction.HandlerResult {
 	return interaction.HandlerResult{ImmediateResponses: []runtimecontract.ResponseRequest{runtimecontract.EphemeralResponse{
 		Destination: runtimecontract.GroupDestination{ChatID: command.Chat, Kind: command.ChatKind}, TargetUserID: command.User,
-		Authorization: runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(command.EphemeralMessageID), ValidUntil: command.SentAt.Add(15 * time.Second)}, Content: runtimecontract.MessageContent{Text: text},
+		Authorization: runtimecontract.IncomingEphemeralAuthorization{EphemeralMessageID: int(command.EphemeralMessageID), ValidUntil: command.SentAt.Add(15 * time.Second)}, Content: content,
 	}}}
 }

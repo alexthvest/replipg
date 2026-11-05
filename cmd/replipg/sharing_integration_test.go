@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -356,8 +355,8 @@ func TestSharingProductionCharacterPublicAndPersonalOutcome(t *testing.T) {
 	cb := interaction.Callback{Identity: identity, QueryID: "share-query", EphemeralMessageID: 900, Data: data, Source: &interaction.CallbackSource{Body: body, CallbackData: []string{data}, EphemeralMessageID: 900}}
 	accepted := dispatch(cb)
 
-	if len(accepted.ImmediateResponses) != 1 {
-		t.Fatal("missing personal pending guidance")
+	if len(accepted.ImmediateResponses) != 0 {
+		t.Fatal("share emitted preparation guidance")
 	}
 
 	worker, err := outbox.NewWorker(store, outbox.WorkerOptions{Delivery: sharingProductionDelivery{sender}})
@@ -371,7 +370,7 @@ func TestSharingProductionCharacterPublicAndPersonalOutcome(t *testing.T) {
 
 	fields = <-requests
 
-	if !strings.HasPrefix(fields["text"], body.Text+"\n\n") || !strings.Contains(fields["text"], "7") || fields["chat_id"] != "-100" || fields["ephemeral_message_parameters"] != "" || fields["reply_markup"] != "" || fields["reply_parameters"] != "" {
+	if fields["text"] != body.Text || fields["chat_id"] != "-100" || fields["ephemeral_message_parameters"] != "" || fields["reply_markup"] != "" || fields["reply_parameters"] != "" {
 		t.Fatalf("invalid public snapshot fields: %v", fields)
 	}
 
@@ -379,18 +378,8 @@ func TestSharingProductionCharacterPublicAndPersonalOutcome(t *testing.T) {
 		t.Fatalf("projection: %v %v", worked, err)
 	}
 
-	if worked, err := worker.RunOnce(t.Context()); err != nil || !worked {
-		t.Fatalf("feedback worker: %v %v", worked, err)
-	}
-
-	fields = <-requests
-	var auth struct {
-		Receiver int64  `json:"receiver_user_id"`
-		Query    string `json:"callback_query_id"`
-	}
-
-	if err := json.Unmarshal([]byte(fields["ephemeral_message_parameters"]), &auth); err != nil || auth.Receiver != 7 || auth.Query != "share-query" || !strings.Contains(strings.ToLower(fields["text"]), "shared") {
-		t.Fatalf("invalid personal outcome: %v %v", fields, err)
+	if worked, err := worker.RunOnce(t.Context()); err != nil || worked {
+		t.Fatalf("successful share queued feedback: %v %v", worked, err)
 	}
 
 	if replay := dispatch(cb); len(replay.ImmediateResponses) != 0 {

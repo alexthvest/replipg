@@ -19,7 +19,7 @@ func TestRenderSummary(t *testing.T) {
 	}
 
 	for _, part := range []string{"Character created", "100/100", "Attack: 10", "Defense: 5", "active"} {
-		if !strings.Contains(first, part) {
+		if !strings.Contains(first.Text, part) {
 			t.Fatalf("missing %s", part)
 		}
 	}
@@ -29,7 +29,7 @@ func TestRenderSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(again, "created") {
+	if strings.Contains(again.Text, "created") {
 		t.Fatal("repeat creation notice")
 	}
 
@@ -41,7 +41,7 @@ func TestRenderSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(got, "incapacitated") || !strings.Contains(got, "2026-10-27T12:00:00Z") {
+	if !strings.Contains(got.Text, "incapacitated") || !strings.Contains(got.Text, "2026-10-27T12:00:00Z") {
 		t.Fatal(got)
 	}
 }

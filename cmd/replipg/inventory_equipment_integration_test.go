@@ -148,13 +148,13 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 	default:
 	}
 
-	assertText(call(-100, equipStick, true), "Owned: 1", "\nEquipped")
+	assertText(call(-100, equipStick, true), "Owned: (1)", "\nEquipped")
 	assertText(call(-200, stale, true), "Inventory changed")
 	page := call(-100, "/inventory", false)
 	assertText(page, "Stick (1) • Equipped", "Weapon: Stick (+1 attack)", "Bonuses: +1 attack, +0 defense")
 	sword := call(-100, page.button(t, "5"), true)
 	replaced := call(-100, sword.button(t, "Equip"), true)
-	assertText(replaced, "Sword • equipment_owner", "Owned: 2", "\nEquipped")
+	assertText(replaced, "Sword • equipment_owner", "Owned: (2)", "\nEquipped")
 	page = call(-100, "/inventory", false)
 	assertText(page, "Weapon: Sword (+3 attack)", "Bonuses: +3 attack, +0 defense", "4. Stick (1)\n")
 	armor := call(-100, page.button(t, "1"), true)
@@ -163,7 +163,7 @@ func TestInventoryProductionBinaryEquipmentMilestone(t *testing.T) {
 	assertText(page, "Bonuses: +3 attack, +1 defense")
 	// Read the Sword again after armor advances the aggregate revision.
 	sword = call(-100, page.button(t, "5"), true)
-	assertText(call(-100, sword.button(t, "Unequip"), true), "Owned: 2", "Unequipped")
+	assertText(call(-100, sword.button(t, "Unequip"), true), "Owned: (2)", "Unequipped")
 	assertText(call(-100, equipStick, true), "Stick • equipment_owner", "Unequipped")
 	if got := call(-100, "/character", false); got.text != base.text {
 		t.Fatal("equipment changed character UI")
