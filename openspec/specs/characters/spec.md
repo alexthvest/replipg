@@ -18,7 +18,7 @@ The system SHALL maintain at most one character for each pair of Telegram group 
 - **THEN** the system creates a distinct character for that group without copying the first group's name changes or inventory
 
 ### Requirement: Characters are created automatically
-The system SHALL create a missing character on the user's first valid character or inventory interaction, or as part of a successful item grant to that user. Ordinary group messages, settings access, and rejected grants MUST NOT create characters.
+The system SHALL create a missing character on the user's first valid character, inventory, or shop interaction, or as part of a successful item grant to that user. Ordinary group messages, settings access, malformed shop commands, and rejected grants MUST NOT create characters.
 
 #### Scenario: First profile or inventory request
 - **WHEN** a user without a character opens their profile or inventory
@@ -29,8 +29,12 @@ The system SHALL create a missing character on the user's first valid character 
 - **THEN** the recipient's character and granted ownership are persisted together
 
 #### Scenario: Unrelated or rejected interaction
-- **WHEN** a user sends ordinary chat text, opens settings, or is targeted by an invalid grant
+- **WHEN** a user sends ordinary chat text, opens settings, sends a malformed shop command, or is targeted by an invalid grant
 - **THEN** that action creates no character
+
+#### Scenario: First shop request
+- **WHEN** a user without a character opens `/shop` in a supported group
+- **THEN** a persistent current-group character is created automatically without requiring a purchase
 
 ### Requirement: Initial names use Telegram identity
 A new character SHALL use the user's Telegram username when available and otherwise the user's Telegram display name. Initial naming MUST NOT require user input, and later Telegram identity changes MUST NOT overwrite the saved character name.

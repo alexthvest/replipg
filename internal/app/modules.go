@@ -9,12 +9,14 @@ import (
 
 	"github.com/alexthvest/replipg/internal/adapters/telegram"
 	"github.com/alexthvest/replipg/internal/application/grants"
+	appshop "github.com/alexthvest/replipg/internal/application/shop"
 	"github.com/alexthvest/replipg/internal/content"
 	"github.com/alexthvest/replipg/internal/core"
 	"github.com/alexthvest/replipg/internal/modules/characters"
 	"github.com/alexthvest/replipg/internal/modules/groups"
 	"github.com/alexthvest/replipg/internal/modules/inventory"
 	"github.com/alexthvest/replipg/internal/modules/localization"
+	shopdomain "github.com/alexthvest/replipg/internal/modules/shop"
 	"github.com/alexthvest/replipg/internal/runtime"
 	"github.com/alexthvest/replipg/internal/ui/menus"
 	"github.com/alexthvest/replipg/internal/ui/views"
@@ -34,6 +36,10 @@ type modules struct {
 	inventory           *inventory.Service
 	inventoryProjection *inventory.Projection
 	grants              *grants.Service
+	shop                *appshop.Service
+	bankID              int64
+	treasuryID          int64
+	quotes              map[string]shopdomain.Quote
 }
 
 func newModules(
@@ -78,7 +84,12 @@ func (m *modules) feedback(ctx context.Context, scope core.Scope, key string) (c
 	return core.View{Feedback: views.Preview(view.Text[0].Text, 90)}, nil
 }
 
-func (m *modules) settingsView(session *menus.Session, language string) (core.View, error) {
+func (m *modules) settingsView(session *menus.Session, language string) (result core.View, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			m.sessions.Stage(session, result)
+		}
+	}()
 	view := views.Settings(m.bundle.Locales(), language)
 	refs := session.Refs
 	if len(refs) == 0 {
@@ -167,6 +178,10 @@ func groupRoutes(registry *runtime.Registry, m *modules) (map[string]boundRoute,
 		if err = m.groupProjection.Apply(world, state); err != nil {
 			return core.View{}, &runtime.ProjectionError{Cause: err}
 		}
+		m.sessions.Invalidate(menus.Dependency{
+			Kind:  "group",
+			Group: scope.Group,
+		})
 
 		language, err := m.localization.Language(ctx, scope.Group)
 		if err != nil {
@@ -214,18 +229,7 @@ func groupRoutes(registry *runtime.Registry, m *modules) (map[string]boundRoute,
 		if err != nil {
 			return core.View{}, err
 		}
-		if session.Kind == "inventory" {
-			return m.inventoryView(ctx, scope, session)
-		}
-		if session.Kind == "items" {
-			return m.itemsView(ctx, scope, session)
-		}
-
-		language, err := m.localization.Language(ctx, scope.Group)
-		if err != nil {
-			return core.View{}, err
-		}
-		return m.settingsView(session, language)
+		return m.renderSession(ctx, session)
 	}); err != nil {
 		return nil, err
 	}
@@ -245,6 +249,9 @@ func groupRoutes(registry *runtime.Registry, m *modules) (map[string]boundRoute,
 		}
 		if session.Kind == "items" {
 			return m.itemsAction(ctx, world, scope, input, session, action)
+		}
+		if session.Kind == "shop" {
+			return m.shopAction(ctx, world, scope, session, action)
 		}
 		if session.Kind != "settings" || action.Kind != "language" || (action.Language != "en" && action.Language != "ru") {
 			return m.feedback(ctx, scope, "error.invalid_menu")
@@ -274,6 +281,10 @@ func groupRoutes(registry *runtime.Registry, m *modules) (map[string]boundRoute,
 		if err = m.groupProjection.Apply(world, state); err != nil {
 			return core.View{}, &runtime.ProjectionError{Cause: err}
 		}
+		m.sessions.Invalidate(menus.Dependency{
+			Kind:  "group",
+			Group: scope.Group,
+		})
 		return m.settingsView(session, state.Language)
 	}); err != nil {
 		return nil, err

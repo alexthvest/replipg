@@ -16,12 +16,17 @@ func main() {
 }
 
 func run() int {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	var logLevel slog.LevelVar
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: &logLevel,
+	}))
 	cfg, err := config.FromEnv()
 	if err != nil {
 		logger.Error("configuration failed", "error", err)
 		return 1
 	}
+
+	logLevel.Set(cfg.LogLevel)
 
 	application, err := app.New(cfg, logger)
 	if err != nil {

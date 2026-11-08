@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"sync"
 	"unicode/utf16"
 
 	"github.com/alexthvest/replipg/internal/core"
@@ -32,14 +31,15 @@ type Input struct {
 type Route func(context.Context, core.Scope, Input) (core.View, error)
 
 type Router struct {
-	botID     int64
-	username  string
-	transport Transport
-	log       *slog.Logger
-	commands  map[string]Route
-	callbacks map[string]Route
-	bind      Route
-	mu        sync.Mutex // Includes sends/edits so an older render cannot overwrite a newer one.
+	botID        int64
+	username     string
+	transport    Transport
+	log          *slog.Logger
+	commands     map[string]Route
+	callbacks    map[string]Route
+	bind         Route
+	bank         func(context.Context, *models.Update) bool
+	orderedMenus bool
 }
 
 func NewRouter(botID int64, username string, transport Transport, logger *slog.Logger) (*Router, error) {
@@ -83,6 +83,19 @@ func (r *Router) OnMenuSent(route Route) error {
 	return nil
 }
 
+// OrderedMenus delegates every bound-menu edit to the application coordinator.
+func (r *Router) OrderedMenus() {
+	r.orderedMenus = true
+}
+
+func (r *Router) OnBankReply(handler func(context.Context, *models.Update) bool) error {
+	if r.bank != nil || handler == nil {
+		return errors.New("duplicate or invalid bank reply route")
+	}
+	r.bank = handler
+	return nil
+}
+
 func user(u *models.User) *core.User {
 	if u == nil || u.ID <= 0 || u.IsBot {
 		return nil
@@ -100,10 +113,10 @@ func group(m *models.Message) bool {
 }
 
 func (r *Router) Handle(ctx context.Context, update *models.Update) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if update == nil || ctx.Err() != nil {
+		return
+	}
+	if r.bank != nil && r.bank(ctx, update) {
 		return
 	}
 
@@ -191,7 +204,7 @@ func (r *Router) Handle(ctx context.Context, update *models.Update) {
 	}
 
 	if callback != nil {
-		if len(view.Text) > 0 {
+		if len(view.Text) > 0 && !r.orderedMenus {
 			if err = r.transport.Edit(ctx, scope.Group, input.MessageID, view); err != nil {
 				r.log.Error("menu edit failed", "group", scope.Group)
 			}
@@ -214,7 +227,7 @@ func (r *Router) Handle(ctx context.Context, update *models.Update) {
 				Data:      view.Menu,
 				MessageID: messageID,
 			})
-			if bindErr == nil && (len(bound.Rows) > 0 || !slices.Equal(initial.Text, bound.Text)) {
+			if bindErr == nil && !r.orderedMenus && (len(bound.Rows) > 0 || !slices.Equal(initial.Text, bound.Text)) {
 				bindErr = r.transport.Edit(ctx, scope.Group, messageID, bound)
 			}
 
@@ -233,7 +246,7 @@ func entities(spans core.Text) (string, []models.MessageEntity, error) {
 	for _, span := range spans {
 		length := len(utf16.Encode([]rune(span.Text)))
 		if length > 0 && span.Style != core.Plain {
-			if span.Style != core.Bold && span.Style != core.Code {
+			if span.Style != core.Bold && span.Style != core.Code && span.Style != core.Italic {
 				return "", nil, errors.New("invalid text style")
 			}
 
@@ -265,9 +278,16 @@ func keyboard(rows [][]core.Button) (*models.InlineKeyboardMarkup, error) {
 				return nil, errors.New("invalid callback payload length")
 			}
 
+			switch button.Style {
+			case core.ButtonDefault, core.ButtonPrimary, core.ButtonSuccess, core.ButtonDanger:
+			default:
+				return nil, errors.New("invalid button style")
+			}
+
 			buttons = append(buttons, models.InlineKeyboardButton{
 				Text:         button.Caption,
 				CallbackData: button.Data,
+				Style:        string(button.Style),
 			})
 		}
 

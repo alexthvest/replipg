@@ -3,6 +3,7 @@ package cueassets
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -87,7 +88,17 @@ func watch(
 			return nil, err
 		}
 
-		for _, dir := range []string{"items", "locales"} {
+		if err = source.Add(root); err != nil {
+			_ = source.Close()
+			return nil, err
+		}
+
+		for _, dir := range []string{"items", "locales", "shop"} {
+			if dir == "shop" {
+				if _, statErr := os.Stat(filepath.Join(root, dir)); errors.Is(statErr, os.ErrNotExist) {
+					continue
+				}
+			}
 			if err = source.Add(filepath.Join(root, dir)); err != nil {
 				_ = source.Close()
 				return nil, err
@@ -117,6 +128,18 @@ func watch(
 		pending := true
 		failures := 0
 		reload := func() {
+			// Directory watches disappear on removal. Root events let us attach
+			// to replacements before capturing their complete contents.
+			for _, name := range []string{"items", "locales", "shop"} {
+				dir := filepath.Join(root, name)
+				if info, err := os.Stat(dir); err == nil && info.IsDir() {
+					if err = source.Add(dir); err != nil {
+						report(err)
+						return
+					}
+				}
+			}
+
 			candidate, err := load(root)
 			if err == nil {
 				err = publish(run, candidate)
@@ -137,7 +160,13 @@ func watch(
 					return
 				}
 
-				if strings.HasSuffix(event.Name, ".cue") || event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+				packageEvent := false
+				for _, name := range []string{"items", "locales", "shop"} {
+					if filepath.Clean(event.Name) == filepath.Join(root, name) {
+						packageEvent = true
+					}
+				}
+				if packageEvent || strings.HasSuffix(event.Name, ".cue") || event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 					timer.Reset(debounce)
 					pending = true
 				}

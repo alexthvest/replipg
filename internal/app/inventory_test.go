@@ -50,42 +50,42 @@ func TestInventoryGrantNavigationAndReplayAfterRestart(t *testing.T) {
 				r.Handle(ctx, message(100, -1, 1, "/give coin 5", 2))
 				r.Handle(ctx, message(101, -1, 1, "/give stick 12", 2))
 				r.Handle(ctx, message(102, -1, 2, "/inventory", 0))
-				menu := lastEdit(fake)
 				messageID := len(fake.views)
+				menu := waitMenu(t, fake, -1, messageID, nil)
 				if len(menu.Rows[0]) != 6 || menu.Text[0].Text != "Inventory" {
 					t.Error("invalid full page")
 					return
 				}
 
 				oldAction = menu.Rows[0][0].Data
-				before := len(fake.edits)
+				before := fake.editCount()
 				r.Handle(ctx, callback(103, -1, 3, messageID, oldAction))
 				r.Handle(ctx, callback(104, -2, 2, messageID, oldAction))
-				if len(fake.edits) != before {
+				if fake.editCount() != before {
 					t.Error("foreign menu operated")
 				}
 
 				r.Handle(ctx, callback(105, -1, 2, messageID, oldAction))
-				inspection := lastEdit(fake)
+				inspection := changedMenu(t, fake, -1, messageID, menu)
 				if len(inspection.Rows) != 1 || len(inspection.Rows[0]) != 1 {
 					t.Error("inspection has mutation actions")
 				}
 
 				r.Handle(ctx, callback(106, -1, 2, messageID, inspection.Rows[0][0].Data))
-				menu = lastEdit(fake)
+				menu = changedMenu(t, fake, -1, messageID, inspection)
 				for i := 0; i < 2; i++ {
 					next := menu.Rows[1][len(menu.Rows[1])-1].Data
 					r.Handle(ctx, callback(int64(107+i), -1, 2, messageID, next))
-					menu = lastEdit(fake)
+					menu = changedMenu(t, fake, -1, messageID, menu)
 				}
 
 				if len(menu.Rows[0]) != 1 {
 					t.Error("last page should contain one entry")
 				}
 
-				before = len(fake.edits)
+				before = fake.editCount()
 				r.Handle(ctx, callback(110, -1, 2, messageID, oldAction))
-				if len(fake.edits) != before {
+				if fake.editCount() != before {
 					t.Error("stale action selected a new item")
 				}
 
@@ -96,12 +96,12 @@ func TestInventoryGrantNavigationAndReplayAfterRestart(t *testing.T) {
 			} else {
 				r.Handle(ctx, message(100, -1, 1, "/give coin 5", 2))
 				r.Handle(ctx, callback(200, -1, 2, 1, oldAction))
-				if len(fake.edits) != 0 {
+				if fake.editCount() != 0 {
 					t.Error("restart retained old menu")
 				}
 
 				r.Handle(ctx, message(201, -1, 2, "/inventory", 0))
-				if len(lastEdit(fake).Rows[0]) != 6 {
+				if len(waitMenu(t, fake, -1, len(fake.views), nil).Rows[0]) != 6 {
 					t.Error("inventory lost after restart")
 				}
 			}

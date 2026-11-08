@@ -1,11 +1,97 @@
 package config
 
 import (
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestParseLogLevel(t *testing.T) {
+	assets := t.TempDir()
+	for _, tc := range []struct {
+		name    string
+		value   string
+		level   slog.Level
+		invalid bool
+	}{
+		{
+			name:  "default",
+			level: slog.LevelInfo,
+		},
+		{
+			name:  "debug",
+			value: "debug",
+			level: slog.LevelDebug,
+		},
+		{
+			name:  "info",
+			value: "info",
+			level: slog.LevelInfo,
+		},
+		{
+			name:  "warn",
+			value: "warn",
+			level: slog.LevelWarn,
+		},
+		{
+			name:  "error",
+			value: "error",
+			level: slog.LevelError,
+		},
+		{
+			name:  "mixed case",
+			value: "DeBuG",
+			level: slog.LevelDebug,
+		},
+		{
+			name:    "invalid",
+			value:   "secret",
+			invalid: true,
+		},
+		{
+			name:    "numeric",
+			value:   "4",
+			invalid: true,
+		},
+		{
+			name:    "offset",
+			value:   "INFO+1",
+			invalid: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			values := map[string]string{
+				"REPLIPG_BOT_TOKEN":    "123:secret",
+				"REPLIPG_BOT_OWNER_ID": "42",
+				"REPLIPG_ASSETS_PATH":  assets,
+				"REPLIPG_LOG_LEVEL":    tc.value,
+			}
+			cfg, err := Parse(func(key string) string {
+				return values[key]
+			})
+			if tc.invalid {
+				if err == nil || !strings.Contains(err.Error(), "REPLIPG_LOG_LEVEL") {
+					t.Fatalf("expected log level diagnostic, got %v", err)
+				}
+
+				if strings.Contains(err.Error(), tc.value) {
+					t.Fatalf("log level value leaked: %v", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if cfg.LogLevel != tc.level {
+				t.Fatalf("log level = %v, want %v", cfg.LogLevel, tc.level)
+			}
+		})
+	}
+}
 
 func TestParse(t *testing.T) {
 	assets := t.TempDir()

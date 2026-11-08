@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,11 +15,14 @@ import (
 type Config struct {
 	Token           string
 	OwnerID         int64
+	LogLevel        slog.Level
 	DatabasePath    string
 	AssetsPath      string
 	AssetDebounce   time.Duration
 	MenuTTL         time.Duration
 	ShutdownTimeout time.Duration
+	BankID          int64
+	TreasuryID      int64
 }
 
 func FromEnv() (Config, error) {
@@ -48,6 +52,44 @@ func Parse(get func(string) string) (Config, error) {
 	c.OwnerID, err = strconv.ParseInt(get("REPLIPG_BOT_OWNER_ID"), 10, 64)
 	if err != nil || c.OwnerID <= 0 {
 		return Config{}, errors.New("REPLIPG_BOT_OWNER_ID: positive integer required")
+	}
+
+	c.TreasuryID = 2
+	for _, setting := range []struct {
+		key     string
+		dst     *int64
+		maximum int64
+	}{
+		{
+			key:     "REPLIPG_BANK_BOT_ID",
+			dst:     &c.BankID,
+			maximum: 9223372036854775807,
+		},
+		{
+			key:     "REPLIPG_BANK_TREASURY_ID",
+			dst:     &c.TreasuryID,
+			maximum: 2147483647,
+		},
+	} {
+		if value := get(setting.key); value != "" {
+			*setting.dst, err = strconv.ParseInt(value, 10, 64)
+			if err != nil || *setting.dst <= 0 || *setting.dst > setting.maximum || strings.TrimSpace(value) != value || strings.HasPrefix(value, "+") {
+				return Config{}, fmt.Errorf("%s: positive numeric identity required", setting.key)
+			}
+		}
+	}
+
+	switch strings.ToLower(get("REPLIPG_LOG_LEVEL")) {
+	case "", "info":
+		c.LogLevel = slog.LevelInfo
+	case "debug":
+		c.LogLevel = slog.LevelDebug
+	case "warn":
+		c.LogLevel = slog.LevelWarn
+	case "error":
+		c.LogLevel = slog.LevelError
+	default:
+		return Config{}, errors.New("REPLIPG_LOG_LEVEL: expected debug, info, warn, or error")
 	}
 
 	for _, p := range []struct {

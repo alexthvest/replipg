@@ -7,15 +7,20 @@ Provide a reliable Telegram interface for gameplay inside independent group worl
 ## Requirements
 
 ### Requirement: Gameplay stays inside groups
-The bot SHALL provide gameplay only in Telegram groups and supergroups through messages, commands, and inline buttons. It MUST NOT provide private-chat gameplay or require mini apps.
+The bot SHALL provide gameplay only in Telegram groups and supergroups through messages, commands, and inline buttons. It MUST NOT provide private-chat gameplay or require mini apps. Authenticated private bank protocol replies SHALL be processed solely to reconcile previously persisted group orders, without accepting private player commands or creating unsolicited game state.
 
 #### Scenario: Supported group interaction
 - **WHEN** a user invokes a supported command in a group or supergroup
 - **THEN** the bot handles the interaction and replies in that group
 
 #### Scenario: Private or channel update
-- **WHEN** an update originates from a private chat or broadcast channel
+- **WHEN** an update originates from a private chat or broadcast channel and is not an authenticated correlated private bank reply
 - **THEN** the bot creates no game state and sends no gameplay response
+
+#### Scenario: Authenticated private bank reply
+- **WHEN** the configured bank bot sends a valid correlated reply for a persisted group order in its private chat
+- **THEN** the bot reconciles only that order within its recorded group and player scope
+- **AND** no private gameplay response is sent
 
 ### Requirement: Group boundaries are enforced
 The system SHALL identify every gameplay action by its originating group and acting Telegram user. Characters, ownership, permissions, settings, and menu actions MUST remain isolated to that group.
@@ -40,11 +45,15 @@ Menu headings SHALL be bold and displayed values SHALL use inline code, except t
 - **THEN** it appears literally within the intended code formatting without altering surrounding content
 
 ### Requirement: Committed game state survives restart
-The system SHALL retain committed characters, inventory snapshots and quantities, group settings, game admin assignments, and processed grant results across restart. Runtime entity reconstruction MUST preserve durable identities.
+The system SHALL retain committed characters, inventory snapshots and quantities, group settings, game admin assignments, processed grant results, shop orders, sale reservations, and bank recovery records across restart. Runtime entity reconstruction MUST preserve durable identities. Menus SHALL remain ephemeral and MUST be reopened after restart.
 
 #### Scenario: Restart with existing state
 - **WHEN** the bot restarts after successful state-changing interactions
 - **THEN** subsequent interactions observe the committed state and original durable identities
+
+#### Scenario: Restart with outstanding financial work
+- **WHEN** the bot restarts after sending an invoice or sale payout without observing its final result
+- **THEN** it resumes reconciliation using the saved terms and financial key without duplicating money or ownership changes
 
 ### Requirement: Startup validates required resources
 The bot SHALL validate required configuration, durable storage, and initial assets before accepting gameplay. Startup failure MUST produce an actionable diagnostic without exposing bot credentials.
@@ -53,10 +62,29 @@ The bot SHALL validate required configuration, durable storage, and initial asse
 - **WHEN** required configuration is missing, storage cannot be opened, or initial assets fail validation
 - **THEN** the bot refuses gameplay startup and reports the failing resource without logging secrets
 
+### Requirement: Log severity is configurable
+The bot SHALL read its minimum log severity from `REPLIPG_LOG_LEVEL`, accepting `debug`, `info`, `warn`, and `error` case-insensitively. An unset or empty value SHALL default to `info`. Unsupported values MUST reject startup with a diagnostic naming the setting without echoing its value.
+
+#### Scenario: Configured log severity
+- **WHEN** the bot starts with `REPLIPG_LOG_LEVEL=warn`
+- **THEN** application logs include warning and error messages and omit debug and info messages
+
+#### Scenario: Default log severity
+- **WHEN** `REPLIPG_LOG_LEVEL` is unset or empty
+- **THEN** the bot uses `info` as its minimum log severity
+
+#### Scenario: Invalid log severity
+- **WHEN** `REPLIPG_LOG_LEVEL` contains an unsupported value
+- **THEN** startup fails with a diagnostic naming `REPLIPG_LOG_LEVEL` without exposing the supplied value
+
 ### Requirement: Shutdown preserves mutation integrity
-The bot SHALL stop accepting new gameplay work on shutdown and finish or roll back accepted mutations before releasing its resources. It MUST NOT acknowledge an uncommitted mutation as successful.
+The bot SHALL stop accepting new gameplay and financial work on shutdown and finish or roll back accepted local mutations before releasing its resources. It MUST NOT acknowledge an uncommitted mutation as successful. Interrupted external requests MUST retain durable recovery records; bank settlement MUST NOT be assumed to stop when local delivery is canceled.
 
 #### Scenario: Shutdown during a grant
 - **WHEN** shutdown begins while an item grant is being processed
 - **THEN** the grant either commits completely or leaves no partial changes
 - **AND** any successful acknowledgement corresponds to a committed grant
+
+#### Scenario: Shutdown during payout
+- **WHEN** shutdown interrupts a sale transfer before its outcome is saved
+- **THEN** the sale and reservation remain recoverable and restart retries with the same financial key

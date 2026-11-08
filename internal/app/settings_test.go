@@ -42,12 +42,6 @@ func callback(id int64, group, actor int64, message int, data string) *models.Up
 	}
 }
 
-func lastEdit(f *fakeBot) core.View {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.edits[len(f.edits)-1]
-}
-
 func TestSettingsSaveEditPermissionsAndRestart(t *testing.T) {
 	cfg := testConfig(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -58,7 +52,7 @@ func TestSettingsSaveEditPermissionsAndRestart(t *testing.T) {
 		defer cancel()
 
 		r.Handle(ctx, message(1, -1, 2, "/settings", 0))
-		menu := lastEdit(fake)
+		menu := waitMenu(t, fake, -1, 1, nil)
 		if len(menu.Rows) != 2 || menu.Text[0].Style != core.Bold || menu.Text[2].Style != core.Code {
 			t.Error("invalid settings view")
 			return
@@ -69,41 +63,42 @@ func TestSettingsSaveEditPermissionsAndRestart(t *testing.T) {
 		r.Handle(ctx, callback(2, -1, 2, 1, russian))
 		r.Handle(ctx, callback(3, -2, 1, 1, russian))
 		r.Handle(ctx, callback(4, -1, 1, 999, russian))
-		if len(fake.views) != 1 || len(fake.edits) != 1 || len(fake.acks) != 3 {
+		if len(fake.views) != 1 || fake.editCount() != 1 || len(fake.acks) != 3 {
 			t.Error("denied settings changed menu")
 			return
 		}
 
 		r.Handle(ctx, message(5, -1, 1, "/admin add", 2))
 		r.Handle(ctx, callback(6, -1, 2, 1, russian))
-		if lastEdit(fake).Text[0].Text != "Настройки" {
+		menu = waitMenu(t, fake, -1, 1, func(v core.View) bool { return v.Text[0].Text == "Настройки" })
+		if menu.Text[0].Text != "Настройки" {
 			t.Error("Russian selection did not edit same menu")
 		}
 
-		edits := len(fake.edits)
+		edits := fake.editCount()
 		sends := len(fake.views)
 		r.Handle(ctx, callback(7, -1, 2, 1, russian))
-		if len(fake.edits) != edits || len(fake.views) != sends {
+		if fake.editCount() != edits || len(fake.views) != sends {
 			t.Error("repeated choice produced output")
 		}
 
 		r.Handle(ctx, message(8, -1, 1, "/admin remove", 2))
 		r.Handle(ctx, callback(9, -1, 2, 1, english))
-		if len(fake.edits) != edits {
+		if fake.editCount() != edits {
 			t.Error("revoked admin changed language")
 		}
 		// Edit failure does not roll back the saved language and callbacks send no messages.
 
-		fake.editErr = errors.New("network failure")
+		fake.setEditError(errors.New("network failure"))
 		sends = len(fake.views)
 		r.Handle(ctx, callback(10, -1, 1, 1, english))
 		if len(fake.views) != sends {
 			t.Error("language notification posted")
 		}
 
-		fake.editErr = nil
+		fake.setEditError(nil)
 		r.Handle(ctx, message(11, -1, 3, "/settings", 0))
-		if lastEdit(fake).Text[0].Text != "Settings" {
+		if waitMenu(t, fake, -1, len(fake.views), nil).Text[0].Text != "Settings" {
 			t.Error("saved selection lost after failed edit")
 		}
 		// Concurrent authorized selections are rendered in serialized order.
@@ -121,6 +116,13 @@ func TestSettingsSaveEditPermissionsAndRestart(t *testing.T) {
 			r.Handle(ctx, callback(13, -1, 1, 1, english))
 		}()
 		joined.Wait()
+		// Read the committed language through a newly opened view, then wait
+		// for the original message to converge before stopping delivery.
+		r.Handle(ctx, message(14, -1, 1, "/settings", 0))
+		expected := fake.views[len(fake.views)-1].Text[0].Text
+		waitMenu(t, fake, -1, 1, func(v core.View) bool {
+			return v.Text[0].Text == expected
+		})
 	}
 	deps := defaults()
 	deps.Connect = func(context.Context, string, *slog.Logger) (Poller, error) {
@@ -163,7 +165,7 @@ func TestSettingsSaveEditPermissionsAndRestart(t *testing.T) {
 		expected = "Настройки"
 	}
 
-	if lastEdit(fake).Text[0].Text != expected {
+	if waitMenu(t, fake, -1, 1, nil).Text[0].Text != expected {
 		t.Fatal("stale render overwrote saved selection")
 	}
 }

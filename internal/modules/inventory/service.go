@@ -17,6 +17,11 @@ type Entry struct {
 	SnapshotID core.ID
 	Snapshot   items.Snapshot
 	Quantity   int64
+	Reserved   int64
+}
+
+func (e Entry) Available() int64 {
+	return e.Quantity - e.Reserved
 }
 
 type Reader interface {

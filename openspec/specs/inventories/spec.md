@@ -47,6 +47,14 @@ The `/inventory` command SHALL show the invoking user's current-group inventory 
 - **WHEN** the inventory contains more entries than fit on one page
 - **THEN** the user can navigate through bounded pages and reach each entry for inspection
 
+### Requirement: Inventory entries follow acquisition order
+Inventory entries SHALL appear in the order they were first received, oldest first, across all pages and after restart. Adding quantity to an existing stack MUST preserve its position. Multiple instances received together SHALL retain their creation order.
+
+#### Scenario: Grants with unordered identities
+- **WHEN** items are received in an order different from their identity sort order
+- **THEN** inventory pages list them in acquisition order after reopening the database
+- **AND** increasing an earlier stack does not move it
+
 ### Requirement: Inventory title identifies its owner
 The inventory title SHALL use the localized heading followed by a literal bullet separator and the saved character name: bold heading, ` • `, inline-code name. The English form MUST be `Inventory` in bold followed by ` • ` and the name in inline code.
 
@@ -55,7 +63,7 @@ The inventory title SHALL use the localized heading followed by a literal bullet
 - **THEN** the title displays bold Inventory followed by ` • ` and inline-code alexthvest
 
 ### Requirement: Inventory pages use six compact item rows
-Each full inventory page SHALL contain exactly six entries on consecutive lines without blank lines between entries, separated from the title by one blank line. The last page SHALL show only the remaining entries. Entry numbers and item names SHALL use normal text. Every entry SHALL display its quantity in parentheses using inline code, including `(1)` for individual items. Page-number values SHALL use inline code. List rows MUST omit rarity and item descriptions.
+Each full inventory page SHALL contain exactly six entries on consecutive lines without blank lines between entries, separated from the title by one blank line. The last page SHALL show only the remaining entries. Entry numbers and item names SHALL use normal text. Only stackable entries SHALL display their quantity in parentheses using inline code. Individual entries SHALL omit the quantity. Page-number values SHALL use inline code. List rows MUST omit rarity and item descriptions.
 
 #### Scenario: Full and partial pages
 - **WHEN** the inventory has thirteen entries
@@ -63,7 +71,7 @@ Each full inventory page SHALL contain exactly six entries on consecutive lines 
 
 #### Scenario: Item row formatting
 - **WHEN** an inventory contains an individual stick and a stack of 100 coins
-- **THEN** their rows display page-local numbers and saved item names as normal text, followed by inline-code `(1)` and `(100)` respectively
+- **THEN** their rows display page-local numbers and saved item names as normal text, with no quantity for the stick and inline-code `(100)` for the coins
 - **AND** a blank line separates the title from the first entry
 
 ### Requirement: Inspection buttons use one numbered row
@@ -110,3 +118,30 @@ Inventory navigation and inspection SHALL leave ownership, snapshots, and quanti
 #### Scenario: Repeated inspection
 - **WHEN** a player repeatedly navigates and inspects an item
 - **THEN** ownership and quantities remain unchanged and no item mutation controls are offered
+
+### Requirement: Sale reservations preserve ownership until settlement
+Inventory SHALL distinguish owned, reserved, and available quantities. Reservations MUST be durable, group and character scoped, and tied to one sale order; total reserved quantity MUST NOT exceed ownership. A reserved individual instance MUST be unavailable to another sale. Reserving items MUST NOT modify their snapshots, identities, or owned quantities.
+
+#### Scenario: Reserve part of a stack
+- **WHEN** a player reserves 3 units of an owned stack of 10
+- **THEN** ownership remains 10, reserved quantity is 3, and available quantity is 7
+- **AND** inventory inspection and sale selection expose the reservation without showing it as completed removal
+
+#### Scenario: Restart with an unresolved payout
+- **WHEN** the process restarts while a sale payout is unresolved
+- **THEN** its reserved quantities remain unavailable and retain their original item snapshots and identities
+
+### Requirement: Sale settlement changes ownership atomically
+Confirmed sale payout SHALL reduce the exact reserved stack quantity or remove the reserved individual instance, release its reservation, and complete the order in one transaction. Established nonpayment MUST release the reservation without changing ownership. Duplicate settlements MUST have no further effect. Inventory views and runtime ownership MUST reflect removal as well as addition.
+
+#### Scenario: Complete partial stack sale
+- **WHEN** a verified payout settles the reserved 3 units of a stack of 10
+- **THEN** owned quantity becomes 7 and the reservation disappears together with the completed order result
+
+#### Scenario: Settlement commit fails
+- **WHEN** persistence fails during ownership removal and order completion
+- **THEN** neither partial removal nor completed status commits and the recorded payout remains recoverable
+
+#### Scenario: Entire entry sold
+- **WHEN** the last units or an individual instance are sold successfully
+- **THEN** the entry disappears from persistent ownership and runtime views while its snapshot remains available to historical orders

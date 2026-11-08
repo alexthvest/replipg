@@ -14,10 +14,11 @@ func translations() map[string]map[string]string {
 	}
 
 	for _, lang := range []string{"en", "ru"} {
-		for _, key := range append(append([]string{}, baselineKeys...), inventoryKeys...) {
+		for _, key := range append(append(append([]string{}, baselineKeys...), inventoryKeys...), shopKeys...) {
 			result[lang][key] = "text"
 		}
 
+		result[lang]["command.replipg.balance"] = "Account {account}: {amount}"
 		result[lang]["command.admin.updated"] = "Updated {user}."
 		result[lang]["command.items.given"] = "Added {item}."
 		result[lang]["command.give.success"] = "Granted {quantity} {item} to {recipient}."

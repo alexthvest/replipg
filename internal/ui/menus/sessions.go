@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,26 +16,49 @@ import (
 
 var ErrInvalid = errors.New("invalid or expired menu")
 
+func (s *Sessions) Contains(token string) bool {
+	return s.pool[token] != nil
+}
+
 type Action struct {
 	Kind     string
 	Language string
 	Page     int
 	Entry    core.ID
 	ItemID   string
+	Order    core.ID
+	Quantity int64
+	Quote    core.ID
 }
 
 type Session struct {
-	Token     string
-	Kind      string
-	Group     core.GroupID
-	Opener    core.UserID
-	Message   int
-	Page      int
-	Character core.ID
-	Used      time.Time
-	actions   map[string]Action
-	sequence  uint64
-	Refs      []string
+	Token             string
+	Kind              string
+	Group             core.GroupID
+	Opener            core.UserID
+	Actor             core.UserID
+	Message           int
+	Page              int
+	Character         core.ID
+	Used              time.Time
+	Screen            string
+	Selection         core.ID
+	Entry             core.ID
+	Order             core.ID
+	Quantity          int64
+	Dirty             bool
+	DesiredRevision   uint64
+	DeliveredRevision uint64
+	Desired           core.View
+	Delivered         core.View
+	inFlight          uint64
+	retryAt           time.Time
+	failures          int
+	actionList        []Action
+	confirmations     map[string]Action
+	actions           map[string]Action
+	sequence          uint64
+	Refs              []string
 }
 
 type Sessions struct {
@@ -43,6 +67,7 @@ type Sessions struct {
 	now   func() time.Time
 	token func() (string, error)
 	pool  map[string]*Session
+	index map[Dependency]map[string]bool
 }
 
 func RandomToken() (string, error) {
@@ -63,6 +88,7 @@ func New(ttl time.Duration, limit int, now func() time.Time, token func() (strin
 		now:   now,
 		token: token,
 		pool:  map[string]*Session{},
+		index: map[Dependency]map[string]bool{},
 	}, nil
 }
 
@@ -71,7 +97,7 @@ func (s *Sessions) Sweep() {
 
 	for token, session := range s.pool {
 		if !now.Before(session.Used.Add(s.ttl)) {
-			delete(s.pool, token)
+			s.Remove(token)
 		}
 	}
 }
@@ -115,7 +141,7 @@ func (s *Sessions) Create(kind string, scope core.Scope, opener core.UserID) (*S
 			}
 		}
 
-		delete(s.pool, victim.Token)
+		s.Remove(victim.Token)
 	}
 
 	session := &Session{
@@ -123,10 +149,16 @@ func (s *Sessions) Create(kind string, scope core.Scope, opener core.UserID) (*S
 		Kind:    kind,
 		Group:   scope.Group,
 		Opener:  opener,
+		Actor:   scope.Actor,
 		Used:    s.now(),
+		Dirty:   true,
 		actions: map[string]Action{},
 	}
 	s.pool[token] = session
+	s.Depend(session, Dependency{
+		Kind:  "group",
+		Group: scope.Group,
+	}, Dependency{Kind: "content"})
 	return session, nil
 }
 
@@ -142,9 +174,14 @@ func (s *Sessions) Bind(token string, scope core.Scope, message int) (*Session, 
 	if session.Opener != 0 && session.Opener != scope.Actor {
 		return nil, ErrInvalid
 	}
+	for _, bound := range s.pool {
+		if bound != session && bound.Group == scope.Group && bound.Message == message {
+			return nil, ErrInvalid
+		}
+	}
 
 	session.Message = message
-	session.Used = s.now()
+	session.Dirty = true
 	return session, nil
 }
 
@@ -153,6 +190,11 @@ func (s *Sessions) Actions(session *Session, actions []Action) ([]string, error)
 		return nil, ErrInvalid
 	}
 
+	if slices.Equal(session.actionList, actions) && len(session.actions) == len(actions) {
+		return slices.Clone(session.Refs), nil
+	}
+
+	session.actionList = slices.Clone(actions)
 	session.actions = map[string]Action{}
 	var payloads []string
 
@@ -167,6 +209,7 @@ func (s *Sessions) Actions(session *Session, actions []Action) ([]string, error)
 		session.actions[ref] = action
 		payloads = append(payloads, payload)
 	}
+	session.Refs = slices.Clone(payloads)
 	return payloads, nil
 }
 
@@ -189,9 +232,25 @@ func (s *Sessions) Resolve(data string, scope core.Scope, message int) (*Session
 
 	action, ok := session.actions[fields[2]]
 	if !ok {
+		action, ok = session.confirmations[fields[2]]
+	}
+	if !ok {
 		return nil, Action{}, ErrInvalid
 	}
 
 	session.Used = s.now()
 	return session, action, nil
+}
+
+// AcceptConfirmation preserves an accepted financial control for this session's
+// lifetime so a repeat can return its durable result after navigation changed.
+func (s *Sessions) AcceptConfirmation(session *Session, quote core.ID) {
+	if session.confirmations == nil {
+		session.confirmations = map[string]Action{}
+	}
+	for ref, action := range session.actions {
+		if action.Kind == "confirm" && action.Quote == quote {
+			session.confirmations[ref] = action
+		}
+	}
 }

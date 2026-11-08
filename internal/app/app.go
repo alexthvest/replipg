@@ -11,12 +11,14 @@ import (
 	"github.com/alexthvest/replipg/internal/adapters/cueassets"
 	"github.com/alexthvest/replipg/internal/adapters/sqlite"
 	"github.com/alexthvest/replipg/internal/adapters/telegram"
+	appshop "github.com/alexthvest/replipg/internal/application/shop"
 	"github.com/alexthvest/replipg/internal/config"
 	"github.com/alexthvest/replipg/internal/content"
 	"github.com/alexthvest/replipg/internal/core"
 	"github.com/alexthvest/replipg/internal/modules/characters"
 	"github.com/alexthvest/replipg/internal/modules/groups"
 	"github.com/alexthvest/replipg/internal/runtime"
+	"github.com/alexthvest/replipg/internal/ui/menus"
 	"github.com/yohamta/donburi"
 )
 
@@ -158,6 +160,21 @@ func (a *App) Run(ctx context.Context) error {
 	if err = configureInventory(registry, modules, db, routes); err != nil {
 		return err
 	}
+	if err = configureShop(registry, modules, db, routes, a.cfg.BankID, a.cfg.TreasuryID); err != nil {
+		return err
+	}
+	balanceCall, err := balanceRoute(registry, modules)
+	if err != nil {
+		return err
+	}
+	bankCall, err := bankOperations(registry, modules)
+	if err != nil {
+		return err
+	}
+	menuCall, err := menuOperations(registry, modules)
+	if err != nil {
+		return err
+	}
 
 	publish, err := runtime.Bind(registry, "content", func(
 		_ context.Context,
@@ -170,6 +187,7 @@ func (a *App) Run(ctx context.Context) error {
 		}
 
 		modules.bundle = candidate
+		modules.sessions.Invalidate(menus.Dependency{Kind: "content"})
 		return core.View{}, nil
 	})
 	if err != nil {
@@ -204,6 +222,74 @@ func (a *App) Run(ctx context.Context) error {
 	id, username := transport.Identity()
 	router, err := telegram.NewRouter(id, username, transport, a.log)
 	if err != nil {
+		return err
+	}
+	router.OrderedMenus()
+	bankContext, stopBank := context.WithCancel(context.Background())
+	defer stopBank()
+	bankDone := make(chan struct{})
+	bankRuntime := bankOwner{
+		engine: engine,
+		scope: core.Scope{
+			Group: -1,
+			Actor: core.UserID(a.cfg.OwnerID),
+		},
+		call: bankCall,
+	}
+	balanceReads := &balanceReader{log: a.log}
+	if err = router.OnBankReply(telegram.TrustedBankHandler(a.cfg.BankID, func(ctx context.Context, text string) error {
+		if balanceReads.reply(text) {
+			return nil
+		}
+		return bankRuntime.reply(ctx, text)
+	})); err != nil {
+		return err
+	}
+	go func() {
+		defer close(bankDone)
+		if sender, ok := transport.(appshop.Sender); ok {
+			runBankWorker(bankContext, bankRuntime, sender, a.log)
+		} else {
+			<-bankContext.Done()
+		}
+	}()
+	defer func() {
+		stopBank()
+		<-bankDone
+	}()
+	menuContext, stopMenus := context.WithCancel(context.Background())
+	menusDone := make(chan struct{})
+	go func() {
+		defer close(menusDone)
+		menus.Deliver(menuContext, menuOwner{
+			engine: engine,
+			scope: core.Scope{
+				Group: -1,
+				Actor: core.UserID(a.cfg.OwnerID),
+			},
+			call: menuCall,
+		}, transport)
+	}()
+	defer func() {
+		stopMenus()
+		<-menusDone
+	}()
+
+	sender, _ := transport.(appshop.Sender)
+	balanceContext, stopBalance := context.WithCancel(context.Background())
+	balanceDone := make(chan struct{})
+	balanceJobs := make(chan balanceJob, 16)
+	go func() {
+		defer close(balanceDone)
+		runBalanceCommands(balanceContext, balanceJobs,
+			balanceCommand(engine, balanceCall, balanceReads, sender, a.cfg.BankID, a.cfg.TreasuryID),
+			transport, a.log)
+	}()
+	defer func() {
+		stopBalance()
+		<-balanceDone
+	}()
+	if err = router.Command("replipg", queueBalance(engine, balanceCall, balanceJobs)); err != nil {
 		return err
 	}
 
@@ -284,6 +370,12 @@ func (a *App) Run(ctx context.Context) error {
 
 	cancelIntake()
 	watcher.Stop()
+	stopBalance()
+	<-balanceDone
+	stopBank()
+	<-bankDone
+	stopMenus()
+	<-menusDone
 	drain, cancel := context.WithTimeout(context.Background(), a.cfg.ShutdownTimeout)
 	defer cancel()
 

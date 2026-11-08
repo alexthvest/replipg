@@ -12,6 +12,7 @@ import (
 	"github.com/alexthvest/replipg/internal/adapters/cueassets"
 	"github.com/alexthvest/replipg/internal/adapters/sqlite"
 	"github.com/alexthvest/replipg/internal/adapters/telegram"
+	"github.com/alexthvest/replipg/internal/core"
 	"github.com/alexthvest/replipg/internal/ui/views"
 )
 
@@ -43,26 +44,26 @@ func TestItemsOwnerOnlyNavigationAndLanguage(t *testing.T) {
 		}
 
 		r.Handle(ctx, message(4, -1, 1, "/items@replipg_bot", 0))
-		menu := lastEdit(fake)
 		menuID := len(fake.views)
+		menu := waitMenu(t, fake, -1, menuID, nil)
 		if menu.Text[0].Text != "Items" || len(menu.Rows) != 2 || len(menu.Rows[0]) != 6 {
 			t.Error("catalog missing navigation")
 			return
 		}
 
 		next := menu.Rows[1][0].Data
-		before := len(fake.edits)
+		before := fake.editCount()
 		r.Handle(ctx, callback(5, -1, 2, menuID, next))
 		r.Handle(ctx, callback(6, -1, 3, menuID, next))
 		r.Handle(ctx, callback(7, -2, 1, menuID, next))
 		r.Handle(ctx, callback(8, -1, 1, menuID+1, next))
-		if len(fake.edits) != before {
+		if fake.editCount() != before {
 			t.Error("foreign callback changed catalog page")
 		}
 
 		listed := textOf(menu)
 		r.Handle(ctx, callback(9, -1, 1, menuID, next))
-		menu = lastEdit(fake)
+		menu = changedMenu(t, fake, -1, menuID, menu)
 		listed += textOf(menu)
 		for _, id := range bundle.ItemIDs() {
 			if !strings.Contains(listed, id) {
@@ -70,23 +71,26 @@ func TestItemsOwnerOnlyNavigationAndLanguage(t *testing.T) {
 			}
 		}
 
-		before = len(fake.edits)
+		before = fake.editCount()
 		r.Handle(ctx, callback(10, -1, 1, menuID, next))
-		if len(fake.edits) != before {
+		if fake.editCount() != before {
 			t.Error("stale page action accepted")
 		}
 
 		previous := menu.Rows[1][0].Data
 		r.Handle(ctx, message(11, -1, 1, "/settings", 0))
-		settings := lastEdit(fake)
+		settings := waitMenu(t, fake, -1, len(fake.views), nil)
 		r.Handle(ctx, callback(12, -1, 1, len(fake.views), settings.Rows[1][0].Data))
 		r.Handle(ctx, callback(13, -1, 1, menuID, previous))
-		if lastEdit(fake).Text[0].Text != "Предметы" || !strings.Contains(textOf(lastEdit(fake)), "Монета") {
+		menu = waitMenu(t, fake, -1, menuID, func(v core.View) bool {
+			return v.Text[0].Text == "Предметы"
+		})
+		if menu.Text[0].Text != "Предметы" || !strings.Contains(textOf(menu), "Монета") {
 			t.Error("catalog did not use current Russian locale")
 		}
 
 		r.Handle(ctx, message(14, -2, 1, "/items", 0))
-		if lastEdit(fake).Text[0].Text != "Items" {
+		if waitMenu(t, fake, -2, len(fake.views), nil).Text[0].Text != "Items" {
 			t.Error("catalog language leaked across groups")
 		}
 	}
@@ -153,11 +157,11 @@ func TestItemsButtonsGrantToOwnerAndProtectReplays(t *testing.T) {
 
 		r.Handle(ctx, message(1, -1, 1, "/admin add", 2))
 		r.Handle(ctx, message(2, -1, 1, "/items", 0))
-		menu := lastEdit(fake)
 		menuID := len(fake.views)
+		menu := waitMenu(t, fake, -1, menuID, nil)
 		coin := menu.Rows[0][coinIndex].Data
 		next := menu.Rows[1][0].Data
-		before := len(fake.edits)
+		before := fake.editCount()
 		r.Handle(ctx, callback(90, -1, 2, menuID, coin))
 		r.Handle(ctx, callback(91, -1, 3, menuID, coin))
 		r.Handle(ctx, callback(92, -2, 1, menuID, coin))
@@ -168,7 +172,7 @@ func TestItemsButtonsGrantToOwnerAndProtectReplays(t *testing.T) {
 				t.Error("grant did not confirm committed success")
 			}
 		}
-		if len(fake.edits) != before {
+		if fake.editCount() != before {
 			t.Error("grant unnecessarily changed catalog menu")
 		}
 
@@ -188,7 +192,9 @@ func TestItemsButtonsGrantToOwnerAndProtectReplays(t *testing.T) {
 
 		// Reload leaves six active items, so navigation clamps to page zero.
 		r.Handle(ctx, callback(103, -1, 1, menuID, next))
-		menu = lastEdit(fake)
+		menu = waitMenu(t, fake, -1, menuID, func(v core.View) bool {
+			return len(v.Rows[0]) == 6 && !strings.Contains(textOf(v), "Coin")
+		})
 		stick := menu.Rows[0][stickIndex-1].Data
 		r.Handle(ctx, callback(104, -1, 1, menuID, stick))
 		r.Handle(ctx, callback(105, -1, 1, menuID, stick))
@@ -199,7 +205,7 @@ func TestItemsButtonsGrantToOwnerAndProtectReplays(t *testing.T) {
 		}
 
 		r.Handle(ctx, message(107, -2, 1, "/items", 0))
-		menu = lastEdit(fake)
+		menu = waitMenu(t, fake, -2, len(fake.views), nil)
 		r.Handle(ctx, callback(108, -2, 1, len(fake.views), menu.Rows[0][stickIndex-1].Data))
 	}
 	deps := defaults()

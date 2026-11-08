@@ -29,18 +29,34 @@ Never commit `.env` or tokens.
 | --- | --- |
 | `REPLIPG_BOT_TOKEN` | Required bot token |
 | `REPLIPG_BOT_OWNER_ID` | Required positive numeric user ID |
+| `REPLIPG_LOG_LEVEL` | `info` |
 | `REPLIPG_DATABASE_PATH` | `./data/replipg.db` |
 | `REPLIPG_ASSETS_PATH` | `./assets` |
 | `REPLIPG_ASSET_DEBOUNCE` | `300ms` |
 | `REPLIPG_MENU_TTL` | `15m` |
 | `REPLIPG_SHUTDOWN_TIMEOUT` | `10s` |
+| `REPLIPG_BANK_BOT_ID` | Empty: bank settlement disabled |
+| `REPLIPG_BANK_TREASURY_ID` | `2` |
 
 Paths resolve from the working directory. Duration values must be positive.
 Asset directories must exist; the database's parent directory is created as
 needed. Configuration diagnostics name the setting without echoing its value.
 The application uses only `REPLIPG_` variable names.
 
+Set `REPLIPG_LOG_LEVEL` to `debug`, `info`, `warn`, or `error` (case-insensitive)
+to set the minimum log severity. Unset or empty values default to `info`;
+unsupported values reject startup. Restart the application after changing it.
+
 ## Commands
+
+The configured bot owner can run `/replipg balance` in a group or supergroup to
+check the bot's shared bank treasury balance (account 2 by default). The result is
+visible to the group in its selected language. This read-only command requires a
+configured, reachable bank; errors or a ten-second timeout report that the balance
+is unavailable. It does not affect shop orders or prove their settlement.
+Balance requests run in an application-owned worker so sequential Telegram intake
+can process the bank reply while the lookup is pending. Shutdown cancels and joins
+this worker; failed reads record a diagnostic in the application log.
 
 `/items` lists the active game catalog in ID order, with each ID and its localized
 name. Only the configured bot owner can run it or use its buttons; game admins
@@ -275,3 +291,117 @@ For a future feature such as dungeons:
    at compile time, and `app/architecture_test.go` checks Go import metadata.
 
 This MVP contains no dungeon or other out-of-scope feature implementation.
+
+## Shop offer assets
+
+`/shop` opens one item catalog for the current group and creates a missing
+character. Select an item, choose Buy or Sell, then review its quantity, unit price,
+and exact total before confirming. The quantity controls are `1`, `−`, `+`, and
+`Max`; Max respects ownership, the 1000-unit limit, and the bank amount limit.
+Individual sales continue to consume one exact instance per order. Buttons use
+their default appearance, and the catalog page indicator sits in the footer.
+Purchases and admin-granted items follow the
+same configured sale offers. Orders survive restarts; menu sessions must be
+reopened. Active menus refresh after committed changes while retaining the
+current page or inspection. Background updates do not extend menu inactivity.
+The inventory list retains its existing six-row formatting and owned quantities;
+inspection additionally shows reserved and available quantities during a sale.
+Custom locale packages must add the shop, bank availability, reservation, and
+order keys required by the shipped English/Russian locale schema before upgrade.
+
+The shipped `assets/shop/schema.cue` defines a separate `package shop`. Its empty
+catalog is intentional: choose economic prices before adding offers. Custom asset
+roots without `shop/` also load with no offers. Keep one `<item_id>.cue` file per
+configured item and use its catalog ID as a flat key. For example, an owner-authored
+`assets/shop/bread.cue` can contain the following illustrative prices:
+
+```cue
+package shop
+
+bread: {
+	mode:      "stackable"
+	buyPrice:  "10"
+	sellPrice: "5"
+}
+```
+
+These numbers are examples, not deployed prices. Either direction can be omitted;
+at least one is required. Prices are positive decimal strings of at most 100 digits,
+and a sell price must be below the buy price when both exist. Buy offers require an
+active item with matching ownership mode. Sell-only offers can accept saved items
+whose catalog definition has been removed, including admin-granted items.
+
+Items, offers, and English/Russian translations load and publish as one validated
+bundle. An invalid edit preserves the entire previous bundle. Creating, removing,
+or recreating the shop directory is watched automatically. Quotes use one bundle,
+and confirmed orders retain their frozen terms and item text across later edits.
+Shop assets do not change item definitions or the saved snapshot JSON format.
+
+## Bank deployment and order recovery
+
+The game uses the external bank's public JSON-RPC contract for invoice creation,
+payment status, and treasury transfers. Configure
+`REPLIPG_BANK_BOT_ID` with the independently verified positive numeric Telegram ID
+of the bank bot; usernames are insufficient for authenticating replies. Set
+`REPLIPG_BANK_TREASURY_ID` to the existing SYSTEM account (default `2`, maximum
+`2147483647`). Empty bank ID disables settlement and recovery sends while keeping
+ordinary gameplay and menus available. Invalid supplied IDs reject startup.
+Outstanding orders require their original bank and treasury configuration;
+changing either is rejected before any old intent can be transmitted.
+
+Deployment prerequisites belong to the external bank and Telegram configuration:
+enable private Bot-to-Bot Communication Mode for both bots, grant the game bot the
+bank's `bank.transfer.public` and `bank.payment-request.public` permissions and
+account binding, and ensure the bank application can deliver invoices in each
+participating group. Permission, group access, and verified identity setup are not
+features that replipg can enable for the independent bank. Confirm this setup with
+the bank operator. Do not infer account availability or a current balance from
+example protocol data. Automated checks use fake bank/Telegram responses only.
+
+Invoices keep the original group `chatId`, payer's numeric Telegram identity,
+comment, amount, and financial key. Failed group delivery never silently switches
+to private delivery. Invoices have no local cancellation or expiry and can remain
+pending indefinitely. A completed operation or Telegram send alone does not prove
+payment. Verified transaction evidence commits before local fulfillment, so a
+paid order with a database failure or numeric stack overflow remains recoverable
+without requesting payment again.
+
+Account 2 is shared across groups. Orders, characters, and ownership remain group
+scoped, but groups draw payouts from the same treasury. Admin-granted items are
+eligible whenever their catalog ID and saved ownership mode have a sell offer.
+Admins can therefore fund sales through grants; the owner accepts this economic
+policy when configuring sell prices. Items are reserved before requesting payout,
+remain owned until confirmed settlement, and stay unavailable for another sale
+while the payout outcome is unknown. Generic `Method unavailable` does not
+identify insufficient funds, a missing player account, self-transfer, or revoked
+permissions separately.
+
+For an unresolved order, retain the upgraded database and recovery-capable binary.
+Use the order ID and status from Orders and correlate them with
+`shop_orders`, `financial_requests`, `financial_attempts`, and `financial_proofs`.
+Detailed diagnostics are stored in the order and attempt records; recovery logs
+identify affected order/request IDs for local fulfillment and send failures.
+The stored transport ID, method, exact params, financial key, bank ID, and treasury
+identify the original obligation. Back up the database before operator maintenance.
+Restore missing external permissions/connectivity and restart with the original
+configuration; scheduled unresolved work resumes with its saved identity. Status
+reads use fresh transport IDs, while transfers and invoice creation retain their
+original financial payload and key.
+
+A conflict, malformed proof, or inconsistent account binding parks automatic
+mutation retries for operator investigation. Compare the exact saved request with
+verified bank evidence through the bank operator. If explicitly retrying delivery
+through the original bot, resend the saved JSON-RPC request byte-for-byte using its
+recorded destination; never invent a replacement financial key, adjust its amount,
+change its payer/recipient/comment/chat, or send it as a different bot. A valid
+late matching reply can still settle a parked order. There is no timeout-based
+force-release action. Balance differences, approximate history matches, a later
+generic error, and lack of replies cannot authorize releasing sale reservations or
+granting items. An unresolved paid order needs local fulfillment repair, not a new
+charge or an assumed refund.
+
+Before rollback, stop new orders and reconcile all outstanding obligations. Do not
+restore a pre-transfer database or serve gameplay from an older binary that ignores
+orders and reservations. The schema version guard rejects unsupported rollback.
+Retain financial keys and proofs permanently; menu expiry or process restart does
+not erase them. Old menu sessions must be reopened after restart.

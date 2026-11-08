@@ -11,7 +11,9 @@ import (
 	"github.com/alexthvest/replipg/internal/modules/items"
 )
 
-const entryQuery = `SELECT e.id,e.group_id,e.character_id,e.snapshot_id,e.quantity,e.mode,s.canonical_json FROM inventory_entries e JOIN item_snapshots s ON s.id=e.snapshot_id`
+const entryQuery = `SELECT e.id,e.group_id,e.character_id,e.snapshot_id,e.quantity,e.mode,s.canonical_json,
+ COALESCE((SELECT SUM(r.quantity) FROM inventory_reservations r WHERE r.entry_id=e.id),0)
+ FROM inventory_entries e JOIN item_snapshots s ON s.id=e.snapshot_id`
 
 type scanner interface{ Scan(...any) error }
 
@@ -27,6 +29,7 @@ func scanEntry(row scanner) (inventory.Entry, error) {
 		&entry.Quantity,
 		&mode,
 		&data,
+		&entry.Reserved,
 	); err != nil {
 		return entry, err
 	}
@@ -41,13 +44,17 @@ func scanEntry(row scanner) (inventory.Entry, error) {
 	if entry.Snapshot.Mode != mode {
 		return entry, errors.New("stored snapshot ownership mode mismatch")
 	}
+	if entry.Reserved < 0 || entry.Reserved > entry.Quantity {
+		return entry, errors.New("stored inventory reservation exceeds ownership")
+	}
 	return entry, nil
 }
 
 func (d *Database) Entries(ctx context.Context, group core.GroupID, character core.ID) ([]inventory.Entry, error) {
+	// Row IDs preserve acquisition order; updating a stack keeps its original position.
 	rows, err := d.db.QueryContext(
 		ctx,
-		entryQuery+" WHERE e.group_id=? AND e.character_id=? ORDER BY e.id",
+		entryQuery+" WHERE e.group_id=? AND e.character_id=? ORDER BY e.rowid",
 		group,
 		character,
 	)
@@ -90,7 +97,7 @@ func (d *Database) Entry(
 }
 
 func (d *Database) LoadInventory(ctx context.Context) ([]inventory.Entry, error) {
-	rows, err := d.db.QueryContext(ctx, entryQuery+" ORDER BY e.group_id,e.id")
+	rows, err := d.db.QueryContext(ctx, entryQuery+" ORDER BY e.group_id,e.rowid")
 	if err != nil {
 		return nil, err
 	}

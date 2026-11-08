@@ -47,13 +47,15 @@ func Inventory(
 			prefix = "\n\n"
 		}
 
-		view.Text = append(view.Text,
-			core.Span{Text: fmt.Sprintf("%s%d. %s ", prefix, i+1, Preview(entry.Snapshot.Text(language).Name, 128))},
-			core.Span{
+		view.Text = append(view.Text, core.Span{
+			Text: fmt.Sprintf("%s%d. %s", prefix, i+1, Preview(entry.Snapshot.Text(language).Name, 128)),
+		})
+		if entry.Snapshot.Mode == items.Stackable {
+			view.Text = append(view.Text, core.Span{Text: " "}, core.Span{
 				Text:  "(" + strconv.FormatInt(entry.Quantity, 10) + ")",
 				Style: core.Code,
-			},
-		)
+			})
+		}
 	}
 
 	pageLabel := Preview(catalog.Text(language, "menu.inventory.page"), 80)
@@ -111,6 +113,34 @@ func Inspection(catalog localization.Catalog, language string, entry inventory.E
 			"menu.item.instance",
 			string(entry.ID),
 		})
+	}
+	if entry.Reserved > 0 {
+		if entry.Snapshot.Mode == items.Individual {
+			fields = append(fields, struct {
+				key   string
+				value string
+			}{
+				key:   "menu.item.quantity",
+				value: strconv.FormatInt(entry.Quantity, 10),
+			})
+		}
+
+		fields = append(fields,
+			struct {
+				key   string
+				value string
+			}{
+				key:   "menu.item.reserved",
+				value: strconv.FormatInt(entry.Reserved, 10),
+			},
+			struct {
+				key   string
+				value string
+			}{
+				key:   "menu.item.available",
+				value: strconv.FormatInt(entry.Available(), 10),
+			},
+		)
 	}
 
 	for _, field := range fields {

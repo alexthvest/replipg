@@ -3,6 +3,7 @@ package cueassets
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,15 +11,19 @@ import (
 
 	"github.com/alexthvest/replipg/internal/content"
 	"github.com/alexthvest/replipg/internal/modules/items"
+	"github.com/alexthvest/replipg/internal/modules/shop"
 )
 
 func capture(root string) (map[string][]byte, error) {
 	files := map[string][]byte{}
 
-	for _, name := range []string{"items", "locales"} {
+	for _, name := range []string{"items", "locales", "shop"} {
 		dir := filepath.Join(root, name)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
+			if name == "shop" && errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return nil, fmt.Errorf("read assets %s: %w", dir, err)
 		}
 
@@ -39,7 +44,7 @@ func capture(root string) (map[string][]byte, error) {
 			count++
 		}
 
-		if count == 0 {
+		if count == 0 && name != "shop" {
 			return nil, fmt.Errorf("assets %s: no CUE files", dir)
 		}
 	}
@@ -105,5 +110,44 @@ func Load(root string) (*content.Bundle, error) {
 	if err = evaluate(filepath.Join(root, "locales"), captured, &translations); err != nil {
 		return nil, err
 	}
-	return content.New(definitions, translations)
+	offers, err := decodeOffers(filepath.Join(root, "shop"), captured)
+	if err != nil {
+		return nil, err
+	}
+	return content.NewWithOffers(definitions, translations, offers)
+}
+
+func decodeOffers(dir string, captured map[string][]byte) ([]shop.Offer, error) {
+	present := false
+	for path := range captured {
+		if filepath.Dir(path) == dir {
+			present = true
+			break
+		}
+	}
+	if !present {
+		return nil, nil
+	}
+
+	var decoded map[string]struct {
+		Mode      items.Mode  `json:"mode"`
+		BuyPrice  shop.Amount `json:"buyPrice"`
+		SellPrice shop.Amount `json:"sellPrice"`
+	}
+	if err := evaluate(dir, captured, &decoded); err != nil {
+		return nil, err
+	}
+
+	offers := make([]shop.Offer, 0, len(decoded))
+	for id, value := range decoded {
+		offers = append(offers, shop.Offer{
+			Target: shop.Target{
+				CatalogID: id,
+				Mode:      value.Mode,
+			},
+			BuyPrice:  value.BuyPrice,
+			SellPrice: value.SellPrice,
+		})
+	}
+	return offers, nil
 }

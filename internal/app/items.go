@@ -44,7 +44,12 @@ func itemRoutes(registry *runtime.Registry, m *modules, routes map[string]boundR
 	return nil
 }
 
-func (m *modules) itemsView(ctx context.Context, scope core.Scope, session *menus.Session) (core.View, error) {
+func (m *modules) itemsView(ctx context.Context, scope core.Scope, session *menus.Session) (result core.View, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			m.sessions.Stage(session, result)
+		}
+	}()
 	if !m.groups.IsOwner(scope.Actor) || session.Opener != scope.Actor {
 		return core.View{}, menus.ErrInvalid
 	}

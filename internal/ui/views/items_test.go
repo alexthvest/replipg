@@ -18,6 +18,9 @@ func TestItemsPagesReloadAndEmpty(t *testing.T) {
 	if err := os.CopyFS(root, os.DirFS("../../../assets")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.RemoveAll(filepath.Join(root, "shop")); err != nil {
+		t.Fatal(err)
+	}
 
 	files, err := filepath.Glob(filepath.Join(root, "items", "*.cue"))
 	if err != nil {

@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexthvest/replipg/internal/core"
+	"github.com/alexthvest/replipg/internal/ui/menus"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -176,16 +178,34 @@ func (b *Bot) Edit(ctx context.Context, group core.GroupID, id int, view core.Vi
 
 	editCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	return retry(editCtx, func(ctx context.Context) error {
-		_, err := b.client.EditMessageText(ctx, &bot.EditMessageTextParams{
-			ChatID:      int64(group),
-			MessageID:   id,
-			Text:        text,
-			Entities:    spans,
-			ReplyMarkup: markup,
-		})
-		return err
+	_, err = b.client.EditMessageText(editCtx, &bot.EditMessageTextParams{
+		ChatID:      int64(group),
+		MessageID:   id,
+		Text:        text,
+		Entities:    spans,
+		ReplyMarkup: markup,
 	})
+	return classifyEdit(err)
+}
+
+func classifyEdit(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var rate *bot.TooManyRequestsError
+	if errors.As(err, &rate) {
+		return &menus.EditError{RetryAfter: time.Duration(rate.RetryAfter) * time.Second}
+	}
+	text := strings.ToLower(err.Error())
+	if errors.Is(err, bot.ErrorBadRequest) && strings.Contains(text, "message is not modified") {
+		return &menus.EditError{NotModified: true}
+	}
+	if errors.Is(err, bot.ErrorForbidden) || errors.Is(err, bot.ErrorNotFound) ||
+		(errors.Is(err, bot.ErrorBadRequest) && (strings.Contains(text, "message to edit not found") || strings.Contains(text, "message can't be edited") || strings.Contains(text, "chat not found"))) {
+		return &menus.EditError{Permanent: true}
+	}
+	return &menus.EditError{}
 }
 
 func (b *Bot) Ack(ctx context.Context, id, text string) error {

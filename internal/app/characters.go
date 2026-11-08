@@ -8,6 +8,7 @@ import (
 	"github.com/alexthvest/replipg/internal/core"
 	"github.com/alexthvest/replipg/internal/modules/characters"
 	"github.com/alexthvest/replipg/internal/runtime"
+	"github.com/alexthvest/replipg/internal/ui/menus"
 	"github.com/alexthvest/replipg/internal/ui/views"
 	"github.com/yohamta/donburi"
 )
@@ -42,6 +43,8 @@ func characterRoutes(registry *runtime.Registry, m *modules, routes map[string]b
 			if err = m.projectCharacter(ctx, world, c); err != nil {
 				return core.View{}, err
 			}
+			m.invalidateInventory(ctx, scope.Group, c.ID)
+			m.sessions.Invalidate(menus.Dependency{Kind: "orders", Group: scope.Group, Character: c.ID})
 
 			language, err := m.localization.Language(ctx, scope.Group)
 			if err != nil {

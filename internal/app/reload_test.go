@@ -137,7 +137,7 @@ func TestLiveReloadDeletionAndSavedBilingualItems(t *testing.T) {
 				r.Handle(ctx, message(100, -1, 1, "/give coin 5", 2))
 				r.Handle(ctx, message(101, -1, 1, "/settings", 0))
 				settingsID := len(fake.views)
-				menu := lastEdit(fake)
+				menu := waitMenu(t, fake, -1, settingsID, nil)
 				r.Handle(ctx, callback(102, -1, 1, settingsID, menu.Rows[1][0].Data))
 				writeCoinText(t, cfg.AssetsPath, true)
 				waitReload(t, log.published)
@@ -169,7 +169,7 @@ func TestLiveReloadDeletionAndSavedBilingualItems(t *testing.T) {
 			r.Handle(ctx, message(105, -1, 1, "/give coin 1", 2))
 			r.Handle(ctx, message(106, -1, 2, "/inventory", 0))
 			inventoryID := len(fake.views)
-			menu := lastEdit(fake)
+			menu := waitMenu(t, fake, -1, inventoryID, nil)
 			text := textOf(menu)
 			if !strings.Contains(text, "Новая монета") ||
 				!strings.Contains(text, "Монета") ||
@@ -180,13 +180,13 @@ func TestLiveReloadDeletionAndSavedBilingualItems(t *testing.T) {
 
 			for i := 0; i < 2; i++ {
 				r.Handle(ctx, callback(int64(110+i*2), -1, 2, inventoryID, menu.Rows[0][i].Data))
-				inspection := lastEdit(fake)
+				inspection := changedMenu(t, fake, -1, inventoryID, menu)
 				if !strings.Contains(textOf(inspection), "Обычный") {
 					t.Error("live localized rarity missing")
 				}
 
 				r.Handle(ctx, callback(int64(111+i*2), -1, 2, inventoryID, inspection.Rows[0][0].Data))
-				menu = lastEdit(fake)
+				menu = changedMenu(t, fake, -1, inventoryID, inspection)
 			}
 
 			r.Handle(ctx, message(120, -2, 2, "/ping", 0))

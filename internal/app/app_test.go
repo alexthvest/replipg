@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -19,13 +20,19 @@ import (
 )
 
 type fakeBot struct {
-	script  func(context.Context, *telegram.Router)
-	mu      sync.Mutex
-	views   []core.View
-	sendErr error
-	edits   []core.View
-	acks    []string
-	editErr error
+	script    func(context.Context, *telegram.Router)
+	mu        sync.Mutex
+	views     []core.View
+	sendErr   error
+	edits     []core.View
+	acks      []string
+	editErr   error
+	delivered map[menuAddress]core.View
+}
+
+type menuAddress struct {
+	group   core.GroupID
+	message int
 }
 
 func (f *fakeBot) Identity() (int64, string) {
@@ -52,12 +59,71 @@ func (f *fakeBot) Send(_ context.Context, _ core.GroupID, v core.View) (int, err
 	return len(f.views), f.sendErr
 }
 
-func (f *fakeBot) Edit(_ context.Context, _ core.GroupID, _ int, view core.View) error {
+func (f *fakeBot) Edit(_ context.Context, group core.GroupID, message int, view core.View) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.edits = append(f.edits, view)
+	if f.delivered == nil {
+		f.delivered = map[menuAddress]core.View{}
+	}
+	if f.editErr == nil {
+		f.delivered[menuAddress{
+			group:   group,
+			message: message,
+		}] = view
+	}
 	return f.editErr
+}
+
+func (f *fakeBot) editCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.edits)
+}
+
+func (f *fakeBot) setEditError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.editErr = err
+}
+
+func waitMenu(
+	t *testing.T,
+	f *fakeBot,
+	group core.GroupID,
+	message int,
+	ready func(core.View) bool,
+) core.View {
+	t.Helper()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for {
+		f.mu.Lock()
+		view, ok := f.delivered[menuAddress{
+			group:   group,
+			message: message,
+		}]
+		f.mu.Unlock()
+		if ok && (ready == nil || ready(view)) {
+			return view
+		}
+
+		select {
+		case <-deadline.C:
+			t.Fatalf("menu %d/%d did not reach expected view; last: %s", group, message, textOf(view))
+		case <-tick.C:
+		}
+	}
+}
+
+func changedMenu(t *testing.T, f *fakeBot, group core.GroupID, message int, previous core.View) core.View {
+	t.Helper()
+	return waitMenu(t, f, group, message, func(view core.View) bool {
+		return !reflect.DeepEqual(view, previous)
+	})
 }
 
 func (f *fakeBot) Ack(_ context.Context, _ string, text string) error {

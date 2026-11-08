@@ -13,8 +13,9 @@ var placeholder = regexp.MustCompile(`\{([a-z_]+)\}`)
 
 // Template parameters are part of each interface key's contract.
 var parameters = map[string][]string{
-	"command.items.given":   {"item"},
-	"command.admin.updated": {"user"},
+	"command.replipg.balance": {"account", "amount"},
+	"command.items.given":     {"item"},
+	"command.admin.updated":   {"user"},
 	"command.give.success": {
 		"recipient",
 		"item",

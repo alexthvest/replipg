@@ -63,7 +63,7 @@ func configureInventory(
 			return nil
 		},
 		Cleanup: func(donburi.World) {
-			m.sessions.Sweep()
+			m.sweepMenus()
 		},
 	}); err != nil {
 		return err
@@ -138,6 +138,11 @@ func configureInventory(
 		}
 
 		session.Character = character.ID
+		m.sessions.Depend(session, menus.Dependency{
+			Kind:      "inventory",
+			Group:     scope.Group,
+			Character: character.ID,
+		})
 		view, err := m.inventoryView(ctx, scope, session)
 		view.Menu = session.Token
 		return view, err
@@ -187,10 +192,16 @@ func (m *modules) projectGrant(ctx context.Context, world donburi.World, scope c
 			return &runtime.ProjectionError{Cause: err}
 		}
 	}
+	m.invalidateInventory(ctx, scope.Group, current.ID)
 	return nil
 }
 
-func (m *modules) inventoryView(ctx context.Context, scope core.Scope, session *menus.Session) (core.View, error) {
+func (m *modules) inventoryView(ctx context.Context, scope core.Scope, session *menus.Session) (result core.View, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			m.sessions.Stage(session, result)
+		}
+	}()
 	c, err := m.characters.Current(ctx, scope.Group, scope.Actor)
 	if err != nil {
 		return core.View{}, err
@@ -207,6 +218,23 @@ func (m *modules) inventoryView(ctx context.Context, scope core.Scope, session *
 	language, err := m.localization.Language(ctx, scope.Group)
 	if err != nil {
 		return core.View{}, err
+	}
+	if session.Selection != "" {
+		for _, entry := range entries {
+			if entry.ID == session.Selection {
+				view := views.Inspection(m.bundle.Locales(), language, entry)
+				refs, err := m.sessions.Actions(session, []menus.Action{{Kind: "back"}})
+				if err != nil {
+					return core.View{}, err
+				}
+				view.Rows = [][]core.Button{{{
+					Caption: views.Preview(m.bundle.Locales().Text(language, "menu.back"), 60),
+					Data:    refs[0],
+				}}}
+				return view, nil
+			}
+		}
+		session.Selection = ""
 	}
 
 	view, visible, page, pages := views.Inventory(m.bundle.Locales(), language, c, entries, session.Page)
@@ -281,37 +309,23 @@ func (m *modules) inventoryAction(
 
 	switch action.Kind {
 	case "page":
+		session.Selection = ""
 		session.Page = action.Page
 		return m.inventoryView(ctx, scope, session)
 	case "back":
+		session.Selection = ""
 		return m.inventoryView(ctx, scope, session)
 	case "inspect":
 		c, err := m.characters.Current(ctx, scope.Group, scope.Actor)
 		if err != nil || c.ID != session.Character {
 			return m.feedback(ctx, scope, "error.invalid_menu")
 		}
-		entry, err := m.inventory.Inspect(ctx, scope.Group, c.ID, action.Entry)
+		_, err = m.inventory.Inspect(ctx, scope.Group, c.ID, action.Entry)
 		if err != nil {
 			return m.feedback(ctx, scope, "error.invalid_menu")
 		}
-		language, err := m.localization.Language(ctx, scope.Group)
-		if err != nil {
-			return core.View{}, err
-		}
-		view := views.Inspection(m.bundle.Locales(), language, entry)
-		refs, err := m.sessions.Actions(session, []menus.Action{{Kind: "back"}})
-		if err != nil {
-			return core.View{}, err
-		}
-		view.Rows = [][]core.Button{
-			{
-				{
-					Caption: views.Preview(m.bundle.Locales().Text(language, "menu.back"), 60),
-					Data:    refs[0],
-				},
-			},
-		}
-		return view, nil
+		session.Selection = action.Entry
+		return m.inventoryView(ctx, scope, session)
 	default:
 		return m.feedback(ctx, scope, "error.invalid_menu")
 	}

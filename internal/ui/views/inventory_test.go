@@ -67,19 +67,18 @@ func TestInventoryPagesAndSavedInspection(t *testing.T) {
 			t.Fatal("list includes rarity, description or blank rows")
 		}
 
-		if !strings.Contains(text, "Inventory • alexthvest\n\n1. Stick (1)") {
-			t.Fatal("wrong title spacing or item quantity")
+		if !strings.Contains(text, "Inventory • alexthvest\n\n1. Stick\n") {
+			t.Fatal("wrong title spacing or item name")
+		}
+
+		if strings.Contains(text, "(1)") {
+			t.Fatal("individual items must not show a quantity")
 		}
 
 		for i := range visible {
-			row := view.Text[3+i*2]
-			quantity := view.Text[4+i*2]
-			if !strings.Contains(row.Text, fmt.Sprintf("%d. Stick ", i+1)) || row.Style != "" {
+			row := view.Text[3+i]
+			if !strings.HasSuffix(row.Text, fmt.Sprintf("%d. Stick", i+1)) || row.Style != "" {
 				t.Fatal("item number and name must be plain text")
-			}
-
-			if quantity.Text != "(1)" || quantity.Style != core.Code {
-				t.Fatal("parenthesized quantity must use code formatting")
 			}
 		}
 	}
@@ -95,8 +94,8 @@ func TestInventoryPagesAndSavedInspection(t *testing.T) {
 	}}, 0)
 	if !strings.Contains(plain(coinView.Text), "\n\n1. Монета (100)") ||
 		coinView.Text[3].Style != "" ||
-		coinView.Text[4].Text != "(100)" ||
-		coinView.Text[4].Style != core.Code {
+		coinView.Text[5].Text != "(100)" ||
+		coinView.Text[5].Style != core.Code {
 		t.Fatal("wrong stack quantity formatting")
 	}
 
@@ -120,5 +119,101 @@ func TestInventoryPagesAndSavedInspection(t *testing.T) {
 	russian := Inspection(bundle.Locales(), "ru", entry)
 	if !strings.Contains(plain(russian.Text), "Палка") || !strings.Contains(plain(russian.Text), "Обычный") {
 		t.Fatal("saved Russian text or live rarity missing")
+	}
+}
+
+func TestInspectionShowsReservationsWithoutChangingListOwnership(t *testing.T) {
+	bundle, err := cueassets.Load("../../../assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := bundle.Capture("coin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := inventory.Entry{
+		ID:        "reserved-stack",
+		Group:     -1,
+		Character: "owner",
+		Snapshot:  snapshot,
+		Quantity:  10,
+		Reserved:  3,
+	}
+	for _, language := range []string{"en", "ru"} {
+		text := plain(Inspection(bundle.Locales(), language, entry).Text)
+		for _, field := range []struct {
+			key   string
+			value string
+		}{
+			{
+				key:   "menu.item.quantity",
+				value: "10",
+			},
+			{
+				key:   "menu.item.reserved",
+				value: "3",
+			},
+			{
+				key:   "menu.item.available",
+				value: "7",
+			},
+		} {
+			if !strings.Contains(text, bundle.Locales().Text(language, field.key)+": "+field.value) {
+				t.Fatalf("missing %s in %s inspection: %s", field.key, language, text)
+			}
+		}
+	}
+	owner := characters.Character{
+		ID:   "owner",
+		Name: "Owner",
+	}
+	list, _, _, _ := Inventory(bundle.Locales(), "en", owner, []inventory.Entry{entry}, 0)
+	if !strings.Contains(plain(list.Text), "Coin (10)") || strings.Contains(plain(list.Text), "(7)") {
+		t.Fatalf("list no longer shows owned quantity: %s", plain(list.Text))
+	}
+}
+
+func TestReservedInstanceInspectionShowsOwnedAndAvailable(t *testing.T) {
+	bundle, err := cueassets.Load("../../../assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := bundle.Capture("stick")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := inventory.Entry{
+		ID:        "reserved-instance",
+		Group:     -1,
+		Character: "owner",
+		Snapshot:  snapshot,
+		Quantity:  1,
+		Reserved:  1,
+	}
+	text := plain(Inspection(bundle.Locales(), "en", entry).Text)
+	for _, field := range []struct {
+		key   string
+		value string
+	}{
+		{
+			key:   "menu.item.quantity",
+			value: "1",
+		},
+		{
+			key:   "menu.item.reserved",
+			value: "1",
+		},
+		{
+			key:   "menu.item.available",
+			value: "0",
+		},
+		{
+			key:   "menu.item.instance",
+			value: string(entry.ID),
+		},
+	} {
+		if !strings.Contains(text, bundle.Locales().Text("en", field.key)+": "+field.value) {
+			t.Fatalf("missing owned/reserved/available instance detail: %s", text)
+		}
 	}
 }
