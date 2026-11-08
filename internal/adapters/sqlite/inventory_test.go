@@ -2,12 +2,15 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/alexthvest/replipg/internal/application/grants"
 	"github.com/alexthvest/replipg/internal/core"
+	"github.com/alexthvest/replipg/internal/modules/groups"
 	"github.com/alexthvest/replipg/internal/modules/inventory"
+	"github.com/alexthvest/replipg/internal/modules/items"
 )
 
 func TestInventoryPreservesAcquisitionOrder(t *testing.T) {
@@ -80,5 +83,107 @@ func TestInventoryPreservesAcquisitionOrder(t *testing.T) {
 	}
 	if entries[0].Quantity != 10 {
 		t.Fatal("stack quantity was not updated")
+	}
+}
+
+const preComponentSnapshot = `{"version":1,"catalog_id":"coin","mode":"stackable","rarity":"common","en":{"name":"Coin","description":"English"},"ru":{"name":"Монета","description":"Русский"}}`
+
+func reopenComponentDatabase(t *testing.T, db *Database) (*Database, *grants.Service) {
+	t.Helper()
+	var path string
+	if err := db.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&path); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		_ = reopened.Close()
+	})
+	permissions, err := groups.New(reopened, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service, err := grants.New(reopened, permissions, core.NewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reopened, service
+}
+
+func TestLegacySnapshotIdentityAndComponentStacksAcrossRestart(t *testing.T) {
+	db, _, _, _ := grantSetup(t)
+	ctx := context.Background()
+	for _, statement := range []struct {
+		sql  string
+		args []any
+	}{
+		{sql: "INSERT INTO groups VALUES(-1,'en')"},
+		{sql: "INSERT INTO characters VALUES('legacy-owner',-1,2,'Recipient')"},
+		{
+			sql:  "INSERT INTO item_snapshots VALUES('legacy-snapshot','coin',?,?)",
+			args: []any{[]byte(preComponentSnapshot), "0b20e996759455025e77f067737bdc07d7cbd6ea6f6fa324cf62b4b8659d69db"},
+		},
+		{sql: "INSERT INTO inventory_entries VALUES('legacy-stack',-1,'legacy-owner','legacy-snapshot','stackable',5)"},
+	} {
+		if _, err := db.db.Exec(statement.sql, statement.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var rowID int64
+	if err := db.db.QueryRow("SELECT rowid FROM inventory_entries WHERE id='legacy-stack'").Scan(&rowID); err != nil {
+		t.Fatal(err)
+	}
+
+	var legacy items.Snapshot
+	if err := json.Unmarshal([]byte(preComponentSnapshot), &legacy); err != nil {
+		t.Fatal(err)
+	}
+
+	db, service := reopenComponentDatabase(t, db)
+	for i, object := range []string{`{}`, `{"material":{}}`, `{"weapon":{},"material":{}}`, `{"material":{},"weapon":{}}`, `{}`} {
+		snapshot := legacy
+		if err := json.Unmarshal([]byte(object), &snapshot.Components); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := service.Give(ctx, request(int64(i+10), 2), snapshotCatalog{snapshot: snapshot}); err != nil {
+			t.Fatal(err)
+		}
+
+		if i == 2 {
+			db, service = reopenComponentDatabase(t, db)
+		}
+	}
+
+	entries, err := db.Entries(ctx, -1, "legacy-owner")
+	if err != nil || len(entries) != 3 {
+		t.Fatalf("component stacks: %+v %v", entries, err)
+	}
+
+	if entries[0].ID != "legacy-stack" || entries[0].SnapshotID != "legacy-snapshot" || entries[0].Quantity != 9 || entries[0].Snapshot != legacy ||
+		entries[1].Quantity != 2 || !entries[1].Snapshot.Components.Material || entries[1].Snapshot.Components.Weapon ||
+		entries[2].Quantity != 4 || !entries[2].Snapshot.Components.Material || !entries[2].Snapshot.Components.Weapon {
+		t.Fatalf("stack identities/order changed: %+v", entries)
+	}
+
+	var position int64
+	if err := db.db.QueryRow("SELECT rowid FROM inventory_entries WHERE id='legacy-stack'").Scan(&position); err != nil || position != rowID {
+		t.Fatalf("acquisition position changed: %d %v", position, err)
+	}
+
+	var data []byte
+	var digest string
+	if err := db.db.QueryRow("SELECT canonical_json,digest FROM item_snapshots WHERE id='legacy-snapshot'").Scan(&data, &digest); err != nil || string(data) != preComponentSnapshot || digest != "0b20e996759455025e77f067737bdc07d7cbd6ea6f6fa324cf62b4b8659d69db" {
+		t.Fatalf("legacy snapshot rewritten: %s %s %v", data, digest, err)
 	}
 }

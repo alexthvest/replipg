@@ -7,6 +7,7 @@ import (
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
+	cueerrors "cuelang.org/go/cue/errors"
 	"cuelang.org/go/cue/load"
 )
 
@@ -33,7 +34,7 @@ func evaluate(dir string, files map[string][]byte, dst any) error {
 
 	value := cuecontext.New().BuildInstance(instances[0])
 	if err := value.Validate(cue.Concrete(true)); err != nil {
-		return fmt.Errorf("validate %s: %w", dir, err)
+		return fmt.Errorf("validate %s: %w\n%s", dir, err, cueerrors.Details(err, nil))
 	}
 
 	if err := value.Decode(dst); err != nil {

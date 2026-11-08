@@ -5,11 +5,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/alexthvest/replipg/internal/content"
+	"github.com/alexthvest/replipg/internal/modules/items"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -246,4 +248,76 @@ func TestWatchPersistentFailureStops(t *testing.T) {
 	}
 
 	watcher.Stop()
+}
+
+func TestWatchComponentPublicationAndWholeBundleRejection(t *testing.T) {
+	root := copyAssets(t)
+	source := newSource()
+	published := make(chan *content.Bundle, 8)
+	reports := make(chan error, 8)
+	watcher, err := watch(context.Background(), root, time.Millisecond, Load, func(_ context.Context, candidate *content.Bundle) error {
+		published <- candidate
+		return nil
+	}, func(err error) {
+		reports <- err
+	}, func() (eventSource, error) {
+		return source, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer watcher.Stop()
+	original := receive(t, published)
+	saved, _ := original.Capture("coin")
+	path := filepath.Join(root, "items", "components.cue")
+	if err := os.WriteFile(path, []byte("package items\ncoin: components: {consumable: {}, material: {}}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	source.events <- fsnotify.Event{
+		Name: path,
+		Op:   fsnotify.Write,
+	}
+	active := receive(t, published)
+	future, _ := active.Capture("coin")
+	if !future.Components.Material || !future.Components.Consumable || saved.Components != (items.Components{Material: true}) {
+		t.Fatal("valid edit was not captured for future grants")
+	}
+
+	for _, object := range []string{`{unknown: {}}`, `null`, `[]`, `{weapon: null}`, `{weapon: true}`, `{weapon: {damage: 10}}`} {
+		if err := os.WriteFile(path, []byte("package items\ncoin: components: "+object), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		// A simultaneous valid locale edit must also remain unpublished.
+		locale := filepath.Join(root, "locales", "candidate.cue")
+		if err := os.WriteFile(locale, []byte("package locales\nen: \"candidate.only\": \"Candidate\"\nru: \"candidate.only\": \"Кандидат\""), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		source.events <- fsnotify.Event{
+			Name: path,
+			Op:   fsnotify.Write,
+		}
+		diagnostic := receive(t, reports)
+		if diagnostic == nil || !strings.Contains(diagnostic.Error(), "component") {
+			t.Fatalf("missing component diagnostic: %v", diagnostic)
+		}
+
+		select {
+		case <-published:
+			t.Fatal("invalid candidate published")
+		default:
+		}
+
+		retained, _ := active.Capture("coin")
+		if retained != future {
+			t.Fatal("invalid edit changed saved bundle")
+		}
+
+		if _, exists := active.Locales().Lookup("en", "candidate.only"); exists {
+			t.Fatal("part of invalid bundle published")
+		}
+	}
 }

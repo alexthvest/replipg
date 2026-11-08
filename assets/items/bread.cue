@@ -5,4 +5,8 @@ bread: {
 	description: "item.bread.description"
 	rarity:      "common"
 	mode:        "stackable"
+
+	components: {
+		consumable: {}
+	}
 }

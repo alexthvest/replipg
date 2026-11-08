@@ -86,6 +86,7 @@ en: {
 	"menu.item.description": "Description"
 	"menu.item.rarity":      "Rarity"
 	"menu.item.mode":        "Ownership"
+	"menu.item.components":  "Components"
 	"menu.item.quantity":    "Quantity"
 	"menu.item.instance":    "Instance"
 
@@ -106,6 +107,11 @@ en: {
 	"mode.stackable":  "Stackable"
 	"mode.individual": "Individual"
 
+	"item.component.none":            "None"
+	"item.component.consumable.name": "Consumable"
+	"item.component.material.name":   "Material"
+	"item.component.weapon.name":     "Weapon"
+
 	"item.coin.name":        "Coin"
 	"item.coin.description": "A simple coin."
 
@@ -114,6 +120,12 @@ en: {
 
 	"item.fumo.name":        "Fumo"
 	"item.fumo.description": "A soft, seated plushie with an embroidered face. A quiet companion for your adventures."
+
+	"item.dakimakura.name":        "Dakimakura"
+	"item.dakimakura.description": "A full-length pillow featuring your favorite anime character. Takes up half the bed and all of your heart."
+
+	"item.neco_arc.name":        "Neco-Arc"
+	"item.neco_arc.description": "A tiny cat creature with an enormous talent for chaos. You did not adopt her. She just lives here now."
 
 	"item.bread.name":        "Bread"
 	"item.bread.description": "A round loaf with a crisp golden crust."

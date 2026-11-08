@@ -27,6 +27,8 @@ type Snapshot struct {
 	Rarity    string `json:"rarity"`
 	English   Text   `json:"en"`
 	Russian   Text   `json:"ru"`
+	// Omit zero components to preserve pre-component version-1 bytes and digests.
+	Components Components `json:"components,omitzero"`
 }
 
 func (s Snapshot) Text(language string) Text {
@@ -58,6 +60,7 @@ func (s Snapshot) Validate() error {
 		Description: "description",
 		Rarity:      s.Rarity,
 		Mode:        s.Mode,
+		Components:  s.Components,
 	}, func(language, key string) (string, bool) {
 		text := s.Text(language)
 		if key == "name" {

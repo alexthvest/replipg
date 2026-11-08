@@ -12,6 +12,7 @@ type Definition struct {
 	Description string
 	Rarity      string
 	Mode        Mode
+	Components  Components
 }
 
 func Validate(id string, d Definition, text func(string, string) (string, bool)) error {

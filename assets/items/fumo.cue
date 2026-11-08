@@ -5,4 +5,8 @@ fumo: {
 	description: "item.fumo.description"
 	rarity:      "legendary"
 	mode:        "individual"
+
+	components: {
+		material: {}
+	}
 }

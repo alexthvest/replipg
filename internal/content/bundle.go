@@ -99,10 +99,11 @@ func (b *Bundle) Capture(id string) (items.Snapshot, error) {
 	}
 
 	snapshot := items.Snapshot{
-		Version:   1,
-		CatalogID: id,
-		Mode:      d.Mode,
-		Rarity:    d.Rarity,
+		Version:    1,
+		CatalogID:  id,
+		Mode:       d.Mode,
+		Rarity:     d.Rarity,
+		Components: d.Components,
 		English: items.Text{
 			Name:        b.locales.Text("en", d.Name),
 			Description: b.locales.Text("en", d.Description),

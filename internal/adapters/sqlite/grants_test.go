@@ -1,10 +1,13 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -394,5 +397,63 @@ func TestCommitFailureRollsBackAllFeatures(t *testing.T) {
 		if count != 0 {
 			t.Fatalf("commit failure left %s", table)
 		}
+	}
+}
+
+func TestLegacyAndClassifiedGrantReplayAfterRestart(t *testing.T) {
+	db, service, coin, _ := grantSetup(t)
+	ctx := context.Background()
+	classified := coin
+	classified.Components = items.Components{
+		Consumable: true,
+		Material:   true,
+	}
+
+	result, err := service.Give(ctx, request(1, 3), snapshotCatalog{snapshot: classified})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Historical operation JSON, independent of the current encoder.
+	legacyResult := `{"Group":-1,"Character":{"ID":"historical-owner","Group":-1,"User":2,"Name":"Historical"},"Snapshot":` + preComponentSnapshot + `,"Quantity":5,"Entries":[{"ID":"historical-stack","Group":-1,"Character":"historical-owner","SnapshotID":"historical-snapshot","Snapshot":` + preComponentSnapshot + `,"Quantity":5}]}`
+	if _, err := db.db.Exec("INSERT INTO grant_operations VALUES(123,2,-1,?)", []byte(legacyResult)); err != nil {
+		t.Fatal(err)
+	}
+
+	var savedClassified []byte
+	if err := db.db.QueryRow("SELECT result_json FROM grant_operations WHERE update_id=1").Scan(&savedClassified); err != nil {
+		t.Fatal(err)
+	}
+
+	db, service = reopenComponentDatabase(t, db)
+	var historical grants.Result
+	if err := json.Unmarshal([]byte(legacyResult), &historical); err != nil {
+		t.Fatal(err)
+	}
+
+	before := counts(t, db)
+	for range 2 {
+		for i, expected := range []grants.Result{result, historical} {
+			replay, err := service.Give(ctx, request(int64(i+1), 99), snapshotCatalog{err: errors.New("definition removed")})
+			if err != nil || !reflect.DeepEqual(replay, expected) {
+				t.Fatalf("replay %d changed saved data: %+v %v", i, replay, err)
+			}
+		}
+	}
+
+	if !reflect.DeepEqual(before, counts(t, db)) {
+		t.Fatal("replay changed durable counts")
+	}
+
+	for i, expected := range [][]byte{savedClassified, []byte(legacyResult)} {
+		var data []byte
+		if err := db.db.QueryRow("SELECT result_json FROM grant_operations WHERE update_id=?", i+1).Scan(&data); err != nil || !bytes.Equal(data, expected) {
+			t.Fatalf("historical operation rewritten: %s %v", data, err)
+		}
+	}
+
+	entries, err := db.Entries(ctx, -1, result.Character.ID)
+	if err != nil || len(entries) != 1 || entries[0].Quantity != 3 || entries[0].Snapshot != classified {
+		t.Fatalf("classified replay changed ownership: %+v %v", entries, err)
 	}
 }

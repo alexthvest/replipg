@@ -70,3 +70,21 @@ func TestValidationAndTemplateLiterals(t *testing.T) {
 		}
 	}
 }
+
+func TestComponentLabelsRequired(t *testing.T) {
+	for _, languages := range [][]string{{"en"}, {"ru"}, {"en", "ru"}} {
+		for _, key := range []string{
+			"menu.item.components", "item.component.none",
+			"item.component.consumable.name", "item.component.material.name", "item.component.weapon.name",
+		} {
+			candidate := translations()
+			for _, language := range languages {
+				delete(candidate[language], key)
+			}
+
+			if _, err := New(candidate); err == nil {
+				t.Fatalf("missing %v %s accepted", languages, key)
+			}
+		}
+	}
+}

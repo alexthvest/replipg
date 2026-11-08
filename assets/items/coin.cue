@@ -5,4 +5,8 @@ coin: {
 	description: "item.coin.description"
 	rarity:      "common"
 	mode:        "stackable"
+
+	components: {
+		material: {}
+	}
 }

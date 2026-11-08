@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/alexthvest/replipg/internal/core"
 	"github.com/alexthvest/replipg/internal/modules/characters"
@@ -68,6 +69,15 @@ func Inventory(
 
 func Inspection(catalog localization.Catalog, language string, entry inventory.Entry) core.View {
 	text := entry.Snapshot.Text(language)
+	labels := make([]string, 0, 3)
+	for _, key := range entry.Snapshot.Components.Keys() {
+		labels = append(labels, Preview(catalog.Text(language, "item.component."+key+".name"), 80))
+	}
+	classification := strings.Join(labels, ", ")
+	if len(labels) == 0 {
+		classification = Preview(catalog.Text(language, "item.component.none"), 80)
+	}
+
 	view := core.View{
 		Text: core.Text{
 			{
@@ -95,6 +105,10 @@ func Inspection(catalog localization.Catalog, language string, entry inventory.E
 		{
 			"menu.item.mode",
 			Preview(catalog.Text(language, "mode."+string(entry.Snapshot.Mode)), 80),
+		},
+		{
+			"menu.item.components",
+			classification,
 		},
 	}
 	if entry.Snapshot.Mode == items.Stackable {

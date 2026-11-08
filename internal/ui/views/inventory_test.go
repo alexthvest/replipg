@@ -2,6 +2,9 @@ package views
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -10,6 +13,7 @@ import (
 	"github.com/alexthvest/replipg/internal/core"
 	"github.com/alexthvest/replipg/internal/modules/characters"
 	"github.com/alexthvest/replipg/internal/modules/inventory"
+	"github.com/alexthvest/replipg/internal/modules/items"
 )
 
 func plain(text core.Text) string {
@@ -215,5 +219,95 @@ func TestReservedInstanceInspectionShowsOwnedAndAvailable(t *testing.T) {
 		if !strings.Contains(text, bundle.Locales().Text("en", field.key)+": "+field.value) {
 			t.Fatalf("missing owned/reserved/available instance detail: %s", text)
 		}
+	}
+}
+
+func TestInspectionUsesSavedComponentsAndCurrentLabels(t *testing.T) {
+	bundle, err := cueassets.Load("../../../assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := bundle.Capture("coin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	saved.Components = items.Components{
+		Weapon:     true,
+		Material:   true,
+		Consumable: true,
+	}
+
+	// This catalog has no item definitions: inspection cannot consult live items.
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("../../../assets")); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, err := filepath.Glob(filepath.Join(root, "items", "*.cue"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range paths {
+		if filepath.Base(path) != "schema.cue" {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	if err := os.RemoveAll(filepath.Join(root, "shop")); err != nil {
+		t.Fatal(err)
+	}
+
+	localePath := filepath.Join(root, "locales", "en.cue")
+	data, err := os.ReadFile(localePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(localePath, []byte(strings.ReplaceAll(string(data), "\"Material\"", "\"Current material\"")), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := cueassets.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entry := inventory.Entry{
+		ID:       "saved",
+		Snapshot: saved,
+		Quantity: 5,
+	}
+
+	for _, language := range []string{"en", "ru"} {
+		labels := []string{}
+		for _, key := range []string{"consumable", "material", "weapon"} {
+			labels = append(labels, current.Locales().Text(language, "item.component."+key+".name"))
+		}
+
+		view := Inspection(current.Locales(), language, entry)
+		text := plain(view.Text)
+		if !strings.Contains(text, current.Locales().Text(language, "menu.item.components")+": "+strings.Join(labels, ", ")) ||
+			!strings.Contains(text, saved.Text(language).Name) || len(view.Rows) != 0 {
+			t.Fatalf("saved classification inspection: %+v", view)
+		}
+
+		before, _, _, _ := Inventory(current.Locales(), language, characters.Character{}, []inventory.Entry{entry}, 0)
+		entry.Snapshot.Components = items.Components{}
+		empty := Inspection(current.Locales(), language, entry)
+		if !strings.Contains(plain(empty.Text), current.Locales().Text(language, "menu.item.components")+": "+current.Locales().Text(language, "item.component.none")) {
+			t.Fatal("empty/legacy classification missing")
+		}
+
+		after, _, _, _ := Inventory(current.Locales(), language, characters.Character{}, []inventory.Entry{entry}, 0)
+		if !reflect.DeepEqual(before, after) || entry.Quantity != 5 {
+			t.Fatal("classification changed inventory rows or ownership")
+		}
+
+		entry.Snapshot = saved
 	}
 }

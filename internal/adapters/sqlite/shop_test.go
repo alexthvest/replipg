@@ -1,9 +1,11 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"reflect"
@@ -798,5 +800,97 @@ func TestVerifiedBankAccountBindingsAreDurableAndCannotChange(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestComponentShopRecoveryAndLegacyQuoteBytes(t *testing.T) {
+	for _, classified := range []bool{false, true} {
+		t.Run(fmt.Sprint(classified), func(t *testing.T) {
+			db, service, _, _ := grantSetup(t)
+			ctx := context.Background()
+			var snapshot items.Snapshot
+			if err := json.Unmarshal([]byte(preComponentSnapshot), &snapshot); err != nil {
+				t.Fatal(err)
+			}
+
+			if classified {
+				snapshot.Components = items.Components{
+					Material: true,
+					Weapon:   true,
+				}
+			}
+
+			granted, err := service.Give(ctx, request(1, 5), snapshotCatalog{snapshot: snapshot})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			sale := testOrder(snapshot, granted.Character.ID, "component-sale", domain.Sell)
+			sale.Quote.Entry = granted.Entries[0].ID
+			financial := testRequest(sale)
+			financial.Unknown = true
+			financial.Attempts = 1
+			if classified {
+				if err := db.WithinShop(ctx, func(tx application.Transaction) error {
+					if err := createOrder(ctx, tx, sale, 10); err != nil {
+						return err
+					}
+					return tx.Reservations.Reserve(ctx, sale)
+				}); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				// Literal pre-component quote layout with dynamic durable identities only.
+				quote := `{"ID":"quote-component-sale","Group":-1,"Player":2,"Character":"` + string(granted.Character.ID) + `","Entry":"` + string(granted.Entries[0].ID) + `","Direction":"sell","Snapshot":` + preComponentSnapshot + `,"Quantity":1,"Unit":"10","Total":"10","BankID":99,"TreasuryID":2,"DeliveryChat":-1}`
+				if _, err := db.db.Exec(`INSERT INTO shop_orders VALUES('component-sale','confirmation-component-sale',-1,?,2,'sell',?,'reserved','',99,2,123,10,0)`, granted.Character.ID, []byte(quote)); err != nil {
+					t.Fatal(err)
+				}
+
+				if err := db.WithinShop(ctx, func(tx application.Transaction) error {
+					return tx.Reservations.Reserve(ctx, sale)
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := db.WithinShop(ctx, func(tx application.Transaction) error {
+				return tx.Requests.CreateRequest(ctx, financial)
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			var original []byte
+			if err := db.db.QueryRow("SELECT quote_json FROM shop_orders WHERE id=?", sale.ID).Scan(&original); err != nil {
+				t.Fatal(err)
+			}
+
+			db, _ = reopenComponentDatabase(t, db)
+			for range 2 {
+				if err := db.WithinShop(ctx, func(tx application.Transaction) error {
+					recovered, found, err := tx.Orders.ByConfirmation(ctx, sale.Confirmation)
+					if err != nil || !found || recovered != sale {
+						t.Fatalf("saved order changed: %+v %v %v", recovered, found, err)
+					}
+
+					due, err := tx.Requests.Due(ctx, time.Unix(101, 0), 10)
+					if err != nil || len(due) != 1 || due[0].ID != financial.ID || !due[0].Unknown || due[0].Attempts != 1 {
+						t.Fatalf("recovery changed financial intent: %+v %v", due, err)
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			entries, err := db.Entries(ctx, -1, granted.Character.ID)
+			if err != nil || len(entries) != 1 || entries[0].Snapshot != snapshot || entries[0].Quantity != 5 || entries[0].Reserved != 1 || entries[0].ID != granted.Entries[0].ID {
+				t.Fatalf("recovery changed reserved ownership: %+v %v", entries, err)
+			}
+
+			var after []byte
+			if err := db.db.QueryRow("SELECT quote_json FROM shop_orders WHERE id=?", sale.ID).Scan(&after); err != nil || !bytes.Equal(original, after) {
+				t.Fatalf("historical quote rewritten: %s %v", after, err)
+			}
+		})
 	}
 }

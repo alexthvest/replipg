@@ -5,4 +5,9 @@ stick: {
 	description: "item.stick.description"
 	rarity:      "common"
 	mode:        "individual"
+
+	components: {
+		material: {}
+		weapon: {}
+	}
 }

@@ -15,7 +15,7 @@ Each character SHALL own an independent durable inventory without a gameplay cap
 - **AND** all committed entries remain accessible after restart
 
 ### Requirement: Stacks require identical item data
-Stackable items SHALL merge only within the same character inventory when their catalog IDs and complete saved snapshots match. A differing snapshot MUST create a separate stack. Matching MUST depend on saved data rather than merely a reload generation number.
+Stackable items SHALL merge only within the same character inventory when their catalog IDs and complete saved snapshots match, including components. A differing snapshot MUST create a separate stack. Component declaration order MUST NOT affect matching. Matching MUST depend on saved data rather than merely a reload generation number.
 
 #### Scenario: Identical grant
 - **WHEN** the same character receives more of an item with an identical catalog ID and snapshot
@@ -28,6 +28,18 @@ Stackable items SHALL merge only within the same character inventory when their 
 #### Scenario: Unchanged data after reload
 - **WHEN** a reload or restored definition yields exactly the same catalog ID and snapshot data as an existing stack
 - **THEN** a subsequent stackable grant merges into that matching stack
+
+#### Scenario: Changed components
+- **WHEN** a later grant differs only by adding or removing a component
+- **THEN** it creates a separate stack and preserves the existing stack's classification
+
+#### Scenario: Reordered components
+- **WHEN** a definition changes only the declaration order of its components
+- **THEN** an otherwise identical grant merges into the existing matching stack
+
+#### Scenario: Legacy stack receives an unclassified grant
+- **WHEN** an otherwise identical unclassified item is granted to a character with a matching pre-component stack
+- **THEN** the grant merges into that stack and preserves its durable identity and acquisition position
 
 ### Requirement: Individual items have independent identities
 Each granted individual item SHALL have a distinct durable instance identity and its own saved snapshot. Granting multiple individual items MUST create that many separate instances rather than a quantity stack.
@@ -102,7 +114,7 @@ Inventory menus SHALL be visible in the group but controllable only by the opene
 - **THEN** it cannot perform navigation or inspection and the user can reopen `/inventory`
 
 ### Requirement: Inspection uses saved item data
-An inventory inspection SHALL show the selected entry's saved name and description in the current group language, its saved rarity and mode, and its quantity or instance identity. Interface labels and rarity labels SHALL use current translations. Inspection MUST offer a return to inventory navigation.
+An inventory inspection SHALL show the selected entry's saved name and description in the current group language, its saved rarity, mode, and components, and its quantity or instance identity. Interface labels, rarity labels, and component labels SHALL use current translations. Inspection MUST offer a return to inventory navigation.
 
 #### Scenario: Inspect removed definition
 - **WHEN** an opener inspects an item whose asset definition has been edited or deleted
@@ -111,6 +123,16 @@ An inventory inspection SHALL show the selected entry's saved name and descripti
 #### Scenario: Group language changes during browsing
 - **WHEN** the group language changes before the opener next interacts with the inventory menu
 - **THEN** the next rendered view uses the new group language and the corresponding saved item text
+
+#### Scenario: Display multiple saved components
+- **WHEN** an item with saved consumable and material components is inspected
+- **THEN** inspection displays both localized labels in a stable order independent of asset declaration order
+- **AND** it uses saved component membership even if the active definition has changed
+
+#### Scenario: Empty classification
+- **WHEN** an unclassified or pre-component item is inspected
+- **THEN** inspection displays a localized empty classification value
+- **AND** it does not infer classification from the item's name or live definition
 
 ### Requirement: Inventory menus only view and inspect
 Inventory navigation and inspection SHALL leave ownership, snapshots, and quantities unchanged. The MVP MUST NOT expose equip, use, discard, delete, or transfer actions.
@@ -145,3 +167,11 @@ Confirmed sale payout SHALL reduce the exact reserved stack quantity or remove t
 #### Scenario: Entire entry sold
 - **WHEN** the last units or an individual instance are sold successfully
 - **THEN** the entry disappears from persistent ownership and runtime views while its snapshot remains available to historical orders
+
+### Requirement: Marker components do not enable item actions
+Marker components SHALL describe items without adding equip, use, or crafting actions. Inventory list rows and numbered navigation controls SHALL retain their existing layout; classification SHALL appear in inspection.
+
+#### Scenario: Inspect a weapon or consumable
+- **WHEN** a player browses and inspects an item carrying weapon or consumable components
+- **THEN** the item has descriptive classification labels in inspection
+- **AND** no equip, use, or crafting action is offered and ownership and quantities remain unchanged

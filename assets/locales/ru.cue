@@ -86,6 +86,7 @@ ru: {
 	"menu.item.description": "Описание"
 	"menu.item.rarity":      "Редкость"
 	"menu.item.mode":        "Владение"
+	"menu.item.components":  "Компоненты"
 	"menu.item.quantity":    "Количество"
 	"menu.item.instance":    "Экземпляр"
 
@@ -106,6 +107,11 @@ ru: {
 	"mode.stackable":  "Складываемый"
 	"mode.individual": "Отдельный"
 
+	"item.component.none":            "Нет"
+	"item.component.consumable.name": "Расходуемый"
+	"item.component.material.name":   "Материал"
+	"item.component.weapon.name":     "Оружие"
+
 	"item.coin.name":        "Монета"
 	"item.coin.description": "Обычная монета."
 
@@ -114,6 +120,12 @@ ru: {
 
 	"item.fumo.name":        "Фумо"
 	"item.fumo.description": "Мягкая сидячая плюшевая игрушка с вышитым лицом. Тихий спутник в ваших приключениях."
+
+	"item.dakimakura.name":        "Дакимакура"
+	"item.dakimakura.description": "Подушка в полный рост с любимым персонажем аниме. Занимает половину кровати и всё ваше сердце."
+
+	"item.neco_arc.name":        "Неко-Арк"
+	"item.neco_arc.description": "Крошечное кошачье создание с огромным талантом к хаосу. Вы её не заводили. Она теперь просто здесь живёт."
 
 	"item.bread.name":        "Хлеб"
 	"item.bread.description": "Круглая буханка с хрустящей золотистой корочкой."

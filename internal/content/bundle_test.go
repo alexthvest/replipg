@@ -149,3 +149,69 @@ func TestInvalidModeOrMissingTextNeverLoads(t *testing.T) {
 		}
 	}
 }
+
+func TestComponentCaptureIsDetachedAndCoherent(t *testing.T) {
+	root := copyAssets(t)
+	componentFile := filepath.Join(root, "items", "components.cue")
+	if err := os.WriteFile(componentFile, []byte("package items\ncoin: components: {material: {}}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	original, err := cueassets.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := original.Capture("coin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	definition, _ := original.Item("coin")
+	definition.Components.Material = false
+	definition.Components.Weapon = true
+	unchanged, _ := original.Capture("coin")
+	if unchanged != saved || !saved.Components.Material || saved.Components.Weapon {
+		t.Fatal("definition access mutated published data")
+	}
+
+	if err := os.WriteFile(componentFile, []byte("package items\ncoin: components: {material: {}, consumable: {}}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	replace(t, filepath.Join(root, "locales", "en.cue"), "A simple coin.", "A changed coin.")
+	replace(t, filepath.Join(root, "items", "coin.cue"), `"common"`, `"rare"`)
+	edited, err := cueassets.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := edited.Compatible(original); err != nil {
+		t.Fatal(err)
+	}
+
+	future, _ := edited.Capture("coin")
+	old, _ := original.Capture("coin")
+	if old != saved || !future.Components.Consumable || !future.Components.Material || future.Rarity != "rare" || future.English.Description != "A changed coin." {
+		t.Fatalf("incoherent captures: %+v %+v", old, future)
+	}
+
+	for _, name := range []string{"coin.cue", "components.cue"} {
+		if err := os.Remove(filepath.Join(root, "items", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	removed, err := cueassets.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := removed.Capture("coin"); err == nil {
+		t.Fatal("removed definition captured")
+	}
+
+	if old != saved || !saved.Components.Material || saved.Components.Consumable {
+		t.Fatal("saved membership changed after edit/removal")
+	}
+}
