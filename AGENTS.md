@@ -34,12 +34,28 @@ Format Go with `gofmt -w <files>` and CUE with `cue fmt <files>`. Use idiomatic 
 names and cohesive packages. Prefer the standard library; justify dependencies
 and run `go mod tidy` after import or dependency changes.
 
+Use blank lines to separate logical steps, not every statement. Keep logging,
+cleanup, and result preparation together with their immediate `return`; do not
+insert a blank line between them. Apply these rules to both source and tests.
+
+Write non-empty function bodies across multiple lines. Put each struct field on
+its own line, and expand struct literals with multiple fields across multiple
+lines. Wrap long function signatures and calls when it improves readability.
+Run `gofmt` after these edits; it does not add logical blank-line separation or
+expand all cramped declarations automatically.
+
 Pass dependencies explicitly, return contextual errors, and propagate caller
 contexts. Give goroutines clear ownership and shutdown paths.
 
 Use `package items` and `package locales` in their respective asset directories.
 Use translation keys such as `item.coin.name` for item names and descriptions;
 keep keys consistent across item data, locale schemas, and all translations.
+
+Keep one language block per locale file and separate related groups of entries
+with blank lines. Keep dotted keys flat and use matching group and key order in
+English and Russian. Separate corresponding schema requirements with blank
+lines too; do not introduce repeated language blocks or section comments.
+
 Check complete assets with `cue vet -c ./assets/items ./assets/locales`.
 
 ## Testing Guidelines

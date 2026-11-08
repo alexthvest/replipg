@@ -6,6 +6,7 @@ package items
 	name!:        string
 	description!: string
 	rarity!:      #Rarity
+	mode!:        "stackable" | "individual"
 }
 
 #Items: {
