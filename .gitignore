@@ -1,0 +1,20 @@
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# Local environment settings
+.env
+.env.*
+!.env.example
+
+# Local Go build output
+/replipg
+/bin/
+/coverage.out

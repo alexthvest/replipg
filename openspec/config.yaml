@@ -1,0 +1,35 @@
+schema: spec-driven
+
+context: |
+  Plan implementation in Go, using the toolchain declared in go.mod.
+  Prefer the standard library and a simple single-module design; justify new
+  dependencies and architectural layers by the needs of the change.
+  Keep planning artifacts in English.
+
+rules:
+  proposal:
+    - State the user-visible outcome, scope, and explicit non-goals.
+    - Separate confirmed requirements from assumptions and unresolved decisions.
+  specs:
+    - Describe observable behavior rather than Go implementation details.
+    - Include relevant failure cases and acceptance scenarios that can be verified.
+  design:
+    - Describe affected Go packages and keep entry points in cmd/ thin.
+    - Include a project structure plan showing the resulting directory and file layout, identifying new or changed paths and explaining package responsibilities and dependency boundaries. Cover entry points, application packages, assets, and adjacent tests where relevant; follow AGENTS.md conventions.
+    - Justify new dependencies, interfaces, and concurrency where introduced.
+    - Address error handling, cancellation, shared state, and resource cleanup when relevant.
+    - Describe compatibility and migration implications when changing persisted data or external contracts.
+  tasks:
+    - Use small, ordered checkbox tasks with concrete completion criteria.
+    - Include focused tests for changed behavior and relevant failure paths.
+    - Include formatting and verification with gofmt, go test ./..., go vet ./..., go build ./..., and golangci-lint run ./... inside the devenv shell.
+    - Include go test -race ./... when changing concurrent behavior, if supported by the environment.
+
+operations:
+  apply:
+    guidance:
+      - Follow AGENTS.md for Go conventions and verification commands.
+      - Keep task completion aligned with implemented and verified work; report checks that could not run.
+  archive:
+    guidance:
+      - Check that completed work and delta specs agree before archiving; report any unfinished tasks.
