@@ -14,7 +14,7 @@ func translations() map[string]map[string]string {
 	}
 
 	for _, lang := range []string{"en", "ru"} {
-		for _, key := range append(append(append([]string{}, baselineKeys...), inventoryKeys...), shopKeys...) {
+		for _, key := range append(append(append(append([]string{}, baselineKeys...), inventoryKeys...), shopKeys...), craftingKeys...) {
 			result[lang][key] = "text"
 		}
 
@@ -85,6 +85,17 @@ func TestComponentLabelsRequired(t *testing.T) {
 			if _, err := New(candidate); err == nil {
 				t.Fatalf("missing %v %s accepted", languages, key)
 			}
+		}
+	}
+}
+
+func TestCraftingKeysRequired(t *testing.T) {
+	for _, key := range craftingKeys {
+		candidate := translations()
+		delete(candidate["en"], key)
+		delete(candidate["ru"], key)
+		if _, err := New(candidate); err == nil {
+			t.Fatalf("missing crafting key %s accepted", key)
 		}
 	}
 }

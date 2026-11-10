@@ -1,0 +1,13 @@
+[
+  {"name":"ceramic","title":"Глина и песок","inputs":[{"catalog_id":"clay","quantity":1},{"catalog_id":"sand","quantity":1}]},
+  {"name":"cloth","title":"Ткань и шерсть","inputs":[{"catalog_id":"cloth","quantity":2},{"catalog_id":"wool","quantity":3}]},
+  {"name":"lining","title":"Следующий шаг текстильной цепочки","inputs":[{"from":"cloth","quantity":1},{"catalog_id":"thread","quantity":1}]},
+  {"name":"leather-1","title":"Одна кожа и один текстильный компонент","inputs":[{"from":"lining","quantity":1},{"catalog_id":"leather","quantity":1}]},
+  {"name":"leather-2","title":"Две кожи и один текстильный компонент","inputs":[{"from":"lining","quantity":1},{"catalog_id":"leather","quantity":2}]},
+  {"name":"leather-5","title":"Пять кож и один текстильный компонент","inputs":[{"from":"lining","quantity":1},{"catalog_id":"leather","quantity":5}]},
+  {"name":"leather-5-lining-3","title":"Пять кож и три текстильных компонента","inputs":[{"from":"lining","quantity":3},{"catalog_id":"leather","quantity":5}]},
+  {"name":"leather-1-lining-5","title":"Одна кожа и пять текстильных компонентов","inputs":[{"from":"lining","quantity":5},{"catalog_id":"leather","quantity":1}]},
+  {"name":"mechanism","title":"Шестерёнки и пружины","inputs":[{"catalog_id":"gear","quantity":2},{"catalog_id":"spring","quantity":2}]},
+  {"name":"dakimakura","title":"Механизм и дакимакура","inputs":[{"from":"mechanism","quantity":1},{"catalog_id":"dakimakura","quantity":1}]},
+  {"name":"companion","title":"Fumo и Neco Arc","inputs":[{"catalog_id":"fumo","quantity":1},{"catalog_id":"neco_arc","quantity":1}]}
+]

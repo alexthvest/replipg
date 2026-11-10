@@ -1,0 +1,50 @@
+{
+  "edge_insert": {
+    "version":1,"catalog_id":"edge_insert","mode":"stackable","rarity":"uncommon",
+    "en":{"name":"Duskmetal Cutting Insert","description":"One shaped flat part made from duskmetal, with a sharpened edge and an unsharpened narrow tang for fastening. It has no grip and cannot be held securely as a complete tool yet."},
+    "ru":{"name":"Режущая вставка из сумеречного сплава","description":"Одна сформованная плоская деталь из сумеречного сплава с заточенной кромкой и узким незаточенным хвостовиком для крепления. Рукояти нет; надёжно удерживать её как готовый инструмент пока нельзя."},
+    "components":{"material":{}}
+  },
+  "shaped_grip": {
+    "version":1,"catalog_id":"shaped_grip","mode":"stackable","rarity":"common",
+    "en":{"name":"Shaped Rootwood Grip","description":"One hand-sized rootwood grip, shaped for a secure hold. A fitted slot accepts the tang of a rigid part; a separate fastener is needed to lock the joint."},
+    "ru":{"name":"Формованная рукоять из корнедрева","description":"Одна рукоять из корнедрева размером с ладонь, сформованная для надёжного хвата. Посадочный паз принимает хвостовик жёсткой детали; для закрепления стыка нужен отдельный крепёж."},
+    "components":{"material":{}}
+  },
+  "dusk_metal": {
+    "version":1,"catalog_id":"dusk_metal","mode":"stackable","rarity":"uncommon",
+    "en":{"name":"Duskmetal","description":"A standardized ingot of a dense fictional alloy. It can be shaped when heated and becomes hard when cooled; a thin worked edge resists chipping. It has no supernatural effects. One ingot supplies one small rigid part."},
+    "ru":{"name":"Сумеречный сплав","description":"Мерный слиток плотного выдуманного сплава. Поддаётся формовке при нагреве и твердеет после охлаждения; тонкая обработанная кромка устойчива к сколам. Сверхъестественных свойств нет. Одного слитка хватает на небольшую жёсткую деталь."},
+    "components":{"material":{}}
+  },
+  "rootwood": {
+    "version":1,"catalog_id":"rootwood","mode":"stackable","rarity":"common",
+    "en":{"name":"Rootwood","description":"A hand-length billet of fictional wood with interwoven fibers. Light, rigid along its grain, slightly flexible across it, and resistant to splitting under repeated impacts. It is inert and has no will of its own."},
+    "ru":{"name":"Корнедрев","description":"Брусок выдуманной древесины длиной с ладонь, с переплетёнными волокнами. Лёгкий, жёсткий вдоль волокон, немного гибкий поперёк и устойчивый к расщеплению при повторных ударах. Это обычный неживой материал без собственной воли."},
+    "components":{"material":{}}
+  },
+  "spring_silk": {
+    "version":1,"catalog_id":"spring_silk","mode":"stackable","rarity":"uncommon",
+    "en":{"name":"Spring Silk","description":"A bundle of tough elastic fictional fibers. A twisted cord stores energy when stretched and returns toward its previous length when released. It cannot generate energy without being stretched first."},
+    "ru":{"name":"Пружинный шёлк","description":"Пучок прочных упругих выдуманных волокон. Скрученный шнур запасает энергию при растяжении и после отпускания стремится вернуть прежнюю длину. Без предварительного растяжения энергию не создаёт."},
+    "components":{"material":{}}
+  },
+  "scalecloth": {
+    "version":1,"catalog_id":"scalecloth","mode":"stackable","rarity":"uncommon",
+    "en":{"name":"Scalecloth","description":"One standardized panel of flexible fictional hide covered in overlapping hard scales. The scales spread pressure while the joints allow bending. One panel covers a small part; larger coverings require several panels. It does not heal or grow by itself."},
+    "ru":{"name":"Чешуеполотно","description":"Одна мерная панель гибкой выдуманной кожи с перекрывающимися твёрдыми чешуйками. Чешуйки распределяют давление, а соединения позволяют сгибаться. Панель покрывает небольшую деталь; для больших оболочек нужно несколько панелей. Само не растёт и не восстанавливается."},
+    "components":{"material":{}}
+  },
+  "warmfiber": {
+    "version":1,"catalog_id":"warmfiber","mode":"stackable","rarity":"common",
+    "en":{"name":"Warmweave Fiber","description":"A measured bundle of soft hollow fictional fibers that retain body warmth and soften pressure. Compressing and binding the fibers forms a flexible padding layer. The material does not produce heat on its own."},
+    "ru":{"name":"Теплопряд","description":"Мерный пучок мягких полых выдуманных волокон, сохраняющих тепло тела и смягчающих давление. Уплотнение и скрепление волокон даёт гибкий слой набивки. Сам материал тепло не производит."},
+    "components":{"material":{}}
+  },
+  "binding_resin": {
+    "version":1,"catalog_id":"binding_resin","mode":"stackable","rarity":"common",
+    "en":{"name":"Binding Resin","description":"One strip of fibrous fictional resin. While soft it bonds contacting surfaces; after setting it remains tough and slightly flexible. A strip can fasten a small joint but cannot replace a full covering layer or generate motion."},
+    "ru":{"name":"Связующая смола","description":"Одна полоска волокнистой выдуманной смолы. В мягком виде скрепляет соприкасающиеся поверхности, после схватывания остаётся прочной и немного гибкой. Полоска может закрепить небольшой стык, но не заменяет полноценный слой оболочки и не создаёт движение."},
+    "components":{"material":{}}
+  }
+}

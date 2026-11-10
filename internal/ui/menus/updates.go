@@ -29,7 +29,7 @@ func (s *Sessions) Invalidate(dependencies ...Dependency) {
 	s.Sweep()
 	for _, dependency := range dependencies {
 		for token := range s.index[dependency] {
-			if session := s.pool[token]; session != nil {
+			if session := s.pool[token]; session != nil && !session.Closing {
 				session.Dirty = true
 			}
 		}
@@ -144,6 +144,9 @@ func (s *Sessions) Complete(outcome Outcome) {
 		session.DeliveredRevision = outcome.Job.Revision
 		session.failures = 0
 		session.retryAt = time.Time{}
+		if session.Closing && session.DeliveredRevision == session.DesiredRevision {
+			s.Remove(session.Token)
+		}
 		return
 	}
 
@@ -153,4 +156,15 @@ func (s *Sessions) Complete(outcome Outcome) {
 		delay = result.RetryAfter
 	}
 	session.retryAt = s.now().Add(delay)
+}
+
+// Close allows terminal delivery while rejecting further callbacks immediately.
+func (s *Sessions) Close(session *Session, view core.View) {
+	session.Closing = true
+	session.actions = nil
+	session.confirmations = nil
+	s.Stage(session, view)
+	if session.inFlight == 0 && session.DesiredRevision == session.DeliveredRevision {
+		s.Remove(session.Token)
+	}
 }

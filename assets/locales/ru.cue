@@ -36,6 +36,45 @@ ru: {
 	"menu.items.empty":    "Нет доступных предметов."
 	"menu.items.page":     "Страница"
 
+	"command.craft.usage":          "Используйте /craft, чтобы соединить материалы из инвентаря текущей группы."
+	"menu.craft.title":             "Создание предметов"
+	"menu.craft.empty":             "Нет доступных материалов."
+	"menu.craft.selected":          "Выбрано"
+	"menu.craft.quantity":          "Количество"
+	"menu.craft.available":         "Доступно"
+	"menu.craft.max":               "Макс."
+	"menu.craft.remove":            "Убрать"
+	"menu.craft.materials":         "К материалам"
+	"menu.craft.review":            "Проверить материалы"
+	"menu.craft.confirm":           "Подтвердить создание"
+	"menu.craft.cancel":            "Отмена"
+	"menu.craft.cancelled":         "Создание отменено. Материалы не потрачены."
+	"menu.craft.loss_warning":      "При успешном создании получится один предмет, а все выбранные материалы будут потрачены. При технических ошибках материалы не тратятся."
+	"menu.craft.pending":           "Создание ожидается. Материалы не зарезервированы: продажа или использование могут помешать завершению."
+	"menu.craft.success":           "Предмет создан. Выбранные материалы потрачены."
+	"menu.craft.uncraftable":       "В этой старой попытке предмет не был создан, а выбранные материалы были потрачены."
+	"menu.craft.unavailable":       "Выбранные материалы больше недоступны. Материалы не потрачены. Измените выбор."
+	"menu.craft.disabled":          "Открытие рецептов отключено. Сохранённые рецепты доступны. Материалы не потрачены."
+	"menu.craft.technical-failure": "Локальная модель не смогла завершить создание. Материалы не потрачены. Для повтора снова проверьте и подтвердите выбор."
+	"menu.craft.refresh":           "Обновить"
+
+	"menu.craft.composition-empty": "Состав пуст. Нажмите «Добавить», чтобы выбрать материалы."
+	"menu.craft.composition":       "Состав:"
+	"menu.craft.spent":             "Потрачено:"
+	"menu.craft.required":          "Нужно"
+	"menu.craft.add":               "Добавить"
+	"menu.craft.save":              "Сохранить"
+	"menu.craft.clear":             "Очистить"
+	"menu.craft.close":             "Закрыть"
+	"menu.craft.closed":            "Меню крафта закрыто. Если создание уже запущено, оно продолжится; результат появится в инвентаре."
+	"menu.craft.compose-confirm":   "Подтвердить"
+	"menu.craft.repeat":            "Повторить"
+	"menu.craft.new":               "Новый крафт"
+	"menu.craft.inventory":         "В инвентарь"
+	"menu.craft.use-result":        "Использовать в крафте"
+	"menu.craft.retry":             "Повторить попытку"
+	"menu.craft.change":            "Изменить состав"
+
 	"command.shop.usage": "Используйте /shop для покупок, продаж и просмотра заказов в этой группе."
 
 	"menu.shop.title":              "Магазин"
@@ -129,6 +168,54 @@ ru: {
 
 	"item.bread.name":        "Хлеб"
 	"item.bread.description": "Круглая буханка с хрустящей золотистой корочкой."
+
+	"item.wood_plank.name":        "Доска"
+	"item.wood_plank.description": "Ровная деревянная доска для рам, рукоятей и простой мебели."
+
+	"item.stone.name":        "Камень"
+	"item.stone.description": "Твёрдый серый камень с шероховатой поверхностью."
+
+	"item.clay.name":        "Глина"
+	"item.clay.description": "Комок мягкой глины, которому можно придать форму и обжечь."
+
+	"item.sand.name":        "Песок"
+	"item.sand.description": "Мелкие светлые песчинки для изготовления стекла и заполнения форм."
+
+	"item.iron_ingot.name":        "Железный слиток"
+	"item.iron_ingot.description": "Простой железный брусок для ковки инструментов и креплений."
+
+	"item.copper_wire.name":        "Медная проволока"
+	"item.copper_wire.description": "Моток гибкой медной проволоки, проводящей электричество."
+
+	"item.leather.name":        "Кожа"
+	"item.leather.description": "Кусок прочной гибкой кожи для ремней, чехлов и рукоятей."
+
+	"item.cloth.name":        "Ткань"
+	"item.cloth.description": "Лоскут простой тканой материи для шитья и обёртывания."
+
+	"item.thread.name":        "Нитки"
+	"item.thread.description": "Катушка прочных швейных ниток."
+
+	"item.wool.name":        "Шерсть"
+	"item.wool.description": "Пучок мягких шерстяных волокон для набивки или прядения."
+
+	"item.glass.name":        "Стекло"
+	"item.glass.description": "Прозрачный кусок стекла, который можно разрезать или переплавить."
+
+	"item.rubber.name":        "Резина"
+	"item.rubber.description": "Кусок упругой резины для уплотнений, прокладок и гибких деталей."
+
+	"item.spring.name":        "Пружина"
+	"item.spring.description": "Небольшая стальная спираль, которая сжимается и возвращает исходную форму."
+
+	"item.gear.name":        "Шестерёнка"
+	"item.gear.description": "Металлическое колесо с ровными зубцами для простых механизмов."
+
+	"item.crystal.name":        "Кристалл"
+	"item.crystal.description": "Прозрачный кристалл кварца с плоскими гранями, отражающими свет."
+
+	"item.dye.name":        "Краситель"
+	"item.dye.description": "Небольшой пакет синего пигмента для окрашивания ткани и других материалов."
 
 	"item.iron_sword.name":        "Железный меч"
 	"item.iron_sword.description": "Простой железный клинок с рукоятью, обмотанной кожей."

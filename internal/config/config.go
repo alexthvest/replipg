@@ -23,6 +23,7 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	BankID          int64
 	TreasuryID      int64
+	Crafting        Crafting
 }
 
 func FromEnv() (Config, error) {
@@ -166,6 +167,11 @@ func Parse(get func(string) string) (Config, error) {
 		return Config{}, errors.New("REPLIPG_DATABASE_PATH: file required")
 	} else if err != nil && !os.IsNotExist(err) {
 		return Config{}, errors.New("REPLIPG_DATABASE_PATH: cannot access path")
+	}
+
+	c.Crafting, err = parseCrafting(get)
+	if err != nil {
+		return Config{}, err
 	}
 	return c, nil
 }

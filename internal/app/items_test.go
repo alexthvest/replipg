@@ -18,6 +18,7 @@ import (
 
 func TestItemsOwnerOnlyNavigationAndLanguage(t *testing.T) {
 	cfg := testConfig(t)
+	cfg.AssetsPath = catalogTestAssets(t)
 	bundle, err := cueassets.Load(cfg.AssetsPath)
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +129,7 @@ func TestItemsOwnerOnlyNavigationAndLanguage(t *testing.T) {
 
 func TestItemsButtonsGrantToOwnerAndProtectReplays(t *testing.T) {
 	cfg := testConfig(t)
-	cfg.AssetsPath = appAssets(t)
+	cfg.AssetsPath = catalogTestAssets(t)
 	bundle, err := cueassets.Load(cfg.AssetsPath)
 	if err != nil {
 		t.Fatal(err)
@@ -259,4 +260,40 @@ func TestItemsButtonsGrantToOwnerAndProtectReplays(t *testing.T) {
 	if coins != 2 || sticks != 2 || foreignSticks != 1 {
 		t.Fatalf("wrong grants: coins=%d sticks=%d foreign sticks=%d", coins, sticks, foreignSticks)
 	}
+}
+
+func catalogTestAssets(t *testing.T) string {
+	t.Helper()
+	root := appAssets(t)
+	// Keep this two-page fixture stable as the shipped catalog grows. Removing
+	// coin must leave exactly one page for the reload and stale-button checks.
+	files, err := filepath.Glob(filepath.Join(root, "items", "*.cue"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range files {
+		switch filepath.Base(path) {
+		case "schema.cue", "bread.cue", "coin.cue", "dakimakura.cue", "fumo.cue", "neco_arc.cue", "stick.cue":
+			continue
+		}
+
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	definition := `package items
+
+silver_token: {
+	name: "item.bread.name"
+	description: "item.bread.description"
+	rarity: "common"
+	mode: "stackable"
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "items", "silver_token.cue"), []byte(definition), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alexthvest/replipg/internal/adapters/telegram"
+	appcraft "github.com/alexthvest/replipg/internal/application/crafting"
 	"github.com/alexthvest/replipg/internal/application/grants"
 	appshop "github.com/alexthvest/replipg/internal/application/shop"
 	"github.com/alexthvest/replipg/internal/content"
@@ -15,6 +16,7 @@ import (
 	"github.com/alexthvest/replipg/internal/modules/characters"
 	"github.com/alexthvest/replipg/internal/modules/groups"
 	"github.com/alexthvest/replipg/internal/modules/inventory"
+	"github.com/alexthvest/replipg/internal/modules/items"
 	"github.com/alexthvest/replipg/internal/modules/localization"
 	shopdomain "github.com/alexthvest/replipg/internal/modules/shop"
 	"github.com/alexthvest/replipg/internal/runtime"
@@ -40,6 +42,10 @@ type modules struct {
 	bankID              int64
 	treasuryID          int64
 	quotes              map[string]shopdomain.Quote
+	crafting            *appcraft.Service
+	craftReviews        map[string]appcraft.Confirmation
+	craftSnapshots      map[string]map[core.ID]items.Snapshot
+	menuTTL             time.Duration
 }
 
 func newModules(
@@ -65,6 +71,7 @@ func newModules(
 		localization:        locales,
 		groupProjection:     groups.NewProjection(),
 		sessions:            sessions,
+		menuTTL:             ttl,
 	}, nil
 }
 
@@ -234,60 +241,60 @@ func groupRoutes(registry *runtime.Registry, m *modules) (map[string]boundRoute,
 		return nil, err
 	}
 
-	if err := register("menu", func(
-		ctx context.Context,
-		world donburi.World,
-		scope core.Scope,
-		input telegram.Input,
-	) (core.View, error) {
-		session, action, err := m.sessions.Resolve(input.Data, scope, input.MessageID)
-		if err != nil {
-			return m.feedback(ctx, scope, "error.invalid_menu")
-		}
-		if session.Kind == "inventory" {
-			return m.inventoryAction(ctx, scope, session, action)
-		}
-		if session.Kind == "items" {
-			return m.itemsAction(ctx, world, scope, input, session, action)
-		}
-		if session.Kind == "shop" {
-			return m.shopAction(ctx, world, scope, session, action)
-		}
-		if session.Kind != "settings" || action.Kind != "language" || (action.Language != "en" && action.Language != "ru") {
-			return m.feedback(ctx, scope, "error.invalid_menu")
-		}
-
-		allowed, err := m.groups.Allowed(ctx, scope)
-		if err != nil {
-			return m.feedback(ctx, scope, "error.persistence")
-		}
-		if !allowed {
-			return m.feedback(ctx, scope, "error.denied")
-		}
-
-		language, err := m.localization.Language(ctx, scope.Group)
-		if err != nil {
-			return core.View{}, err
-		}
-		if action.Language == language {
-			return core.View{}, nil
-		}
-
-		state, err := m.groups.ChangeLanguage(ctx, scope, action.Language)
-		if err != nil {
-			return m.feedback(ctx, scope, "error.persistence")
-		}
-
-		if err = m.groupProjection.Apply(world, state); err != nil {
-			return core.View{}, &runtime.ProjectionError{Cause: err}
-		}
-		m.sessions.Invalidate(menus.Dependency{
-			Kind:  "group",
-			Group: scope.Group,
-		})
-		return m.settingsView(session, state.Language)
-	}); err != nil {
+	if err := register("menu", m.menuAction); err != nil {
 		return nil, err
 	}
 	return routes, nil
+}
+
+func (m *modules) menuAction(ctx context.Context, world donburi.World, scope core.Scope, input telegram.Input) (core.View, error) {
+	session, action, err := m.sessions.Resolve(input.Data, scope, input.MessageID)
+	if err != nil {
+		return m.feedback(ctx, scope, "error.invalid_menu")
+	}
+	if session.Kind == "inventory" {
+		return m.inventoryAction(ctx, scope, session, action)
+	}
+	if session.Kind == "items" {
+		return m.itemsAction(ctx, world, scope, input, session, action)
+	}
+	if session.Kind == "shop" {
+		return m.shopAction(ctx, world, scope, session, action)
+	}
+	if session.Kind == "craft" {
+		return m.craftingAction(ctx, world, scope, session, action)
+	}
+	if session.Kind != "settings" || action.Kind != "language" || (action.Language != "en" && action.Language != "ru") {
+		return m.feedback(ctx, scope, "error.invalid_menu")
+	}
+
+	allowed, err := m.groups.Allowed(ctx, scope)
+	if err != nil {
+		return m.feedback(ctx, scope, "error.persistence")
+	}
+	if !allowed {
+		return m.feedback(ctx, scope, "error.denied")
+	}
+
+	language, err := m.localization.Language(ctx, scope.Group)
+	if err != nil {
+		return core.View{}, err
+	}
+	if action.Language == language {
+		return core.View{}, nil
+	}
+
+	state, err := m.groups.ChangeLanguage(ctx, scope, action.Language)
+	if err != nil {
+		return m.feedback(ctx, scope, "error.persistence")
+	}
+
+	if err = m.groupProjection.Apply(world, state); err != nil {
+		return core.View{}, &runtime.ProjectionError{Cause: err}
+	}
+	m.sessions.Invalidate(menus.Dependency{
+		Kind:  "group",
+		Group: scope.Group,
+	})
+	return m.settingsView(session, state.Language)
 }

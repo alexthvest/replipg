@@ -173,3 +173,65 @@ func TestExpiredAndEvictedClaimsAreCanceled(t *testing.T) {
 		t.Fatal("late completion recreated an expired subscription")
 	}
 }
+
+func TestCloseOrdersTerminalDeliveryAndRejectsCallbacks(t *testing.T) {
+	now := time.Unix(100, 0)
+	pool, err := New(time.Hour, 3, func() time.Time {
+		return now
+	}, func() (string, error) {
+		return "closing", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := core.Scope{
+		Group: -1,
+		Actor: 1,
+	}
+	session, err := pool.Create("craft", scope, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Bind(session.Token, scope, 1); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := pool.Actions(session, []Action{{
+		Kind:  "confirm",
+		Quote: "accepted",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.AcceptConfirmation(session, "accepted")
+	pool.Stage(session, core.View{Text: core.Literal("pending")})
+	old := pool.Claim(1)[0]
+	pool.Close(session, core.View{Text: core.Literal("closed")})
+	if _, _, err = pool.Resolve(refs[0], scope, 1); err == nil {
+		t.Fatal("closing session accepted callback")
+	}
+	if len(pool.Claim(1)) != 0 {
+		t.Fatal("terminal edit raced pending delivery")
+	}
+	pool.Complete(Outcome{Job: old})
+	terminal := pool.Claim(1)
+	if len(terminal) != 1 || terminal[0].View.Text[0].Text != "closed" || len(terminal[0].View.Rows) != 0 {
+		t.Fatal("terminal view lost")
+	}
+	pool.Complete(Outcome{Job: terminal[0], Err: &EditError{RetryAfter: time.Minute}})
+	pool.Invalidate(Dependency{
+		Kind:  "group",
+		Group: -1,
+	})
+	if len(pool.Dirty()) != 0 || len(pool.Claim(1)) != 0 {
+		t.Fatal("invalidation or failed terminal edit bypassed backoff")
+	}
+	now = now.Add(time.Minute)
+	jobs := pool.Claim(1)
+	if len(jobs) != 1 {
+		t.Fatal("terminal delivery was not retried")
+	}
+	pool.Complete(Outcome{Job: jobs[0]})
+	if pool.Contains(session.Token) || len(pool.Claim(1)) != 0 {
+		t.Fatal("delivered closed menu remained active")
+	}
+}

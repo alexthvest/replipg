@@ -32,6 +32,8 @@ type Action struct {
 }
 
 type Session struct {
+	Closing           bool
+	Craft             *CraftSelection
 	Token             string
 	Kind              string
 	Group             core.GroupID
@@ -222,6 +224,7 @@ func (s *Sessions) Resolve(data string, scope core.Scope, message int) (*Session
 	session := s.pool[fields[1]]
 	if session == nil ||
 		session.Message == 0 ||
+		session.Closing ||
 		session.Message != message ||
 		session.Group != scope.Group ||
 		(session.Opener != 0 &&

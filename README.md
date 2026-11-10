@@ -47,6 +47,69 @@ Set `REPLIPG_LOG_LEVEL` to `debug`, `info`, `warn`, or `error` (case-insensitive
 to set the minimum log severity. Unset or empty values default to `info`;
 unsupported values reject startup. Restart the application after changing it.
 
+## Local model for AI crafting
+
+`compose.yaml` runs a separate [Ollama service](https://docs.ollama.com/docker)
+with [Qwen3 4B](https://ollama.com/library/qwen3:4b) as the default local model.
+The bot uses the native local chat API for unknown recipes. Starting the service
+does not enable discovery; configure the bot settings below and restart it.
+
+With Docker Compose installed, run from the repository root:
+
+```sh
+docker compose up -d ollama
+docker compose run --rm ollama-pull
+docker compose exec ollama ollama list
+```
+
+The pull service waits for Ollama's health check and exits successfully only when
+the model download completes. Re-running it reuses cached weights. The first run
+needs internet access to download the image and model (several GB); inference
+runs locally with Ollama cloud features disabled. The Ollama service requests all
+available NVIDIA GPUs through Docker Compose device reservations. Docker must
+have NVIDIA GPU support configured; see the
+[Ollama NVIDIA setup](https://docs.ollama.com/docker) and
+[Docker Compose GPU guide](https://docs.docker.com/compose/how-tos/gpu-support/).
+Latency and the fraction of a model loaded onto the GPU depend on available VRAM.
+
+After changing GPU settings, recreate Ollama:
+
+```sh
+docker compose up -d --no-deps ollama
+docker compose exec ollama nvidia-smi
+```
+
+After a crafting request, `docker compose exec ollama ollama ps` shows the loaded
+model and its CPU/GPU placement. Loading weights may take time on the first
+request. Only the inference service needs GPU access; the model pull service
+downloads weights through its API.
+
+The host API is `http://127.0.0.1:11434` (native chat endpoint: `/api/chat`).
+It binds only to localhost and requires no API key. A future containerized bot
+on the Compose network would use `http://ollama:11434`. A running server's health
+check does not prove the model is downloaded; wait for the pull command above.
+Smoke-test actual inference with:
+
+```sh
+curl --fail-with-body http://127.0.0.1:11434/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3:4b","stream":false,"think":false,"messages":[{"role":"user","content":"Invent a short fantasy item name from wood and iron."}]}'
+```
+
+Compose reads the optional `REPLIPG_OLLAMA_IMAGE`, `REPLIPG_OLLAMA_MODEL`, and
+`REPLIPG_OLLAMA_PORT` settings from `.env`, defaulting to `ollama/ollama:latest`,
+`qwen3:4b`, and `11434`. These settings configure Compose only. Set the image to
+a specific Ollama release tag or digest for a pinned deployment. After changing
+the model, rerun the pull service and use that model in inference requests;
+after changing the port, use that port in host requests. The service limits
+inference to one parallel request, one loaded model, a queue of four, and an
+8192-token context. The bot independently validates responses and enforces
+request deadlines.
+
+Stop with `docker compose down`; downloaded models remain in the named `ollama`
+volume. `docker compose down -v` also deletes those weights. The bot continues
+to run separately through `devenv shell` as described above.
+
 ## Commands
 
 The configured bot owner can run `/replipg balance` in a group or supergroup to
@@ -405,3 +468,147 @@ restore a pre-transfer database or serve gameplay from an older binary that igno
 orders and reservations. The schema version guard rejects unsupported rollback.
 Retain financial keys and proofs permanently; menu expiry or process restart does
 not erase them. Old menu sessions must be reopened after restart.
+
+## Crafting and inference settings
+
+Use `/craft` in a group to open an empty composition. Only the opener can
+operate its buttons. The composition shows up to six numbered ingredients per
+page, followed by separate page controls when needed, then these two action rows:
+
+```text
+[Add] [Clear]
+[Confirm] [Close]
+```
+
+Add opens an inventory-style browser of eligible materials, six per page.
+Selecting a material or a composition number opens its quantity editor. The
+quantity row is `1`, `-10`, `-1`, `+1`, `+10`, and localized Max; individual
+materials select one exact instance without quantity buttons. Add or Save commits
+the draft and returns to composition; Back discards the edit and returns to its
+origin page. Remove removes only that ingredient. Clear resets the composition.
+Confirm opens a review; final confirmation submits one crafting attempt.
+Only saved snapshots containing the material component qualify. Generated
+materials can be used again, including items with multiple components.
+
+Pending menus offer Refresh and Close and automatically show the result when
+ready. Closing removes the controls; an already accepted craft continues and its
+result remains in inventory. Success shows the new item and consumed materials,
+with Repeat / New craft followed by Inventory / Close. Material results also
+have Use in crafting, which starts a composition with one available matching
+result. Repeat restores the original saved ingredient definitions and quantities
+against current ownership, without submitting. Retry after a technical error
+opens a fresh review. Every new attempt needs a new final confirmation.
+Shortages show required and available amounts without silently reducing the
+selection; Change composition lets the player edit or remove missing ingredients.
+
+Recipes are shared across every group and survive restarts. Complete saved item
+definitions and exact quantities determine identity; input order and owner do not.
+Crafting always invents an item for a combination: strange or implausible inputs
+are an invitation to create playful hybrids, rather than reject the recipe.
+Outputs can be ordinary objects, toys, creatures, jokes, or surreal combinations;
+they are not limited to RPG equipment or realistic manufacturing. Ordinary
+materials advance toward processed materials, components, subassemblies, and
+finished objects. The selected English prompt A favors one meaningful next step
+whose structure or function emerges from the supplied ingredients, rather than
+joined names or decoration. Prepared components can become a complete object
+without another redundant intermediate. Each material has its own quantity
+budget; scarce inputs favor a smaller result instead of a gameplay rejection.
+Unusual ingredients can contribute their described character traits. Names and
+descriptions stay short, without elaborate lore or unsupported magical powers.
+One successful attempt consumes its exact selected ingredients
+and yields one item. Review explains this consumption
+before confirmation. Technical failures, model refusals, malformed responses, and
+disabled discovery consume nothing. Saved successful recipes continue to work if
+Ollama stops or discovery is disabled. A new confirmation can retry a technical
+failure. Old cached rejections are rediscovered under this policy; historical
+completed attempts retain their original results.
+
+Generation runs outside gameplay ownership and database transactions in one owned
+worker. Materials are not reserved while generation is pending; selling or using
+them first can make fulfillment fail without consumption. Existing shop
+reservations are always excluded from crafting availability. Accepted attempts
+survive menu expiry, and restarting recovers interrupted work without applying
+inventory effects twice.
+
+| Variable | Default / constraint |
+| --- | --- |
+| `REPLIPG_CRAFTING_ENABLED` | `false`; exactly `true` or `false` |
+| `REPLIPG_CRAFTING_ENDPOINT` | Required when enabled; e.g. `http://127.0.0.1:11434` |
+| `REPLIPG_CRAFTING_MODEL` | Required when enabled; e.g. `qwen3:4b` |
+| `REPLIPG_CRAFTING_TOKEN` | Empty; optional local proxy bearer token |
+| `REPLIPG_CRAFTING_TIMEOUT` | `2m`; positive, at most `10m` |
+| `REPLIPG_CRAFTING_MIN_INTERVAL` | `1s`; positive, at most `1h` |
+| `REPLIPG_CRAFTING_MAX_RESPONSE_BYTES` | `65536`; `1024` through `1048576` |
+| `REPLIPG_CRAFTING_MAX_TOKENS` | `2048`; `128` through `8192` |
+
+After pulling the model, set the endpoint/model, enable discovery, and restart
+the bot. The Compose model setting does not automatically set the bot model.
+Endpoints must use HTTP(S) on a loopback/private address or a local service name
+such as `ollama`; resolved public addresses, URL credentials, extra URL paths,
+queries, and redirects are rejected. No hosted inference fallback exists. Keep
+proxy credentials in the environment and out of recipe text. Direct local Ollama
+requires no hosted API key. The bot does not start or manage the model service.
+
+The adapter sends `POST /api/chat`, `stream:false`, `think:false`, a JSON schema
+in `format`, `temperature:0.8`, `num_ctx:8192`, and the configured `num_predict` limit. It uses the
+[Ollama chat contract](https://docs.ollama.com/api/chat) and
+[structured outputs](https://docs.ollama.com/capabilities/structured-outputs).
+The production system prompt is the exact English A variant accepted after the
+catalog and fictional-material reviews. It requests one next-stage discovery,
+short natural names, and 1-2 concrete description sentences. It asks for material
+eligibility on every result and strictly empty component markers, with optional
+weapon or consumable markers. The existing response validator remains unchanged;
+prompt instructions do not enforce semantic quality or fixed numeric costs.
+Restart the bot to apply it to new discoveries; successful saved recipes retain
+their exact outcomes. A separate user message contains
+only immutable ingredient definitions and quantities, treating their text as
+data. Telegram identities, history, unrelated inventory, and credentials never
+enter inference prompts. The response deadline includes rate waiting. There is
+one provider request at a time, with a minimum interval between starts.
+
+The assistant content must be exactly one successful item definition:
+
+```json
+{"kind":"success","item":{"mode":"stackable","rarity":"common","en":{"name":"Wooden ring","description":"A simple carved ring."},"ru":{"name":"Деревянное кольцо","description":"Простое резное кольцо."},"components":{"material":{}}}}
+```
+
+Modes are `stackable` or `individual`; rarities are `common`, `uncommon`, `rare`,
+`epic`, or `legendary`. English/Russian names require 1–128 characters and
+descriptions 1–1000. `components` is required and may contain any combination
+of `consumable`, `material`, and `weapon`, each an empty object, including none.
+The bot assigns the durable generated ID and output quantity. Unknown fields,
+duplicate properties, trailing content, incomplete responses, and invalid
+variants, including an `uncraftable` response, are technical failures. Fake-server tests validate this contract without
+weights or credentials; actual model quality and inference remain manual checks.
+
+To generate the current progressive-crafting review, start local Ollama and run
+inside `devenv shell` with the configured crafting endpoint and model:
+
+```sh
+REPLIPG_CRAFTING_REVIEW=true \
+go test ./internal/adapters/ai -run '^TestCraftingReview$' -count=1 -v -timeout 20m
+```
+
+The current inputs and three complete prompts live in
+`openspec/changes/archive/2026-11-10-add-ai-crafting/experiments/current-review/`. The recipe plan
+uses current catalog IDs or references to complete generated outputs from earlier
+steps. Each variant and seed has an independent chain. Quantity comparisons reuse
+its same intermediate; variants may develop different intermediates.
+
+The experiment records every result or error in `results.jsonl`, overwriting that
+file on each run. Set `REPLIPG_CRAFTING_REVIEW_OUTPUT` to another path when
+running a focused subset without replacing the complete review. Missing or
+nonmaterial intermediates block dependent steps and
+remain visible as failures. The experiment does not open the gameplay database,
+change saved recipes, or switch the production prompt. Normal Go tests skip live
+inference; accepted JSON alone does not establish creative quality. Previous
+experimental prompts, scenarios, and review dumps have been removed.
+
+For the fictional-material experiment, set
+`REPLIPG_CRAFTING_REVIEW_DIR="$PWD/openspec/changes/archive/2026-11-10-add-ai-crafting/experiments/fictional-materials"`
+in the same command. An optional `materials.json` maps fixture IDs to complete,
+validated material snapshots, referenced by `fixture_id` in recipe inputs.
+Each input must specify exactly one of `catalog_id`, `fixture_id`, or `from`.
+These fixtures do not add items to the production catalog. The experiment uses
+the unchanged reviewed A prompt, six invented base materials, and two explicitly
+handwritten prepared parts for a separate assembly control.

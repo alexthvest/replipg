@@ -36,6 +36,45 @@ en: {
 	"menu.items.empty":    "No items are available."
 	"menu.items.page":     "Page"
 
+	"command.craft.usage":          "Use /craft to combine materials from your current-group inventory."
+	"menu.craft.title":             "Crafting"
+	"menu.craft.empty":             "No available materials."
+	"menu.craft.selected":          "Selected"
+	"menu.craft.quantity":          "Quantity"
+	"menu.craft.available":         "Available"
+	"menu.craft.max":               "Max"
+	"menu.craft.remove":            "Remove"
+	"menu.craft.materials":         "Back to materials"
+	"menu.craft.review":            "Review ingredients"
+	"menu.craft.confirm":           "Confirm crafting"
+	"menu.craft.cancel":            "Cancel"
+	"menu.craft.cancelled":         "Crafting cancelled. No materials were consumed."
+	"menu.craft.loss_warning":      "Crafting creates one item and consumes all selected materials on success. Technical failures consume nothing."
+	"menu.craft.pending":           "Crafting is pending. Materials are not reserved; selling or using them may prevent completion."
+	"menu.craft.success":           "Item created. Selected materials were consumed."
+	"menu.craft.uncraftable":       "This historical attempt created no item and consumed the selected materials."
+	"menu.craft.unavailable":       "Selected materials are no longer available. No materials were consumed. Revise your selection."
+	"menu.craft.disabled":          "Discovery is disabled. Saved recipes remain available. No materials were consumed."
+	"menu.craft.technical-failure": "The local model could not complete crafting. No materials were consumed. Review and confirm again to retry."
+	"menu.craft.refresh":           "Refresh"
+
+	"menu.craft.composition-empty": "No ingredients selected. Press Add to choose materials."
+	"menu.craft.composition":       "Ingredients:"
+	"menu.craft.spent":             "Consumed:"
+	"menu.craft.required":          "Required"
+	"menu.craft.add":               "Add"
+	"menu.craft.save":              "Save"
+	"menu.craft.clear":             "Clear"
+	"menu.craft.close":             "Close"
+	"menu.craft.closed":            "Crafting menu closed. Accepted crafting continues; check your inventory for the result."
+	"menu.craft.compose-confirm":   "Confirm"
+	"menu.craft.repeat":            "Repeat"
+	"menu.craft.new":               "New craft"
+	"menu.craft.inventory":         "Inventory"
+	"menu.craft.use-result":        "Use in crafting"
+	"menu.craft.retry":             "Retry"
+	"menu.craft.change":            "Change composition"
+
 	"command.shop.usage": "Use /shop to buy, sell, and view your current-group orders."
 
 	"menu.shop.title":              "Shop"
@@ -129,6 +168,54 @@ en: {
 
 	"item.bread.name":        "Bread"
 	"item.bread.description": "A round loaf with a crisp golden crust."
+
+	"item.wood_plank.name":        "Wood Plank"
+	"item.wood_plank.description": "A flat wooden board for frames, handles, and simple furniture."
+
+	"item.stone.name":        "Stone"
+	"item.stone.description": "A solid gray stone with a rough surface."
+
+	"item.clay.name":        "Clay"
+	"item.clay.description": "A lump of soft clay that can be shaped and fired."
+
+	"item.sand.name":        "Sand"
+	"item.sand.description": "Fine pale grains suitable for glassmaking and filling molds."
+
+	"item.iron_ingot.name":        "Iron Ingot"
+	"item.iron_ingot.description": "A plain iron bar ready to be forged into tools or fittings."
+
+	"item.copper_wire.name":        "Copper Wire"
+	"item.copper_wire.description": "A coil of flexible copper wire that conducts electricity."
+
+	"item.leather.name":        "Leather"
+	"item.leather.description": "A piece of tough, flexible leather for straps, covers, and grips."
+
+	"item.cloth.name":        "Cloth"
+	"item.cloth.description": "A square of plain woven fabric for sewing and wrapping."
+
+	"item.thread.name":        "Thread"
+	"item.thread.description": "A spool of strong sewing thread."
+
+	"item.wool.name":        "Wool"
+	"item.wool.description": "A bundle of soft wool fibers for stuffing or spinning yarn."
+
+	"item.glass.name":        "Glass"
+	"item.glass.description": "A clear piece of glass that can be cut or melted into new shapes."
+
+	"item.rubber.name":        "Rubber"
+	"item.rubber.description": "A piece of springy rubber for seals, padding, and flexible parts."
+
+	"item.spring.name":        "Spring"
+	"item.spring.description": "A small steel coil that compresses and returns to its original shape."
+
+	"item.gear.name":        "Gear"
+	"item.gear.description": "A metal wheel with evenly spaced teeth for simple mechanisms."
+
+	"item.crystal.name":        "Crystal"
+	"item.crystal.description": "A clear quartz crystal with flat faces that catch the light."
+
+	"item.dye.name":        "Dye"
+	"item.dye.description": "A small packet of blue pigment for coloring cloth and other materials."
 
 	"item.iron_sword.name":        "Iron Sword"
 	"item.iron_sword.description": "A plain iron blade with a leather-wrapped grip."

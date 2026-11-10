@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/alexthvest/replipg/internal/adapters/ai"
 	"github.com/alexthvest/replipg/internal/adapters/cueassets"
 	"github.com/alexthvest/replipg/internal/adapters/sqlite"
 	"github.com/alexthvest/replipg/internal/adapters/telegram"
+	appcraft "github.com/alexthvest/replipg/internal/application/crafting"
 	appshop "github.com/alexthvest/replipg/internal/application/shop"
 	"github.com/alexthvest/replipg/internal/config"
 	"github.com/alexthvest/replipg/internal/content"
@@ -30,9 +32,10 @@ type Poller interface {
 }
 
 type Dependencies struct {
-	Open    func(context.Context, string) (*sqlite.Database, error)
-	Load    func(string) (*content.Bundle, error)
-	Connect func(context.Context, string, *slog.Logger) (Poller, error)
+	Open      func(context.Context, string) (*sqlite.Database, error)
+	Load      func(string) (*content.Bundle, error)
+	Connect   func(context.Context, string, *slog.Logger) (Poller, error)
+	Generator appcraft.Generator
 }
 
 func defaults() Dependencies {
@@ -163,6 +166,23 @@ func (a *App) Run(ctx context.Context) error {
 	if err = configureShop(registry, modules, db, routes, a.cfg.BankID, a.cfg.TreasuryID); err != nil {
 		return err
 	}
+	if err = configureCrafting(registry, modules, db, routes, a.cfg.Crafting.Enabled); err != nil {
+		return err
+	}
+	var generator appcraft.Generator
+	if a.cfg.Crafting.Enabled {
+		generator = a.deps.Generator
+		if generator == nil {
+			generator, err = ai.New(a.cfg.Crafting)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	craftCall, err := craftingOperations(registry, modules, max(a.cfg.Crafting.Timeout, time.Minute)+time.Minute)
+	if err != nil {
+		return err
+	}
 	balanceCall, err := balanceRoute(registry, modules)
 	if err != nil {
 		return err
@@ -225,6 +245,24 @@ func (a *App) Run(ctx context.Context) error {
 		return err
 	}
 	router.OrderedMenus()
+	craftContext, stopCraft := context.WithCancel(context.Background())
+	craftDone := make(chan struct{})
+	go func() {
+		defer close(craftDone)
+		if generator != nil {
+			runCraftingWorker(craftContext, craftingOwner{
+				engine: engine,
+				scope:  core.Scope{Group: -1, Actor: core.UserID(a.cfg.OwnerID)},
+				call:   craftCall,
+			}, generator, max(a.cfg.Crafting.MinInterval, 100*time.Millisecond), a.log)
+		} else {
+			<-craftContext.Done()
+		}
+	}()
+	defer func() {
+		stopCraft()
+		<-craftDone
+	}()
 	bankContext, stopBank := context.WithCancel(context.Background())
 	defer stopBank()
 	bankDone := make(chan struct{})
@@ -376,6 +414,8 @@ func (a *App) Run(ctx context.Context) error {
 	<-bankDone
 	stopMenus()
 	<-menusDone
+	stopCraft()
+	<-craftDone
 	drain, cancel := context.WithTimeout(context.Background(), a.cfg.ShutdownTimeout)
 	defer cancel()
 

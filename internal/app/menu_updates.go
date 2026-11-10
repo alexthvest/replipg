@@ -27,6 +27,17 @@ func (m *modules) invalidateOrders(group core.GroupID, character core.ID) {
 
 func (m *modules) sweepMenus() {
 	m.sessions.Sweep()
+	for token := range m.craftReviews {
+		if !m.sessions.Contains(token) {
+			delete(m.craftReviews, token)
+			delete(m.craftSnapshots, token)
+		}
+	}
+	for token := range m.craftSnapshots {
+		if !m.sessions.Contains(token) {
+			delete(m.craftSnapshots, token)
+		}
+	}
 	for token := range m.quotes {
 		if !m.sessions.Contains(token) {
 			delete(m.quotes, token)
@@ -46,6 +57,8 @@ func (m *modules) renderSession(ctx context.Context, session *menus.Session) (co
 		return m.itemsView(ctx, scope, session)
 	case "shop":
 		return m.shopView(ctx, scope, session)
+	case "craft":
+		return m.craftingView(ctx, scope, session)
 	default:
 		language, err := m.localization.Language(ctx, session.Group)
 		if err != nil {

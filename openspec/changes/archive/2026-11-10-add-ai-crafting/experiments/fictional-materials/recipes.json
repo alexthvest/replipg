@@ -1,0 +1,15 @@
+[
+  {"name":"metal-part","title":"Обработка выдуманного сплава","inputs":[{"fixture_id":"dusk_metal","quantity":2}]},
+  {"name":"grip","title":"Корнедрев и связующая смола","inputs":[{"fixture_id":"rootwood","quantity":1},{"fixture_id":"binding_resin","quantity":1}]},
+  {"name":"weapon","title":"Сборка металлической и деревянной деталей","inputs":[{"from":"metal-part","quantity":1},{"from":"grip","quantity":1}]},
+  {"name":"padding","title":"Подготовка мягкого слоя","inputs":[{"fixture_id":"warmfiber","quantity":2},{"fixture_id":"binding_resin","quantity":1}]},
+  {"name":"scales-1","title":"Одна панель и один мягкий компонент","inputs":[{"fixture_id":"scalecloth","quantity":1},{"from":"padding","quantity":1}]},
+  {"name":"scales-2","title":"Две панели и один мягкий компонент","inputs":[{"fixture_id":"scalecloth","quantity":2},{"from":"padding","quantity":1}]},
+  {"name":"scales-5","title":"Пять панелей и один мягкий компонент","inputs":[{"fixture_id":"scalecloth","quantity":5},{"from":"padding","quantity":1}]},
+  {"name":"scales-5-padding-3","title":"Пять панелей и три мягких компонента","inputs":[{"fixture_id":"scalecloth","quantity":5},{"from":"padding","quantity":3}]},
+  {"name":"shield-base","title":"Жёсткая основа с гибкой оболочкой","inputs":[{"fixture_id":"rootwood","quantity":2},{"fixture_id":"scalecloth","quantity":2},{"fixture_id":"binding_resin","quantity":1}]},
+  {"name":"shield","title":"Основа и деревянная деталь","inputs":[{"from":"shield-base","quantity":1},{"from":"grip","quantity":1}]},
+  {"name":"elastic-base","title":"Упругие волокна и корнедрев","inputs":[{"fixture_id":"spring_silk","quantity":2},{"fixture_id":"rootwood","quantity":1}]},
+  {"name":"elastic-item","title":"Упругий компонент и деревянная деталь","inputs":[{"from":"elastic-base","quantity":1},{"from":"grip","quantity":1}]},
+  {"name":"prepared-weapon","title":"Контроль с заранее сформованными деталями","inputs":[{"fixture_id":"edge_insert","quantity":1},{"fixture_id":"shaped_grip","quantity":1},{"fixture_id":"binding_resin","quantity":1}]}
+]

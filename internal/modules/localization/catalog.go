@@ -54,7 +54,7 @@ func New(values map[string]map[string]string) (Catalog, error) {
 		return Catalog{}, errors.New("locales: English/Russian key parity required")
 	}
 
-	for _, key := range append(append(append([]string{}, baselineKeys...), inventoryKeys...), shopKeys...) {
+	for _, key := range append(append(append(append([]string{}, baselineKeys...), inventoryKeys...), shopKeys...), craftingKeys...) {
 		if _, ok := en[key]; !ok {
 			return Catalog{}, fmt.Errorf("locales: missing required key %s", key)
 		}
